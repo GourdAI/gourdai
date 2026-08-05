@@ -34,8 +34,6 @@ jobs:
       # （覆盖 .npmrc 中面向国内网络的 npmmirror 镜像）
       ELECTRON_MIRROR: https://github.com/electron/electron/releases/download/
       ELECTRON_BUILDER_BINARIES_MIRROR: https://github.com/electron-userland/electron-builder-binaries/releases/download/
-      # CI 无签名证书，禁用 macOS 签名自动发现（产出未签名 dmg）
-      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
       - uses: actions/checkout@v4
 
@@ -151,12 +149,25 @@ jobs:
         run: npm run build:${{ matrix.platform }}
 
       # 分两次打包：每次换入对应架构的 JRE，electron-builder 用 --x64/--arm64 过滤目标架构
+      # 配置了 CSC_LINK 等 Secrets 时自动走 Developer ID 正式签名 + 公证；
+      # 未配置时由 afterPack 钩子做 ad-hoc 签名（保证不产出「损坏包」）
       - name: 打包（macOS x64 + arm64）
         if: matrix.platform == 'mac'
         shell: bash
         working-directory: gourd-ai-desktop
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: |
           set -e
+          if [ -n "$CSC_LINK" ]; then
+            echo "签名模式: Developer ID 正式签名 + 公证"
+          else
+            echo "签名模式: ad-hoc（未配置证书 Secrets）"
+          fi
           JRE="build/extraResources/jre"
           rm -rf "$JRE"
           cp -R build/jre-mac-x64 "$JRE"
@@ -164,6 +175,20 @@ jobs:
           rm -rf "$JRE"
           cp -R build/jre-mac-arm64 "$JRE"
           npm run build:mac -- --arm64
+
+      # 校验 ad-hoc 签名与资源密封，防止再次产出 arm64「文件已损坏」包
+      - name: 校验 macOS 签名
+        if: matrix.platform == 'mac'
+        shell: bash
+        working-directory: gourd-ai-desktop
+        run: |
+          set -e
+          for app in out/mac-arm64/*.app out/mac/*.app; do
+            [ -d "$app" ] || continue
+            echo "校验: $app"
+            codesign --verify --deep --strict --verbose=2 "$app"
+            codesign -dv --verbose=2 "$app" 2>&1 | grep -E "Authority|Signature=|TeamIdentifier" || true
+          done
 
       - name: 上传安装包
         uses: actions/upload-artifact@v4
