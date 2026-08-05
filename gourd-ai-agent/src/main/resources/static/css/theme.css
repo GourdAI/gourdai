@@ -1,0 +1,298 @@
+/*
+ * Global Theme Variables
+ * Shared across all pages. Switch theme via <body data-theme="light|dark">.
+ *
+ * Usage:
+ *   <link rel="stylesheet" href="/css/theme.css"/>
+ *   <body data-theme="light">
+ */
+
+/* ===== Common ===== */
+:root {
+    --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+
+    /* Scrollbar —— 全局唯一的滚动条视觉规范。
+       原生滚动条（*::-webkit-scrollbar）与 CodeMirror overlay 滚动条
+       （code.css 覆盖）共用此组变量，保证 code 编辑器 / diff / 其它区域观感一致。
+       thumb 高度半透明蓝灰，透光不压内容（模拟毛玻璃），细窄+大圆角。
+       明暗主题下均协调，无需分主题赋值。 */
+    --scrollbar-size: 6px;
+    --scrollbar-radius: 6px;
+    --scrollbar-thumb: rgba(160, 170, 195, 0.32);
+    --scrollbar-thumb-hover: rgba(160, 170, 195, 0.6);
+}
+
+/* ===== Light Theme ===== */
+[data-theme="light"] {
+    /* Background */
+    --bg-body: #f5f6fa;
+    --bg-sidebar: #ffffff;
+    --bg-main: #ffffff;
+    --bg-input-box: #ffffff;
+    --bg-hover: #f0f1f5;
+    --bg-code: #f6f8fa;
+    --bg-code-block: #f6f8fa;
+    --bg-primary: #ffffff;
+    --bg-secondary: #f5f6fa;
+
+    /* Message */
+    --bg-user-msg: #EDF3FE;
+    --bg-action: #f0f7f0;
+
+    /* Text */
+    --text-primary: #1a1a2e;
+    --text-secondary: #6b7280;
+    --text-user-msg: #1a1a2e;
+    --text-user-msg-link: #4f6ef7;
+    --text-user-msg-link-hover: #3b5de7;
+    --text-ai-msg: #1a1a2e;
+    --text-sidebar: #374151;
+    --text-code: #24292e;
+    --text-tertiary: #999999;
+
+    /* Border */
+    --border-color: #e5e7eb;
+    --border-input: #d1d5db;
+
+    /* Accent */
+    --accent: #4f6ef7;
+    --accent-hover: #3b5de7;
+    --accent-light: #eef1fe;
+
+    /* Functional */
+    --action-border: #86b886;
+    --error-bg: #fef2f2;
+    --error-border: #fca5a5;
+    --error-text: #dc2626;
+    --color-success: #22c55e;
+    --color-success-hover: #16a34a;
+    --color-danger: #ef4444;
+    --color-danger-hover: #dc2626;
+    --color-warning: #f59e0b;
+    --color-wechat: #07c160;
+    --color-feishu: #3370ff;
+    --color-feishu-hover: #2960e6;
+    --color-dingtalk: #0089FF;
+    --color-dingtalk-hover: #0070dd;
+    --bg-danger-subtle: rgba(239, 68, 68, 0.1);
+
+    /* Git */
+    --git-line-add-bg: rgba(46, 160, 67, 0.15);
+    --git-line-add-text: #22863a;
+    --git-line-del-bg: rgba(248, 81, 73, 0.15);
+    --git-line-del-text: #cb2431;
+    --git-line-hunk-text: #032f62;
+    --git-status-staged: #28a745;
+    --git-status-modified: #dbab09;
+    --git-status-added: #28a745;
+    --git-status-deleted: #cb2431;
+    --git-status-untracked: #6e7681;
+
+    /* Effects */
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.08);
+    --thinking-dot: #4f6ef7;
+    --tag-bg: #f3f4f8;
+    --tag-border: #e5e7eb;
+    --thinking-block-bg: #f8f9fc;
+    --thinking-block-border: #e0e3eb;
+}
+
+/* ===== Dark Theme ===== */
+[data-theme="dark"] {
+    /* Background */
+    --bg-body: #141416;
+    --bg-sidebar: #111113;
+    --bg-main: #1a1b1e;
+    --bg-input-box: #1e2024;
+    --bg-hover: #26282d;
+    --bg-code: rgba(255, 255, 255, 0.07);
+    --bg-code-block: #0d1117;
+    --bg-primary: #1a1b1e;
+    --bg-secondary: #111113;
+
+    /* Message */
+    --bg-user-msg: #4f6ef7;
+    --bg-action: #1a2a1a;
+
+    /* Text */
+    --text-primary: #dcdde1;
+    --text-secondary: #8b909a;
+    --text-user-msg: #ffffff;
+    --text-user-msg-link: #ffffff;
+    --text-user-msg-link-hover: #d0d8ff;
+    --text-ai-msg: #dcdde1;
+    --text-sidebar: #b8bcc8;
+    --text-code: #d4d4d4;
+    --text-tertiary: #606470;
+
+    /* Border */
+    --border-color: #2a2d35;
+    --border-input: #32363f;
+
+    /* Accent */
+    --accent: #6b8aff;
+    --accent-hover: #5a75e6;
+    --accent-light: #1c2140;
+
+    /* Functional */
+    --action-border: #2a4a2a;
+    --error-bg: #261a1a;
+    --error-border: #4a2a2a;
+    --error-text: #f87171;
+    --color-success: #4ade80;
+    --color-success-hover: #22c55e;
+    --color-danger: #f87171;
+    --color-danger-hover: #ef4444;
+    --color-warning: #fbbf24;
+    --color-wechat: #2dd469;
+    --color-feishu: #5b93ff;
+    --color-feishu-hover: #4a80f0;
+    --color-dingtalk: #3ea6ff;
+    --color-dingtalk-hover: #2b96f0;
+    --bg-danger-subtle: rgba(248, 113, 113, 0.12);
+
+    /* Git */
+    --git-line-add-bg: rgba(46, 160, 67, 0.2);
+    --git-line-add-text: #56d364;
+    --git-line-del-bg: rgba(248, 81, 73, 0.2);
+    --git-line-del-text: #f87171;
+    --git-line-hunk-text: #8b949e;
+    --git-status-staged: #3fb950;
+    --git-status-modified: #d29922;
+    --git-status-added: #3fb950;
+    --git-status-deleted: #f85149;
+    --git-status-untracked: #8b949e;
+
+    /* Effects */
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.4);
+    --thinking-dot: #6b8aff;
+    --tag-bg: #26282d;
+    --tag-border: #32363f;
+    --thinking-block-bg: #1a1c20;
+    --thinking-block-border: #2a2d35;
+}
+
+/* ===== Global Scrollbar =====
+   全站统一使用一套 webkit 自定义滚动条（圆角 / 细窄 / 半透明毛玻璃）。
+   刻意不使用标准 scrollbar-width / scrollbar-color：其一无法实现圆角与
+   精确透明度，其二 Chromium 121+ 下它会使同元素上的 ::-webkit-scrollbar-*
+   规则整体失效（正是桌面端 Electron 与 CodeMirror overlay 观感不一致的根因）。
+   CodeMirror overlay 滚动条在 code.css 里引用同组 --scrollbar-* 变量对齐。 */
+*::-webkit-scrollbar {
+    width: var(--scrollbar-size);
+    height: var(--scrollbar-size);
+}
+*::-webkit-scrollbar-track {
+    background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: var(--scrollbar-radius);
+}
+*::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+}
+/* 一旦自定义 ::-webkit-scrollbar，Chromium 默认不再渲染上下箭头按钮；
+   显式 none 双保险，避免个别平台残留。 */
+*::-webkit-scrollbar-button {
+    display: none;
+}
+*::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* ===== Accessibility ===== */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+*:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* ===== Custom layer dialogs ===== */
+.kd-layer.layui-layer { border-radius: 12px !important; border: 1px solid var(--border-color) !important; box-shadow: 0 8px 32px rgba(0,0,0,.14) !important; background: var(--bg-primary) !important; padding: 0 !important; }
+.kd-layer .layui-layer-content { background: transparent !important; padding: 0 !important; }
+.kd-layer .layui-layer-setwin { display: none !important; }
+
+.kd-confirm { padding: 24px 24px 20px; min-width: 260px; max-width: 340px; }
+.kd-confirm-msg { font-size: 14px; color: var(--text-primary); line-height: 1.6; margin-bottom: 20px; }
+.kd-confirm-btns { display: flex; gap: 8px; justify-content: flex-end; }
+.kd-btn { height: 32px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 13px; cursor: pointer; transition: all .15s; background: var(--bg-hover); color: var(--text-primary); }
+.kd-btn:hover { filter: brightness(0.95); }
+.kd-btn-ok { background: var(--accent); color: #fff; border-color: var(--accent); }
+.kd-btn-ok:hover { opacity: .88; filter: none; }
+
+/* layer.msg */
+.kd-layer-msg.layui-layer { border-radius: 8px !important; background: var(--bg-primary) !important; border: 1px solid var(--border-color) !important; box-shadow: 0 4px 16px rgba(0,0,0,.12) !important; color: var(--text-primary) !important; }
+.kd-layer-msg .layui-layer-content { color: var(--text-primary) !important; background: transparent !important; }
+
+/* old dark override kept for any stray usage */
+[data-theme="dark"] .layui-layer-msg { background: #2a2d33; border-color: #444; color: var(--text-primary); }
+
+/* System dark preference fallback */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme]) {
+        /* Background */
+        --bg-body: #141416;
+        --bg-sidebar: #111113;
+        --bg-main: #1a1b1e;
+        --bg-input-box: #1e2024;
+        --bg-hover: #26282d;
+        --bg-code: rgba(255, 255, 255, 0.07);
+        --bg-code-block: #0d1117;
+        --bg-primary: #1a1b1e;
+        --bg-secondary: #111113;
+
+        /* Message */
+        --bg-user-msg: #4f6ef7;
+        --bg-action: #1a2a1a;
+
+        /* Text */
+        --text-primary: #dcdde1;
+        --text-secondary: #8b909a;
+        --text-user-msg: #ffffff;
+        --text-user-msg-link: #ffffff;
+        --text-user-msg-link-hover: #d0d8ff;
+        --text-ai-msg: #dcdde1;
+        --text-sidebar: #b8bcc8;
+        --text-code: #d4d4d4;
+        --text-tertiary: #606470;
+
+        /* Border */
+        --border-color: #2a2d35;
+        --border-input: #32363f;
+
+        /* Accent */
+        --accent: #6b8aff;
+        --accent-hover: #5a75e6;
+        --accent-light: #1c2140;
+
+        /* Functional */
+        --action-border: #2a4a2a;
+        --error-bg: #261a1a;
+        --error-border: #4a2a2a;
+        --error-text: #f87171;
+        --color-success: #4ade80;
+        --color-danger: #f87171;
+        --color-warning: #fbbf24;
+        --bg-danger-subtle: rgba(248, 113, 113, 0.12);
+
+        /* Effects */
+        --shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+        --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.4);
+        --thinking-dot: #6b8aff;
+        --tag-bg: #26282d;
+        --tag-border: #32363f;
+        --thinking-block-bg: #1a1c20;
+        --thinking-block-border: #2a2d35;
+    }
+}

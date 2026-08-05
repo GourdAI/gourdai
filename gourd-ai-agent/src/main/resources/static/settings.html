@@ -1,0 +1,854 @@
+<!-- settings.html — 设置面板片段（设置浮层，body 级 position:fixed 全屏覆盖）。 -->
+<template data-mount="body">
+<!-- Settings Overlay (放在 body 最外层，确保 position:fixed 覆盖全屏) -->
+<div class="settings-overlay" id="settingsOverlay" style="display:none">
+    <div class="settings-panel">
+        <div class="settings-content">
+            <div class="settings-tabs">
+                <div class="settings-tabs-title" data-i18n="settings.title">设置</div>
+                <button class="settings-tab active" data-tab="general"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> <span data-i18n="settings.tabs.general">通用设置</span></button>
+                <button class="settings-tab" data-tab="permission"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> <span data-i18n="settings.tabs.permission">工具权限</span></button>
+                <button class="settings-tab" data-tab="providers"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27a7 7 0 0 1-12.46 0H6a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 12 2z"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg> <span data-i18n="settings.tabs.providers">模型配置</span></button>
+                <button class="settings-tab" data-tab="mounts"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> <span data-i18n="settings.tabs.mounts">挂载空间</span></button>
+                <button class="settings-tab" data-tab="skills"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> <span data-i18n="settings.tabs.skills">技能市场</span></button>
+                <button class="settings-tab" data-tab="mcp"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg> <span data-i18n="settings.tabs.mcp">MCP配置</span></button>
+                <button class="settings-tab" data-tab="openapi"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> <span data-i18n="settings.tabs.openapi">接口配置</span></button>
+                <button class="settings-tab" data-tab="lsp"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> <span data-i18n="settings.tabs.lsp">LSP配置</span></button>
+                <button class="settings-tab" data-tab="loop"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> <span data-i18n="settings.tabs.loop">定时任务</span></button>
+                <button class="settings-tab" data-tab="channel"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> <span data-i18n="settings.tabs.channel">远控通道</span></button>
+       <button class="settings-tab" data-tab="acp"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="12" y1="20" x2="12" y2="20"/></svg> <span data-i18n="settings.tabs.acp">ACP配置</span></button>
+
+                <div class="settings-tabs-footer">
+                    <div class="settings-product-name">Gourd AI</div>
+                </div>
+            </div>
+            <div class="settings-body">
+                <!-- General Tab -->
+                <div class="settings-tab-content active" id="settingsTabGeneral">
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <div>
+                                <span class="settings-section-title" data-i18n="settings.general.title">通用</span>
+                                <div class="settings-section-desc" data-i18n="settings.general.desc">全局运行参数，影响所有对话与工具行为</div>
+                            </div>
+                        </div>
+
+                        <div class="general-card-group">
+                            <!-- 外观 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-text">
+                                        <div class="general-card-title" data-i18n="settings.general.appearance.title">外观</div>
+                                    </div>
+                                </div>
+                                 <div class="general-card-body">
+                                     <div class="general-toggle-row">
+                                         <div class="general-toggle-info">
+                                             <span class="general-toggle-name" data-i18n="settings.general.appearance.theme_name">主题颜色</span>
+                                             <span class="general-toggle-desc" data-i18n="settings.general.appearance.theme_desc">切换界面主题为深色或浅色</span>
+                                         </div>
+                                         <label class="toggle-switch">
+                                             <input type="checkbox" id="generalDarkMode"/>
+                                             <span class="toggle-slider"></span>
+                                         </label>
+                                     </div>
+                                      <div class="general-toggle-row settings-gap-top-md">
+                                          <div class="general-toggle-info">
+                                              <span class="general-toggle-name" data-i18n="settings.general.language.name">界面语言</span>
+                                              <span class="general-toggle-desc" data-i18n="settings.general.language.desc">选择界面显示语言，修改后刷新页面生效</span>
+                                          </div>
+                                           <div class="layui-form general-locale-select">
+                                                <select id="generalLocale" lay-filter="generalLocale">
+
+                                                   <option value="zh-CN">🇨🇳 中文</option>
+                                                   <option value="zh-TW">🇭🇰 中文（繁体）</option>
+                                                   <option value="en">🇺🇸 English</option>
+                                                   <option value="de">🇩🇪 Deutsch</option>
+                                                   <option value="ja">🇯🇵 日本語</option>
+                                                   <option value="ru">🇷🇺 Русский</option>
+                                                   <option value="el">🇬🇷 Ελληνικά</option>
+                                                   <option value="es">🇪🇸 Español</option>
+                                                   <option value="fr">🇫🇷 Français</option>
+                                                   <option value="pt">🇵🇹 Português</option>
+                                                   <option value="ro">🇷🇴 Română</option>
+                                                   <option value="vi">🇻🇳 Tiếng Việt</option>
+                                               </select>
+                                           </div>
+                                      </div>
+                                 </div>
+                            </div>
+
+                            <!-- 上下文压缩策略 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                        <div class="general-card-text">
+                                        <div class="general-card-title" data-i18n="settings.general.conversation.title">对话策略</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-field-row">
+                                        <div class="general-field">
+                                            <label class="general-field-label" data-i18n="settings.general.conversation.history_window">历史窗口大小</label>
+                                            <input type="number" class="general-input" id="generalHistoryWindowSize" placeholder="默认 30" data-i18n-placeholder="settings.general.conversation.history_window_placeholder"/>
+                                        </div>
+                                        <div class="general-field">
+                                            <label class="general-field-label" data-i18n="settings.general.conversation.compression_ratio">压缩触发比例(%)</label>
+                                            <input type="number" min="1" max="100" class="general-input" id="generalCompressionRatio" placeholder="默认 80" data-i18n-placeholder="settings.general.conversation.compression_ratio_placeholder"/>
+                                        </div>
+                                    </div>
+                                    <div class="general-toggle-desc settings-gap-top-sm" data-i18n="settings.general.conversation.hint">历史窗口：压缩时始终保护最后多少条消息完整不压缩；压缩触发比例：上下文占用达到「模型窗口 × 该比例%」时，自动把中间执行过程压缩为摘要（原始意图与最后 N 条完整保留）</div>
+                                </div>
+                            </div>
+
+                            <!-- 沙盒模式 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                        <div class="general-card-text">
+                                        <div class="general-card-title" data-i18n="settings.general.sandbox.title">沙盒模式</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-toggle-row">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-desc" data-i18n="settings.general.sandbox.desc">AI 执行的命令将在受限沙盒环境中运行（只能读写'工作区'和'挂载'内的文件）</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalSandboxMode"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-desc" data-i18n="settings.general.sandbox.allow_home">在沙盒中允许访问用户主目录（`~/` 目录，如：`~/.m2`）</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalSandboxAllowUserHome"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-desc" data-i18n="settings.general.sandbox.system_restrict">采用更严格的系统内核级沙盒限制；关闭则放宽限制（测试）</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalSandboxSystemRestrict"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 心智记忆 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-text">
+                                        <div class="general-card-title" data-i18n="settings.general.memory.title">心智记忆</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-toggle-row">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-desc" data-i18n="settings.general.memory.enabled_desc">跨会话保留长期记忆；关闭可减少上下文消耗</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalMemoryEnabled"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-desc" data-i18n="settings.general.memory.isolation_desc">每个工作区使用独立记忆；关闭后使用全局共享记忆</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalMemoryIsolation"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 失败重试 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-text">
+                                        <div class="general-card-title" data-i18n="settings.general.retry.title">失败重试</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-field-row">
+                                        <div class="general-field">
+                                            <label class="general-field-label" data-i18n="settings.general.retry.model_retries">模型重试次数</label>
+                                            <input type="number" class="general-input" id="generalModelRetries" placeholder="默认 3" data-i18n-placeholder="settings.general.retry.retries_placeholder"/>
+                                        </div>
+                                        <div class="general-field">
+                                            <label class="general-field-label" data-i18n="settings.general.retry.mcp_retries">MCP 重试次数</label>
+                                            <input type="number" class="general-input" id="generalMcpRetries" placeholder="默认 3" data-i18n-placeholder="settings.general.retry.retries_placeholder"/>
+                                        </div>
+                                        <div class="general-field">
+                                            <label class="general-field-label" data-i18n="settings.general.retry.api_retries">OpenAPI 重试次数</label>
+                                            <input type="number" class="general-input" id="generalApiRetries" placeholder="默认 3" data-i18n-placeholder="settings.general.retry.retries_placeholder"/>
+                                        </div>
+                                    </div>
+                                    <div class="general-toggle-desc settings-gap-top-sm" data-i18n="settings.general.retry.hint">控制各类请求失败后的自动重试次数</div>
+                                </div>
+                            </div>
+
+                            <!-- 界面效果 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-text">
+                                        <div class="general-card-title" data-i18n="settings.general.ui.title">界面效果</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-toggle-row">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name" data-i18n="settings.general.ui.simplified_name">工具调用显示简化（或者收起）</span>
+                                            <span class="general-toggle-desc" data-i18n="settings.general.ui.simplified_desc">开启后工具调用输出更简洁；关闭则展示完整的详细信息</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalCliPrintSimplified"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 功能开关 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-text">
+                                        <div class="general-card-title" data-i18n="settings.general.features.title">功能开关</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name" data-i18n="settings.general.features.bash_async_name">Bash 异步机制</span>
+                                            <span class="general-toggle-desc" data-i18n="settings.general.features.bash_async_desc">开启后可支持 Bash 异步机制（一般没必要）；关闭可减少上下文消耗</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalBashAsyncEnabled"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name" data-i18n="settings.general.features.subagent_name">Subagent 子代理机制</span>
+                                            <span class="general-toggle-desc" data-i18n="settings.general.features.subagent_desc">开启后可支持 Subagent 子代理机制，允许委派任务给专项子代理；关闭可减少上下文消耗</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalSubagentEnabled"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name" data-i18n="settings.general.features.mcp_name">MCP 工具网关</span>
+                                            <span class="general-toggle-desc" data-i18n="settings.general.features.mcp_desc">开启后可连接外部 MCP 服务，扩展 AI 的工具调用能力；关闭可减少上下文消耗</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalMcpEnabled"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name" data-i18n="settings.general.features.openapi_name">OpenAPI 接口网关</span>
+                                            <span class="general-toggle-desc" data-i18n="settings.general.features.openapi_desc">开启后可调用 OpenAPI/Swagger 接口，扩展 AI 的数据访问能力；关闭可减少上下文消耗</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalOpenApiEnabled"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="general-toggle-row settings-gap-top-md">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name" data-i18n="settings.general.features.lsp_name">LSP 代码智能</span>
+                                            <span class="general-toggle-desc" data-i18n="settings.general.features.lsp_desc">开启后提供代码补全、定义跳转等语言服务；关闭可减少上下文消耗</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalLspEnabled"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+                <!-- Permission Tab -->
+                <div class="settings-tab-content" id="settingsTabPermission">
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <div>
+                                <span class="settings-section-title" data-i18n="settings.permission.title">工具权限</span>
+                                <div class="settings-section-desc" data-i18n="settings.permission.desc">管理全局工具访问权限，默认启用所有工具，可勾选禁用特定工具</div>
+                            </div>
+                        </div>
+
+                        <div class="permission-container">
+
+                            <!-- 工具列表 -->
+                            <div class="permission-tools-list" id="permissionToolsList"></div>
+
+                            <!-- 高级模式已移除 -->
+                        </div>
+
+                        <div class="form-actions form-actions-end settings-actions-spacious">
+                            <button class="btn-primary" id="permissionSaveBtn" data-i18n="settings.save">保存</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Skills Tab -->
+                <div class="settings-tab-content" id="settingsTabSkills">
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <div>
+                                <span class="settings-section-title" data-i18n="settings.skills.title">技能市场</span>
+                                <div class="settings-section-desc" data-i18n="settings.skills.desc">浏览和安装技能包，扩展 AI 的能力边界</div>
+                            </div>
+                        </div>
+                        <div class="skills-search-bar">
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <div class="layui-form">
+                                    <select id="skillsMarketSelect" lay-filter="skillsMarketSelect"></select>
+                                </div>
+                            </div>
+
+                            <div class="skills-search-input-wrap">
+                                <svg class="skills-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input type="text" id="skillsSearchInput" placeholder="搜索技能..." data-i18n-placeholder="settings.skills.search_placeholder" autocomplete="off"/>
+                                <button class="skills-search-clear" id="skillsSearchClear" style="display:none" data-i18n-title="settings.skills.clear">&times;</button>
+                            </div>
+                        </div>
+                        <div class="skills-status" id="skillsStatus" style="display:none">
+                            <div class="skills-loading" id="skillsLoading" style="display:none">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                <span data-i18n="settings.skills.loading">加载中…</span>
+                            </div>
+                            <div class="skills-error" id="skillsError" style="display:none"></div>
+                        </div>
+                        <div class="skills-list" id="skillsList"></div>
+                    </div>
+                </div>
+                <!-- MountPools Tab -->
+                <div class="settings-tab-content" id="settingsTabMounts">
+                    <!-- Pool List View -->
+                    <div class="settings-view settings-view-list" id="mountsListView">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div>
+                                    <span class="settings-section-title" data-i18n="settings.mounts.title">挂载空间</span>
+                                    <div class="settings-section-desc" data-i18n="settings.mounts.desc">管理本地目录映射，为 AI 提供技能与资源的加载路径</div>
+                                </div>
+                                <button class="settings-add-btn" id="mountsAddBtn" data-i18n="settings.mounts.add">+ 添加挂载</button>
+                            </div>
+                            <div class="mounts-list" id="mountsList"></div>
+                        </div>
+                    </div>
+                    <!-- Pool Add Form View -->
+                    <div class="settings-view settings-view-form" id="mountsFormView" style="display:none">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div class="settings-title-row">
+                                    <button class="settings-back-btn" id="mountsBackBtn" data-i18n-title="settings.common.back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
+                                    <span class="settings-section-title" id="mountsFormTitle" data-i18n="settings.mounts.add_title">添加挂载</span>
+                                </div>
+                                <div class="settings-form-actions" id="mountsFormActions" style="display:none">
+                                    <button class="settings-form-action-btn danger" id="mountsFormDeleteBtn" data-i18n-title="settings.common.delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> <span data-i18n="settings.common.delete">删除</span></button>
+                                </div>
+                            </div>
+                            <div class="mounts-add-form">
+                                <div class="form-group">
+                                    <label data-i18n="settings.mounts.alias_label">名称 <span class="required">*</span></label>
+                                    <input type="text" id="mountsAlias" placeholder="@my-mount" data-i18n-placeholder="settings.mounts.alias_placeholder"/>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.mounts.scope_label">作用域</label>
+                                    <input type="hidden" id="mountsScope" value="user"/>
+                                    <div class="settings-scope-toggle" data-target="mountsScope">
+                                        <button class="settings-scope-btn active" data-scope="user" type="button" data-i18n="settings.general.scope_user">用户（全局）</button>
+                                        <button class="settings-scope-btn" data-scope="workspace" type="button" data-i18n="settings.general.scope_workspace">工作区（本地）</button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.mounts.type_label">内容类型</label>
+                                    <div class="mcp-type-toggle" id="mountsTypeToggle">
+                                        <button class="mcp-type-btn active" data-type="SKILLS" type="button" data-i18n="settings.mounts.type_skills">技能 (SKILLS)</button>
+                                        <button class="mcp-type-btn" data-type="AGENTS" type="button" data-i18n="settings.mounts.type_agents">子代理 (AGENTS)</button>
+                                        <button class="mcp-type-btn" data-type="FILES" type="button" data-i18n="settings.mounts.type_files">文件 (FILES)</button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.mounts.path_label">映射路径 <span class="required">*</span></label>
+                                    <input type="text" id="mountsPath" placeholder="~/.myapp/skills/" data-i18n-placeholder="settings.mounts.path_placeholder"/>
+                                    <div class="form-hint" data-i18n="settings.mounts.path_hint">文件所在的本地目录路径（支持 './' 工作区路径和 '~/' 用户目录路径）</div>
+                                </div>
+                                <div class="form-group" id="mountsWriteableGroup">
+                                    <label data-i18n="settings.mounts.writeable_label">开放写权限</label>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="mountsWriteable"/>
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.mounts.description_label">描述（可选）</label>
+                                    <input type="text" id="mountsDescription" placeholder="简要描述此挂载用途" data-i18n-placeholder="settings.mounts.description_placeholder"/>
+                                </div>
+                                <div class="form-actions form-actions-end">
+                                    <button class="btn-primary" id="mountsSaveBtn" data-i18n="settings.save">保存</button>
+                                </div>
+                                <div class="mounts-divider" id="mountsPresetsDivider"></div>
+                                <div class="mounts-presets">
+                                    <div class="mounts-presets-label" data-i18n="settings.mounts.presets_label">常见挂载选择</div>
+                                    <div class="mounts-presets-btns">
+                                        <button type="button" class="mounts-preset-btn" data-alias="@skills" data-path="./skills/" data-i18n-title="settings.mounts.preset_skills">@skills ./skills/</button>
+                                        <button type="button" class="mounts-preset-btn" data-alias="@skillhub" data-path="~/.skillhub/skills/" data-i18n-title="settings.mounts.preset_skillhub">@skillhub  ~/.skillhub/skills/</button>
+                                        <button type="button" class="mounts-preset-btn" data-alias="@agents_skills" data-path="~/.agents/skills/" data-i18n-title="settings.mounts.preset_agents_skills">@agents_skills  ~/.agents/skills/</button>
+                                        <button type="button" class="mounts-preset-btn" data-alias="@opencode_skills" data-path="~/.opencode/skills/" data-i18n-title="settings.mounts.preset_opencode_skills">@opencode_skills  ~/.opencode/skills/</button>
+                                        <button type="button" class="mounts-preset-btn" data-alias="@claude_skills" data-path="~/.claude/skills/" data-i18n-title="settings.mounts.preset_claude_skills">@claude_skills  ~/.claude/skills/</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Pool Skills Detail View -->
+                    <div class="settings-view settings-view-form" id="mountsSkillsView" style="display:none">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div class="settings-title-row">
+                                    <button class="settings-back-btn" id="mountsSkillsBackBtn" data-i18n-title="settings.common.back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
+                <span class="settings-section-title" id="mountsSkillsTitle" data-i18n="settings.mounts.skills_list">技能列表</span>
+                                </div>
+                                <div class="settings-header-icon-actions">
+                                    <button class="mcp-action-btn" id="mountsOpenDirBtn" data-i18n-title="settings.mounts.open_dir"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button>
+                                    <button class="mcp-action-btn" id="mountsRefreshBtn" data-i18n-title="settings.common.refresh"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+                                </div>
+                            </div>
+                            <div class="mounts-skills-list" id="mountsSkillsList"></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- MCP Tab -->
+                <div class="settings-tab-content" id="settingsTabMcp">
+                    <!-- List View -->
+                    <div class="settings-view settings-view-list" id="mcpListView">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div>
+                                    <span class="settings-section-title" data-i18n="settings.mcp.title">MCP 服务器</span>
+                                    <div class="settings-section-desc" data-i18n="settings.mcp.desc">管理外部工具服务器，扩展文件、数据库、浏览器等工具能力</div>
+                                </div>
+                                <div class="mcp-header-actions">
+                                    <button class="settings-add-btn" id="mcpImportBtn" data-i18n="settings.mcp.import">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                        导入
+                                    </button>
+                                    <input type="file" id="mcpImportFileInput" accept=".json" style="display:none;"/>
+                                    <button class="settings-add-btn" id="mcpAddBtn" data-i18n="settings.mcp.add">+ 添加服务器</button>
+                                </div>
+                            </div>
+                            <div class="mcp-server-list" id="mcpServerList"></div>
+                        </div>
+                    </div>
+                    <!-- Form View -->
+                    <div class="settings-view settings-view-form" id="mcpFormView" style="display:none">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div class="settings-title-row">
+                                    <button class="settings-back-btn" id="mcpBackBtn" data-i18n-title="settings.common.back">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                    </button>
+                                    <span class="settings-section-title" id="mcpFormTitle" data-i18n="settings.mcp.add_title">添加服务器</span>
+                                </div>
+                                <div class="settings-form-actions" id="mcpFormActions" style="display:none">
+                                    <button class="settings-form-action-btn" id="mcpFormCopyBtn" data-i18n-title="settings.common.copy">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                        <span data-i18n="settings.common.copy">复制</span>
+                                    </button>
+                                    <button class="settings-form-action-btn danger" id="mcpFormDeleteBtn" data-i18n-title="settings.common.delete">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                        <span data-i18n="settings.common.delete">删除</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="mcp-add-form" id="mcpAddForm">
+                                <div class="form-group">
+                                    <label data-i18n="settings.mcp.name_label">名称 <span class="required">*</span></label>
+                                    <input type="text" id="mcpName" placeholder="my-mcp-server" data-i18n-placeholder="settings.mcp.name_placeholder"/>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.mcp.scope_label">作用域</label>
+                                    <input type="hidden" id="mcpScope" value="user"/>
+                                    <div class="settings-scope-toggle" data-target="mcpScope">
+                                        <button class="settings-scope-btn active" data-scope="user" type="button" data-i18n="settings.general.scope_user">用户（全局）</button>
+                                        <button class="settings-scope-btn" data-scope="workspace" type="button" data-i18n="settings.general.scope_workspace">工作区（本地）</button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.mcp.type_label">类型</label>
+                                    <div class="mcp-type-toggle">
+                                        <button class="mcp-type-btn active" data-type="stdio" data-i18n="settings.mcp.type_stdio">stdio</button>
+                                        <button class="mcp-type-btn" data-type="sse" data-i18n="settings.mcp.type_sse">http sse</button>
+                                        <button class="mcp-type-btn" data-type="streamable" data-i18n="settings.mcp.type_streamable">http streamable</button>
+                                    </div>
+                                </div>
+                                <div class="mcp-config-stdio" id="mcpConfigStdio">
+                                    <div class="form-group">
+                                        <label data-i18n="settings.mcp.command_label">命令 <span class="required">*</span></label>
+                                        <input type="text" id="mcpCommand" placeholder="npx -y @modelcontextprotocol/server-filesystem /path" data-i18n-placeholder="settings.mcp.command_placeholder"/>
+                                    </div>
+                                    <div class="form-group">
+                                        <label data-i18n="settings.mcp.args_label">参数（每行一个）</label>
+                                        <textarea id="mcpArgs" rows="3" placeholder="/path/to/dir&#10;--option value"></textarea>
+                                    </div>
+                                    <div class="form-group">
+                                        <label data-i18n="settings.mcp.env_label">环境变量（KEY=VALUE，每行一个）</label>
+                                        <textarea id="mcpEnv" rows="3" placeholder="API_KEY=xxx"></textarea>
+                                    </div>
+                                </div>
+                                <div class="mcp-config-remote" id="mcpConfigRemote" style="display:none">
+                                    <div class="form-group">
+                                        <label data-i18n="settings.mcp.url_label">URL <span class="required">*</span></label>
+                                        <input type="text" id="mcpRemoteUrl" placeholder="http://localhost:3001/mcp" data-i18n-placeholder="settings.mcp.url_placeholder"/>
+                                    </div>
+                                    <div class="form-group">
+                                        <label data-i18n="settings.mcp.headers_label">请求头（KEY=VALUE，每行一个）</label>
+                                        <textarea id="mcpHeaders" rows="3" placeholder="Authorization=Bearer xxx&#10;X-Custom-Header=value"></textarea>
+                                    </div>
+                                    <div class="form-group">
+                                        <label data-i18n="settings.mcp.timeout_label">超时时间</label>
+                                        <input type="text" id="mcpTimeout" class="settings-short-input" placeholder="30s" data-i18n-placeholder="settings.mcp.timeout_placeholder"/>
+                                    </div>
+                                </div>
+                                <div class="form-actions form-actions-end">
+                                    <div class="settings-inline-actions">
+                                        <button class="btn-secondary settings-icon-btn" id="mcpCheckBtn">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                            <span data-i18n="settings.mcp.check_connection">检测连接</span>
+                                        </button>
+                                        <button class="btn-primary" id="mcpSaveBtn" data-i18n="settings.save">保存</button>
+                                    </div>
+                                </div>
+                                <div class="mcp-check-result" id="mcpCheckResult" style="display:none;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tools View -->
+                    <div class="settings-view settings-view-form" id="mcpToolsView" style="display:none">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div class="settings-title-row">
+                                    <button class="settings-back-btn" id="mcpToolsBackBtn" data-i18n-title="settings.common.back">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                                    </button>
+                                    <span class="settings-section-title" id="mcpToolsTitle" data-i18n="settings.mcp.tools_title">工具列表</span>
+                                </div>
+                            </div>
+                            <div class="mcp-tools-toolbar" id="mcpToolsToolbar" style="display:none;">
+                                <label class="mcp-tools-select-all">
+                                    <input type="checkbox" id="mcpToolsSelectAll" />
+                                    <span data-i18n="settings.common.select_all">全选</span>
+                                </label>
+                                <div class="mcp-tools-toolbar-actions">
+                                    <span class="mcp-tools-count" id="mcpToolsCount"></span>
+                                    <button class="settings-add-btn settings-toolbar-save-btn" id="mcpToolsSaveBtn" data-i18n="settings.save">保存</button>
+                                </div>
+                            </div>
+                            <div class="mcp-tools-list" id="mcpToolsList"></div>
+                        </div>
+                    </div>
+
+                </div>
+                <!-- OpenApi Tab -->
+                <div class="settings-tab-content" id="settingsTabOpenapi">
+                    <!-- List View -->
+                    <div class="settings-view settings-view-list" id="openapiListView">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div>
+                                    <span class="settings-section-title" data-i18n="settings.openapi.title">OpenAPI 服务器</span>
+                                    <div class="settings-section-desc" data-i18n="settings.openapi.desc">接入 REST/OpenAPI 接口，控制 AI 可调用的 API 范围</div>
+                                </div>
+                                <div class="openapi-header-actions">
+                                    <button class="settings-add-btn" id="openapiAddBtn" data-i18n="settings.openapi.add">+ 添加服务器</button>
+                                </div>
+                            </div>
+                            <div class="openapi-server-list" id="openapiServerList"></div>
+                        </div>
+                    </div>
+                    <!-- Form View -->
+                    <div class="settings-view settings-view-form" id="openapiFormView" style="display:none">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div class="settings-title-row">
+                                    <button class="settings-back-btn" id="openapiBackBtn" data-i18n-title="settings.common.back">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                    </button>
+                                    <span class="settings-section-title" id="openapiFormTitle" data-i18n="settings.openapi.add_title">添加服务器</span>
+                                </div>
+                                <div class="settings-form-actions" id="openapiFormActions" style="display:none">
+                                    <button class="settings-form-action-btn" id="openapiFormCopyBtn" data-i18n-title="settings.common.copy">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                        <span data-i18n="settings.common.copy">复制</span>
+                                    </button>
+                                    <button class="settings-form-action-btn danger" id="openapiFormDeleteBtn" data-i18n-title="settings.common.delete">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                        <span data-i18n="settings.common.delete">删除</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="openapi-add-form" id="openapiAddForm">
+                                <div class="form-group">
+                                    <label data-i18n="settings.openapi.name_label">名称 <span class="required">*</span></label>
+                                    <input type="text" id="openapiName" placeholder="my-api-server" data-i18n-placeholder="settings.openapi.name_placeholder"/>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.openapi.scope_label">作用域</label>
+                                    <input type="hidden" id="openapiScope" value="user"/>
+                                    <div class="settings-scope-toggle" data-target="openapiScope">
+                                        <button class="settings-scope-btn active" data-scope="user" type="button" data-i18n="settings.general.scope_user">用户（全局）</button>
+                                        <button class="settings-scope-btn" data-scope="workspace" type="button" data-i18n="settings.general.scope_workspace">工作区（本地）</button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.openapi.base_url_label">API 基地址 <span class="required">*</span></label>
+                                    <input type="text" id="openapiBaseUrl" placeholder="https://api.example.com/app" data-i18n-placeholder="settings.openapi.base_url_placeholder"/>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.openapi.doc_url_label">接口文档地址（OpenApi 规范） <span class="required">*</span></label>
+                                    <input type="text" id="openapiDocUrl" placeholder="https://api.example.com/app/openapi.json" data-i18n-placeholder="settings.openapi.doc_url_placeholder"/>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.openapi.headers_label">请求头（KEY=VALUE，每行一个）</label>
+                                    <textarea id="openapiHeaders" rows="3" placeholder="API_KEY=xxx&#10;Authorization=Bearer xxx"></textarea>
+                                </div>
+                                <div class="form-actions form-actions-end">
+                                    <div class="settings-inline-actions">
+                                        <button class="btn-secondary settings-icon-btn" id="openapiTestBtn">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                            <span data-i18n="settings.openapi.test_connection">测试连接</span>
+                                        </button>
+                                        <button class="btn-primary" id="openapiSaveBtn" data-i18n="settings.save">保存</button>
+                                    </div>
+                                </div>
+                                <div class="llm-check-result" id="openapiCheckResult" style="display:none;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Apis View -->
+                    <div class="settings-view settings-view-form" id="openapiApisView" style="display:none">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div class="settings-title-row">
+                                    <button class="settings-back-btn" id="openapiApisBackBtn" data-i18n-title="settings.common.back">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                    </button>
+                                    <span class="settings-section-title" id="openapiApisTitle" data-i18n="settings.openapi.apis_title">接口列表</span>
+                                </div>
+                            </div>
+                            <div class="mcp-tools-toolbar" id="openapiApisToolbar" style="display:none;">
+                                <label class="mcp-tools-select-all">
+                                    <input type="checkbox" id="openapiApisSelectAll" />
+                                    <span data-i18n="settings.common.select_all">全选</span>
+                                </label>
+                                <div class="mcp-tools-toolbar-actions">
+                                    <span class="mcp-tools-count" id="openapiApisCount"></span>
+                                    <button class="settings-add-btn settings-toolbar-save-btn" id="openapiApisSaveBtn" data-i18n="settings.save">保存</button>
+                                </div>
+                            </div>
+                            <div id="openapiApisList"></div>
+                        </div>
+                    </div>
+
+                </div>
+                <!-- LSP Tab -->
+                <div class="settings-tab-content" id="settingsTabLsp">
+                    <!-- List View -->
+                    <div class="settings-view settings-view-list" id="lspListView">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div>
+                                    <span class="settings-section-title" data-i18n="settings.lsp.title">LSP 服务器</span>
+                                    <div class="settings-section-desc" data-i18n="settings.lsp.desc">配置语言服务器，为代码理解和编辑提供语言能力</div>
+                                </div>
+                                <div class="openapi-header-actions">
+                                    <button class="settings-add-btn" id="lspAddBtn" data-i18n="settings.lsp.add">+ 添加服务器</button>
+                                </div>
+                            </div>
+                            <div class="openapi-server-list" id="lspServerList"></div>
+                        </div>
+                    </div>
+                    <!-- Form View -->
+                    <div class="settings-view settings-view-form" id="lspFormView" style="display:none">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div class="settings-title-row">
+                                    <button class="settings-back-btn" id="lspBackBtn" data-i18n-title="settings.common.back">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                    </button>
+                                    <span class="settings-section-title" id="lspFormTitle" data-i18n="settings.lsp.add_title">添加服务器</span>
+                                </div>
+                                <div class="settings-form-actions" id="lspFormActions" style="display:none">
+                                    <button class="settings-form-action-btn danger" id="lspFormDeleteBtn" data-i18n-title="settings.common.delete">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                        <span data-i18n="settings.common.delete">删除</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="openapi-add-form" id="lspAddForm">
+                                <div class="form-group">
+                                    <label data-i18n="settings.lsp.name_label">名称 <span class="required">*</span></label>
+                                    <input type="text" id="lspName" placeholder="my-lsp-server" data-i18n-placeholder="settings.lsp.name_placeholder"/>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.lsp.scope_label">作用域</label>
+                                    <input type="hidden" id="lspScope" value="user"/>
+                                    <div class="settings-scope-toggle" data-target="lspScope">
+                                        <button class="settings-scope-btn active" data-scope="user" type="button" data-i18n="settings.general.scope_user">用户（全局）</button>
+                                        <button class="settings-scope-btn" data-scope="workspace" type="button" data-i18n="settings.general.scope_workspace">工作区（本地）</button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.lsp.command_label">启动命令 <span class="required">*</span></label>
+                                    <input type="text" id="lspCommand" placeholder="typescript-language-server --stdio" data-i18n-placeholder="settings.lsp.command_placeholder"/>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.lsp.extensions_label">关联扩展名（逗号分隔）</label>
+                                    <input type="text" id="lspExtensions" placeholder=".ts, .tsx, .js" data-i18n-placeholder="settings.lsp.extensions_placeholder"/>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.lsp.env_label">环境变量（KEY=VALUE，每行一个）</label>
+                                    <textarea id="lspEnv" rows="3" placeholder="NODE_PATH=/usr/local/lib/node_modules"></textarea>
+                                </div>
+                                <div class="form-actions form-actions-end">
+                                    <button class="btn-primary" id="lspSaveBtn" data-i18n="settings.save">保存</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Providers Tab -->
+                <div class="settings-tab-content" id="settingsTabProviders">
+                    <!-- List View -->
+                    <div class="settings-view settings-view-list" id="providersListView">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div>
+                                    <span class="settings-section-title" data-i18n="settings.providers.title">模型</span>
+                                    <div class="settings-section-desc" data-i18n="settings.providers.desc">按服务商配置 AI 模型：填写接口地址与密钥，拉取或手动添加模型，并为每个模型选择接口类型</div>
+                                </div>
+                                <div class="openapi-header-actions">
+                                    <button class="settings-add-btn" id="providerAddBtn" data-i18n="settings.providers.add">+ 添加服务商</button>
+                                </div>
+                            </div>
+                            <div class="openapi-server-list" id="providerList"></div>
+                        </div>
+                    </div>
+                    <!-- Form View -->
+                    <div class="settings-view settings-view-form" id="providersFormView" style="display:none">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div class="settings-title-row">
+                                    <button class="settings-back-btn" id="providerBackBtn" data-i18n-title="settings.common.back">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                    </button>
+                                    <span class="settings-section-title" id="providerFormTitle" data-i18n="settings.providers.add_title">添加服务商</span>
+                                </div>
+                                <div class="settings-form-actions" id="providerFormActions" style="display:none">
+                                    <button class="settings-form-action-btn danger" id="providerFormDeleteBtn" data-i18n-title="settings.common.delete">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                        <span data-i18n="settings.common.delete">删除</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="openapi-add-form" id="providerAddForm">
+                                <div class="form-group">
+                                    <label data-i18n="settings.providers.name_label">名称 <span class="required">*</span></label>
+                                    <input type="text" id="providerName" placeholder="deepseek" data-i18n-placeholder="settings.providers.name_placeholder"/>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.providers.scope_label">作用域</label>
+                                    <input type="hidden" id="providerScope" value="user"/>
+                                    <div class="settings-scope-toggle" data-target="providerScope">
+                                        <button class="settings-scope-btn active" data-scope="user" type="button" data-i18n="settings.general.scope_user">用户（全局）</button>
+                                        <button class="settings-scope-btn" data-scope="workspace" type="button" data-i18n="settings.general.scope_workspace">工作区（本地）</button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.providers.model_list_api_label">模型列表接口</label>
+                                    <div class="layui-form provider-std-form" lay-filter="providerStandardForm">
+                                        <input type="radio" name="providerStandard" value="openai" title="OpenAI" checked>
+                                        <input type="radio" name="providerStandard" value="anthropic" title="Anthropic">
+                                        <input type="radio" name="providerStandard" value="ollama" title="Ollama">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.providers.api_url_label">API 地址 <span class="required">*</span></label>
+                                    <input type="text" id="providerApiUrl" placeholder="https://api.deepseek.com/v1" data-i18n-placeholder="settings.providers.api_url_placeholder"/>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.providers.api_key_label">API 密钥</label>
+                                    <div class="password-input-group">
+                                        <input type="password" id="providerApiKey" placeholder="sk-xxx" data-i18n-placeholder="settings.providers.api_key_placeholder" autocomplete="new-password"/>
+                                        <button class="password-toggle" id="providerApiKeyToggle" data-i18n-title="settings.providers.toggle_visibility">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                        </button>
+                                    </div>
+                                    <div class="form-hint" id="providerBuiltinKeyHint" style="display:none">
+                                        <a href="https://www.gourd-ai.cn/" target="_blank" rel="noopener noreferrer" data-i18n="settings.providers.get_api_key_link">访问官网获取 API 密钥</a><span data-i18n="settings.providers.api_key_hint_suffix">（每月 10$ 免费订阅额度）</span>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="settings.providers.timeout_label">超时时间（可选）</label>
+                                    <input type="text" id="providerTimeout" placeholder="120s（默认 120 秒，该服务商下所有模型共用）" data-i18n-placeholder="settings.providers.timeout_placeholder"/>
+                                </div>
+                                <div class="form-group">
+                                    <div class="form-group-header">
+                                        <label data-i18n="settings.providers.models_label">模型管理</label>
+                                        <div class="provider-model-header-actions">
+                                            <div class="provider-model-menu-wrap">
+                                                <button class="provider-model-icon-btn" id="providerModelsSelectToggle" data-i18n-title="settings.providers.bulk_select_title">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 5h8"/><path d="M13 12h8"/><path d="M13 19h8"/><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/></svg>
+                                                </button>
+                                                <div class="provider-model-menu" id="providerModelsActionMenu">
+                                                    <button type="button" class="provider-model-menu-item" id="providerModelsSelectAll" data-i18n="settings.providers.select_all">全选</button>
+                                                    <button type="button" class="provider-model-menu-item" id="providerModelsSelectNone" data-i18n="settings.providers.select_none">全不选</button>
+                                                    <button type="button" class="provider-model-menu-item" id="providerModelsInvert" data-i18n="settings.providers.invert">反选</button>
+                                                </div>
+                                            </div>
+                                            <button class="provider-model-icon-btn" id="providerAddModelBtn" data-i18n-title="settings.providers.add_model_title">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                            </button>
+                                            <button class="provider-model-icon-btn" id="providerFetchModelsBtn" data-i18n-title="settings.providers.fetch_models_title">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                                            </button>
+                                            <button class="provider-model-icon-btn" id="providerClearModelsBtn" data-i18n-title="settings.providers.clear_models_title">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-1 2h14l-1 14H4L3 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/><line x1="18" y1="11" x2="18" y2="17"/></svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="provider-models-list layui-form" lay-filter="providerModelForm" id="providerModelsList"></div>
+                                    <div class="provider-models-empty" id="providerModelsEmpty" data-i18n="settings.providers.empty_hint">点击右侧 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 添加模型，或 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> 从 API 拉取</div>
+                                </div>
+                                <div class="form-actions form-actions-end">
+                                    <button class="btn-primary" id="providerSaveBtn" data-i18n="settings.save">保存</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Loop Tab -->
+                <div class="settings-tab-content" id="settingsTabLoop"></div>
+                <!-- Channel Tab -->
+                <div class="settings-tab-content" id="settingsTabChannel"></div>
+                <!-- ACP Tab -->
+                <div class="settings-tab-content" id="settingsTabAcp"></div>
+            </div><!-- /.settings-body -->
+        </div><!-- /.settings-content -->
+    </div>
+</div>
+</template>

@@ -1,0 +1,177 @@
+name: Desktop 多平台打包
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号（留空则使用 package.json 当前版本）'
+        required: false
+        default: ''
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            label: Windows (nsis x64)
+          - os: macos-latest
+            platform: mac
+            label: macOS (dmg x64+arm64)
+          - os: ubuntu-latest
+            platform: linux
+            label: Linux (AppImage/deb x64)
+    env:
+      # GitHub runner 上走官方源下载 Electron 及 electron-builder 工具链
+      # （覆盖 .npmrc 中面向国内网络的 npmmirror 镜像）
+      ELECTRON_MIRROR: https://github.com/electron/electron/releases/download/
+      ELECTRON_BUILDER_BINARIES_MIRROR: https://github.com/electron-userland/electron-builder-binaries/releases/download/
+      # CI 无签名证书，禁用 macOS 签名自动发现（产出未签名 dmg）
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 JDK 17（Maven 编译 + jlink 生成内置 JRE）
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 写入版本号
+        shell: bash
+        run: |
+          set -e
+          VERSION=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          if [ -n "$VERSION" ]; then
+            cd gourd-ai-desktop
+            npm version "$VERSION" --no-git-tag-version
+            echo "使用版本号: $VERSION"
+          else
+            echo "未指定版本号，使用 package.json 当前版本"
+          fi
+
+      # 对应本地 build.ps1 / build.sh 的 [1/5]
+      - name: Maven 构建后端 JAR
+        shell: bash
+        run: mvn -B -ntp -pl gourd-ai-agent -am package -DskipTests
+
+      # 对应本地构建脚本的 [2/5]
+      - name: 复制 JAR 到 extraResources
+        shell: bash
+        run: |
+          set -e
+          mkdir -p gourd-ai-desktop/build/extraResources
+          cp -f gourd-ai-agent/target/gourd-ai-agent.jar gourd-ai-desktop/build/extraResources/gourd-ai-agent.jar
+
+      # 对应本地构建脚本的 [4/5]：模块清单与 build.ps1 / generate-jre.js 保持一致
+      - name: 生成内置 JRE（Windows / Linux）
+        if: matrix.platform != 'mac'
+        shell: bash
+        run: |
+          set -e
+          MODULES="java.base,java.logging,java.sql,java.naming,java.management,java.instrument,java.net.http,jdk.crypto.ec,jdk.zipfs,jdk.unsupported"
+          JRE_DIR="gourd-ai-desktop/build/extraResources/jre"
+          rm -rf "$JRE_DIR"
+          "$JAVA_HOME/bin/jlink" --module-path "$JAVA_HOME/jmods" --add-modules "$MODULES" \
+            --output "$JRE_DIR" --strip-debug --compress 2 --no-header-files --no-man-pages
+
+      # macOS 需要同时出 x64 与 arm64 两个包：jlink 产物架构取决于 jmods，
+      # 因此下载两种架构的 JDK，统一用本机 jlink 分别链接出两套 JRE。
+      - name: 生成内置 JRE（macOS 双架构）
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          set -e
+          MODULES="java.base,java.logging,java.sql,java.naming,java.management,java.instrument,java.net.http,jdk.crypto.ec,jdk.zipfs,jdk.unsupported"
+          mkdir -p /tmp/jdk-x64 /tmp/jdk-arm64
+          curl -fsSL -o /tmp/jdk-x64.tar.gz "https://api.adoptium.net/v3/binary/latest/17/ga/mac/x64/jdk/hotspot/normal/eclipse"
+          curl -fsSL -o /tmp/jdk-arm64.tar.gz "https://api.adoptium.net/v3/binary/latest/17/ga/mac/aarch64/jdk/hotspot/normal/eclipse"
+          tar -xzf /tmp/jdk-x64.tar.gz -C /tmp/jdk-x64 --strip-components=1
+          tar -xzf /tmp/jdk-arm64.tar.gz -C /tmp/jdk-arm64 --strip-components=1
+          X64_HOME="$(find /tmp/jdk-x64 -maxdepth 5 -name jmods -type d | head -n1 | sed 's|/jmods$||')"
+          ARM_HOME="$(find /tmp/jdk-arm64 -maxdepth 5 -name jmods -type d | head -n1 | sed 's|/jmods$||')"
+          echo "x64 JDK: $X64_HOME"
+          echo "arm64 JDK: $ARM_HOME"
+          OUT_X64="gourd-ai-desktop/build/jre-mac-x64"
+          OUT_ARM="gourd-ai-desktop/build/jre-mac-arm64"
+          rm -rf "$OUT_X64" "$OUT_ARM"
+          "$JAVA_HOME/bin/jlink" --module-path "$X64_HOME/jmods" --add-modules "$MODULES" \
+            --output "$OUT_X64" --strip-debug --compress 2 --no-header-files --no-man-pages
+          "$JAVA_HOME/bin/jlink" --module-path "$ARM_HOME/jmods" --add-modules "$MODULES" \
+            --output "$OUT_ARM" --strip-debug --compress 2 --no-header-files --no-man-pages
+
+      # builder-mac.json 引用 build/icons/icon.icns，仓库中只有 png，CI 上用系统工具生成
+      - name: 生成 macOS 图标 (icon.icns)
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          set -e
+          SRC="gourd-ai-desktop/build/icons/icon.png"
+          DIR="$(mktemp -d)/icon.iconset"
+          mkdir -p "$DIR"
+          for s in 16 32 128 256 512; do
+            sips -z "$s" "$s" "$SRC" --out "$DIR/icon_${s}x${s}.png" >/dev/null
+            sips -z "$((s*2))" "$((s*2))" "$SRC" --out "$DIR/icon_${s}x${s}@2x.png" >/dev/null
+          done
+          iconutil -c icns "$DIR" -o "gourd-ai-desktop/build/icons/icon.icns"
+
+      # 对应本地构建脚本的 [5/5]（lockfile 未入库，使用 npm install；
+      # .npmrc 中的 npmmirror 镜像在 runner 上不可达，先移除再安装）
+      - name: 安装前端依赖
+        shell: bash
+        working-directory: gourd-ai-desktop
+        run: |
+          set -e
+          rm -f .npmrc
+          npm install
+
+      - name: 打包（Windows / Linux）
+        if: matrix.platform != 'mac'
+        shell: bash
+        working-directory: gourd-ai-desktop
+        run: npm run build:${{ matrix.platform }}
+
+      # 分两次打包：每次换入对应架构的 JRE，electron-builder 用 --x64/--arm64 过滤目标架构
+      - name: 打包（macOS x64 + arm64）
+        if: matrix.platform == 'mac'
+        shell: bash
+        working-directory: gourd-ai-desktop
+        run: |
+          set -e
+          JRE="build/extraResources/jre"
+          rm -rf "$JRE"
+          cp -R build/jre-mac-x64 "$JRE"
+          npm run build:mac -- --x64
+          rm -rf "$JRE"
+          cp -R build/jre-mac-arm64 "$JRE"
+          npm run build:mac -- --arm64
+
+      - name: 上传安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: gourd-ai-desktop-${{ matrix.platform }}
+          path: |
+            gourd-ai-desktop/out/*.exe
+            gourd-ai-desktop/out/*.dmg
+            gourd-ai-desktop/out/*.AppImage
+            gourd-ai-desktop/out/*.deb
+          if-no-files-found: error

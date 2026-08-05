@@ -1,0 +1,83 @@
+/*
+ * Copyright 2017-2025 noear.org and authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.gourdai.agent;
+
+import org.noear.solon.ai.chat.message.ChatMessage;
+import org.noear.solon.lang.Nullable;
+import org.noear.solon.lang.Preview;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * 智能体响应块抽象基类
+ *
+ * @author oisin
+ * @since 3.9.1
+ */
+@Preview("3.9.1")
+public abstract class AbsAgentChunk implements AgentChunk {
+    protected final String runId;
+    protected final String agentName;
+    protected final @Nullable ChatMessage message;
+    protected final transient AgentSession session;
+    protected Map<String, Object> meta;
+
+    public AbsAgentChunk(String runId, String agentName, AgentSession session, ChatMessage message) {
+        this.runId = runId;
+        this.agentName = agentName;
+        this.session = session;
+        this.message = message;
+    }
+
+    @Override
+    public String getRunId() {
+        return runId;
+    }
+
+    @Override
+    public String getAgentName() {
+        return agentName;
+    }
+
+    @Override
+    public AgentSession getSession() {
+        return session;
+    }
+
+    @Override
+    public ChatMessage getMessage() {
+        return message;
+    }
+
+    @Override
+    public Map<String, Object> getMeta() {
+        if (meta == null) {
+            meta = new HashMap<>();
+        }
+
+        return meta;
+    }
+
+    @Override
+    public boolean hasMeta(String name) {
+        if (meta == null) {
+            return false;
+        } else {
+            return meta.containsKey(name);
+        }
+    }
+}

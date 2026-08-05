@@ -1,0 +1,213 @@
+/*
+ * Copyright 2017-2025 noear.org and authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.gourdai.agent.team;
+
+import com.gourdai.agent.AgentChunk;
+import org.noear.solon.ai.chat.ModelOptionsAmend;
+import org.noear.solon.ai.chat.tool.FunctionTool;
+import org.noear.solon.core.util.RankEntity;
+import org.noear.solon.lang.NonSerializable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import reactor.core.publisher.FluxSink;
+
+import java.util.*;
+import java.util.function.Function;
+
+/**
+ * 团队协作配置选项 (Runtime Options)
+ *
+ * <p>核心职责：管理多智能体协作过程中的熔断阈值、容错策略与拦截器链路。</p>
+ *
+ * @author oisin
+ * @since 3.8.1
+ */
+public class TeamOptions implements NonSerializable {
+    private static final Logger LOG = LoggerFactory.getLogger(TeamOptions.class);
+
+    private transient FluxSink<AgentChunk> streamSink;
+
+    /**
+     * 最大协作回合数（指团队中 Supervisor 指派专家的次数上限，防止死循环）
+     */
+    private int maxTurns = 8;
+
+    /**
+     * 最大重试次数（针对调度解析失败或网络抖动）
+     */
+    private int maxRetries = 3;
+
+    /**
+     * 重试规避延迟（毫秒）
+     */
+    private long retryDelayMs = 1000L;
+    /** 会话回溯窗口大小 */
+    private int sessionWindowSize = 8;
+
+    /** 记录回溯窗口大小 */
+    private int recordWindowSize = 8;
+
+    private String talentInstruction;
+
+    /** 反馈模式（允许主动寻求外部帮助/反馈） */
+    private boolean feedbackMode = false;
+    private Function<TeamTrace, String> feedbackDescriptionProvider;
+    private Function<TeamTrace, String> feedbackReasonDescriptionProvider;
+
+    /**
+     * 模型选项
+     */
+    private final ModelOptionsAmend<?, TeamInterceptor> modelOptions = new ModelOptionsAmend<>();
+
+
+    public TeamOptions copy() {
+        TeamOptions tmp = new TeamOptions();
+        tmp.modelOptions.putAll(this.modelOptions);
+        tmp.maxTurns = this.maxTurns;
+        tmp.maxRetries = this.maxRetries;
+        tmp.retryDelayMs = this.retryDelayMs;
+        tmp.recordWindowSize = this.recordWindowSize;
+        tmp.talentInstruction = this.talentInstruction;
+
+        tmp.feedbackMode = this.feedbackMode;
+
+        return tmp;
+    }
+
+    protected void setStreamSink(FluxSink<AgentChunk> streamSink) {
+        this.streamSink = streamSink;
+    }
+
+    public FluxSink<AgentChunk> getStreamSink() {
+        return streamSink;
+    }
+
+
+    // --- 配置注入 (Protected) ---
+
+
+    /**
+     * 配置异常调度时的重试策略
+     *
+     * @param maxRetries   最大重试次数
+     * @param retryDelayMs 重试间隔
+     */
+    protected void setRetryConfig(int maxRetries, long retryDelayMs) {
+        this.maxRetries = Math.max(1, maxRetries);
+        this.retryDelayMs = Math.max(1000, retryDelayMs);
+    }
+
+    protected void setRetryConfig(int maxRetries) {
+        this.maxRetries = Math.max(1, maxRetries);
+    }
+
+    /** 设置会话回溯深度 */
+    protected void setSessionWindowSize(int sessionWindowSize) {
+        this.sessionWindowSize = Math.max(0, sessionWindowSize);
+    }
+
+
+    protected void setRecordWindowSize(int recordWindowSize) {
+        this.recordWindowSize = recordWindowSize;
+    }
+
+    /**
+     * 设置协作轮次上限（安全熔断机制）
+     */
+    protected void setMaxTurns(int maxTurns) {
+        this.maxTurns = Math.max(1, maxTurns);
+    }
+
+    protected void setTalentInstruction(String talentInstruction) {
+        this.talentInstruction = talentInstruction;
+    }
+
+    protected void setFeedbackMode(boolean feedbackMode) {
+        this.feedbackMode = feedbackMode;
+    }
+
+    protected void setFeedbackDescriptionProvider(Function<TeamTrace, String> provider) {
+        this.feedbackDescriptionProvider = provider;
+    }
+
+    protected void setFeedbackReasonDescriptionProvider(Function<TeamTrace, String> provider) {
+        this.feedbackReasonDescriptionProvider = provider;
+    }
+
+
+    // --- 参数获取 (Public) ---
+
+
+    public ModelOptionsAmend<?, TeamInterceptor> getModelOptions() {
+        return modelOptions;
+    }
+
+    public Map<String,Object> getToolContext(){
+        return modelOptions.toolContext();
+    }
+
+    public Collection<FunctionTool> getTools() { return modelOptions.tools(); }
+
+    public FunctionTool getTool(String name) { return modelOptions.tool(name); }
+
+    public Collection<RankEntity<TeamInterceptor>> getInterceptors() {
+        return modelOptions.interceptors();
+    }
+
+    public int getMaxTurns() {
+        return maxTurns;
+    }
+
+    public int getMaxRetries() {
+        return maxRetries;
+    }
+
+    public long getRetryDelayMs() {
+        return retryDelayMs;
+    }
+
+    public int getSessionWindowSize() {
+        return sessionWindowSize;
+    }
+
+    public int getRecordWindowSize() {
+        return recordWindowSize;
+    }
+
+    public String getTalentInstruction() {
+        return talentInstruction;
+    }
+
+    public boolean isFeedbackMode() {
+        return feedbackMode;
+    }
+
+    public String getFeedbackDescription(TeamTrace trace) {
+        if (feedbackDescriptionProvider == null) {
+            return null;
+        }
+
+        return feedbackDescriptionProvider.apply(trace);
+    }
+
+    public String getFeedbackReasonDescription(TeamTrace trace) {
+        if (feedbackReasonDescriptionProvider == null) {
+            return null;
+        }
+
+        return feedbackReasonDescriptionProvider.apply(trace);
+    }
+}

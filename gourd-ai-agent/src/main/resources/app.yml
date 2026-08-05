@@ -1,0 +1,24 @@
+server.port: 4808
+
+server.request:
+  maxBodySize: 2mb
+  maxFileSize: 2mb
+
+solon.app:
+  name: "gourdai"
+  title: "Gourd AI"
+
+solon.logging.appender:
+  console:
+    enable: false
+  file:
+    level: DEBUG
+    name: ".gourdai/logs/${solon.app.name}"
+
+solon:
+  logging:
+    logger:
+      "org.eclipse.jetty":
+        level: ERROR
+      "io.modelcontextprotocol":
+        level: ERROR

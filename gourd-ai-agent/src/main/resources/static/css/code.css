@@ -1,0 +1,622 @@
+/* ============================================================
+   code.css —— Code 模式三栏布局（左 文件树 | 中 编辑器 | 右 对话）
+
+   布局模型（不做 DOM 搬迁，纯 CSS 重排）：
+   - body 是 flex row，含：.sidebar | .main-area | .filer-panel（body 级同级）
+   - chat 模式：维持原样（.filer-panel 折叠在最右）
+   - code 模式：
+       .sidebar(order 0) | .filer-panel(order 1，移到左侧) | .main-area(order 2)
+       且 .main-area 本身变成 flex row：编辑器(flex:1) + chat-view(右侧定宽)
+   ============================================================ */
+
+:root { --code-chat-width: 440px; }
+
+/* ---- 模式切换按钮激活态 ---- */
+#modeSwitchBtn.code-active { color: var(--accent); background: var(--accent-light); }
+
+/* ---- 模式切换按钮图标：chat 模式显示「代码」图标（去 code），code 模式显示「对话气泡」（回 chat）---- */
+#modeSwitchBtn .mode-icon-chat { display: none; }
+body.code-mode #modeSwitchBtn .mode-icon-code { display: none; }
+body.code-mode #modeSwitchBtn .mode-icon-chat { display: inline-block; }
+
+/* ---- 项目选择器（侧栏顶部，仅 code 模式显示）---- */
+.project-selector { position: relative; margin: 0 2px 8px; }
+.project-selector-current {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 8px;
+    background: var(--bg-hover); cursor: pointer; font-size: 12.5px; color: var(--text-primary);
+    transition: filter 0.15s;
+}
+.project-selector-current:hover { filter: brightness(0.97); }
+.project-selector-current svg { flex-shrink: 0; color: var(--text-secondary); }
+.project-selector-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-selector-current .layui-icon { font-size: 12px; color: var(--text-secondary); flex-shrink: 0; }
+.project-dropdown {
+    display: none; position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px;
+    background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15); z-index: 200; max-height: 340px; overflow-y: auto; padding: 4px;
+}
+.project-selector.open .project-dropdown { display: block; }
+.project-dropdown-item {
+    display: flex; align-items: center; gap: 6px; padding: 7px 8px; border-radius: 6px;
+    cursor: pointer; font-size: 12.5px; color: var(--text-sidebar);
+}
+.project-dropdown-item:hover { background: var(--bg-hover); }
+.project-dropdown-item.active { background: var(--accent-light); color: var(--accent); }
+.project-dropdown-item-info { flex: 1; min-width: 0; }
+.project-dropdown-item-name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-dropdown-item-path { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); }
+.project-dropdown-item-del { flex-shrink: 0; border: none; background: none; cursor: pointer; color: var(--text-secondary); opacity: 0; padding: 2px; border-radius: 4px; display: flex; }
+.project-dropdown-item:hover .project-dropdown-item-del { opacity: 0.7; }
+.project-dropdown-item-del:hover { opacity: 1; background: var(--bg-danger-subtle); color: var(--color-danger); }
+.project-dropdown-add {
+    display: flex; align-items: center; gap: 6px; padding: 8px; margin-top: 4px;
+    border-top: 1px solid var(--border-color); cursor: pointer; font-size: 12.5px; color: var(--accent);
+}
+.project-dropdown-add:hover { background: var(--bg-hover); border-radius: 6px; }
+.project-dropdown-empty { padding: 12px 8px; text-align: center; font-size: 12px; color: var(--text-secondary); }
+
+/* Chat 模式：文件树是 Code 模式专属，chat 模式完全隐藏面板、悬浮展开按钮与拖拽手柄，
+   保持与原纯对话界面一致，不引入新的入口 */
+body:not(.code-mode) .filer-panel,
+body:not(.code-mode) .filer-resize-handle,
+body:not(.code-mode) .filer-panel-toggle-btn { display: none !important; }
+
+/* ---- 面板重排（仅 code 模式）---- */
+body.code-mode .sidebar { order: 0; }
+
+/* ========== Code 模式左侧：收成窄图标栏（VSCode 活动栏风格）==========
+   结构：Logo 顶部 → 模式切换 → （弹性空隙）→ 设置 底部 */
+body.code-mode .sidebar,
+body.code-mode .sidebar.collapsed {
+    width: 56px !important; min-width: 56px !important; flex: 0 0 56px !important;
+    padding: 0 !important; overflow: visible; position: relative;
+    background: var(--bg-sidebar);
+}
+/* header：顶部区，与右侧文件 tab 栏同高(46px)，底边框对齐连成一条线 */
+body.code-mode .sidebar-header {
+    padding: 0; height: 46px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-bottom: 1px solid var(--border-color);
+}
+body.code-mode .sidebar-header-top { flex-direction: column; gap: 0; margin: 0; padding: 0; align-items: center; }
+body.code-mode .sidebar-logo { justify-content: center; gap: 0; }
+body.code-mode .sidebar-logo-img { width: 24px; height: 24px; }
+body.code-mode .sidebar-logo-text { display: none; }
+/* 模式切换按钮：移到 header 下方的图标区（用 header-actions 承载），竖排 */
+body.code-mode .sidebar-header-actions {
+    position: absolute; top: 58px; left: 0; right: 0;
+    flex-direction: column; gap: 6px; align-items: center;
+}
+body.code-mode #sidebarSearchBtn,
+body.code-mode #sidebarToggleBtn { display: none !important; }
+/* chat 专属内容隐藏 */
+body.code-mode .new-chat-btn,
+body.code-mode .sidebar-search-bar,
+body.code-mode .sidebar > .sidebar-header > .project-selector,
+body.code-mode .sidebar-title,
+body.code-mode #historyList { display: none !important; }
+/* 中间列表区在 code 模式为空，用它把 footer 顶到底部 */
+body.code-mode .sidebar-list { flex: 1 1 auto; }
+/* 底部设置：钉在最下方，只留图标居中，顶边框与三栏底部呼应 */
+body.code-mode .sidebar-footer {
+    margin-top: auto; padding: 0; height: 52px; flex-shrink: 0;
+    justify-content: center; align-items: center; border-top: 1px solid var(--border-color);
+}
+body.code-mode .sidebar-footer .sidebar-text { display: none; }
+body.code-mode .settings-btn { justify-content: center; width: 40px; height: 40px; padding: 0; border-radius: 8px; }
+body.code-mode .settings-btn:hover { background: var(--bg-hover); }
+/* mode-switch 图标：活动栏风格方块 */
+body.code-mode #modeSwitchBtn { width: 38px; height: 38px; border-radius: 8px; }
+/* 视图切换（项目 / Git）：活动栏方块，排在模式切换按钮下方 */
+body.code-mode .filer-view-btn {
+    width: 38px; height: 38px; border-radius: 8px; margin-top: 2px;
+}
+/* 与上方模式切换按钮之间留一条分隔间距 */
+body.code-mode .filer-view-btn[data-view="files"] { margin-top: 12px; }
+/* 活动栏里选中的视图：accent 竖条 + 高亮，区分于普通 hover */
+body.code-mode .filer-view-btn.active {
+    color: var(--accent); background: var(--bg-hover);
+}
+body.code-mode .filer-view-btn.active::before {
+    content: ''; position: absolute; left: -9px; top: 50%; transform: translateY(-50%);
+    width: 3px; height: 22px; border-radius: 2px; background: var(--accent);
+}
+
+/* 终端入口：活动栏方块，排在审查按钮下方，仅 code 模式可见 */
+body:not(.code-mode) .sidebar-terminal-btn { display: none !important; }
+body.code-mode .sidebar-terminal-btn {
+    position: relative; width: 38px; height: 38px; border-radius: 8px; margin-top: 2px;
+}
+body.code-mode.terminal-open .sidebar-terminal-btn {
+    color: var(--accent); background: var(--bg-hover);
+}
+body.code-mode.terminal-open .sidebar-terminal-btn::before {
+    content: ''; position: absolute; left: -9px; top: 50%; transform: translateY(-50%);
+    width: 3px; height: 22px; border-radius: 2px; background: var(--accent);
+}
+
+/* ========== 项目选择器搬到文件树顶部后的样式 ========== */
+.filer-panel .project-selector { margin: 8px 10px; }
+
+/* ========== Code 模式右侧对话栏顶部：会话标签页 ========== */
+.code-chat-header { display: none; }
+body.code-mode #chatView .code-chat-header {
+    display: flex; align-items: center; gap: 4px;
+    height: 38px; padding: 0 8px 0 6px; flex-shrink: 0; border-bottom: 1px solid var(--border-color);
+}
+.code-chat-tabs {
+    display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0;
+    overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+}
+.code-chat-tabs::-webkit-scrollbar { height: 0; }
+.code-chat-tab {
+    display: flex; align-items: center; justify-content: center; gap: 4px; flex: 0 0 auto;
+    min-width: 48px; box-sizing: border-box;
+    height: 32px; padding: 0 8px; border: 1px solid var(--border-color); border-radius: 8px;
+    background: var(--bg-hover); font-size: 12px; color: var(--text-secondary); cursor: pointer; white-space: nowrap;
+    transition: background .15s, color .15s, border-color .15s;
+}
+.code-chat-tab:hover { color: var(--text-primary); border-color: var(--text-secondary); }
+.code-chat-tab.active {
+    background: var(--accent-light); color: var(--accent); border-color: var(--accent);
+}
+/* active 数字用中等字重加深强调，但与常规态等宽（tabular-nums）以免整栏抖动 */
+.code-chat-tab.active .code-chat-tab-label { font-weight: 600; }
+.code-chat-tab-label { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.code-chat-tab-close {
+    flex-shrink: 0; border: none; background: none; cursor: pointer; color: currentColor;
+    font-size: 15px; line-height: 1; padding: 0 2px; border-radius: 3px; opacity: 0.45;
+    transition: opacity .12s, color .12s;
+}
+.code-chat-tab:hover .code-chat-tab-close,
+.code-chat-tab.active .code-chat-tab-close { opacity: 0.75; }
+.code-chat-tab-close:hover { opacity: 1; color: var(--color-danger); }
+.code-chat-tab-spin {
+    flex-shrink: 0; width: 10px; height: 10px; border: 2px solid var(--border-color);
+    border-top-color: var(--accent); border-radius: 50%; animation: blob-spin .8s linear infinite;
+}
+/* 新对话（未发送）草稿标签：用一个空心圆点标识 */
+.code-chat-tab-dot {
+    flex-shrink: 0; width: 7px; height: 7px; border-radius: 50%;
+    border: 1.5px solid var(--accent); background: transparent;
+}
+.code-chat-tab-new {
+    flex-shrink: 0; align-self: center; width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border-color); background: var(--bg-hover); border-radius: 7px;
+    color: var(--text-secondary); cursor: pointer;
+}
+.code-chat-tab-new:hover { color: var(--accent); border-color: var(--accent); }
+
+/* 所有会话下拉：标签多到溢出时无需横滚，点开直接按完整标题定位、一键切换 */
+.code-chat-list { position: relative; flex-shrink: 0; align-self: center; }
+.code-chat-list-btn {
+    width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border-color); background: var(--bg-hover); border-radius: 7px;
+    color: var(--text-secondary); cursor: pointer;
+}
+.code-chat-list-btn:hover { color: var(--accent); border-color: var(--accent); }
+.code-chat-list.open .code-chat-list-btn { color: var(--accent); border-color: var(--accent); }
+.code-chat-list-menu {
+    display: none; position: absolute; top: 100%; right: 0; margin-top: 4px;
+    background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15); z-index: 200; min-width: 220px; max-width: 320px;
+    max-height: 340px; overflow-y: auto; padding: 4px;
+}
+.code-chat-list.open .code-chat-list-menu { display: block; }
+.code-chat-list-item {
+    display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 6px;
+    cursor: pointer; font-size: 12.5px; color: var(--text-sidebar);
+}
+.code-chat-list-item:hover { background: var(--bg-hover); }
+.code-chat-list-item.active { background: var(--accent-light); color: var(--accent); }
+.code-chat-list-item-num {
+    flex-shrink: 0; min-width: 20px; text-align: center; font-variant-numeric: tabular-nums;
+    font-weight: 600; color: var(--text-secondary);
+}
+.code-chat-list-item.active .code-chat-list-item-num { color: var(--accent); }
+.code-chat-list-item-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.code-chat-list-item-spin {
+    flex-shrink: 0; width: 10px; height: 10px; border: 2px solid var(--border-color);
+    border-top-color: var(--accent); border-radius: 50%; animation: blob-spin .8s linear infinite;
+}
+.code-chat-list-empty { padding: 12px 8px; text-align: center; font-size: 12px; color: var(--text-secondary); }
+
+/* code 模式：文件树恒为展开态（无收起概念，切换按钮已隐藏）。宽度统一由
+   --filer-panel-width 变量驱动（拖拽手柄实时改写），!important 覆盖 app.css 里
+   .filer-panel.collapsed{width:0!important}，故带不带 collapsed 类都同宽、可拖。 */
+body.code-mode .filer-panel,
+body.code-mode .filer-panel.collapsed {
+    order: 1; border-left: none; border-right: none; /* 分隔线交给拖拽手柄绘制 */
+    display: flex !important; width: var(--filer-panel-width) !important;
+    flex: 0 0 auto !important; padding: 0;
+}
+/* 侧边栏的拖拽手柄在 code 模式无意义（背景是 --bg-main，暗色下与窄栏 --bg-sidebar
+   深浅不同，会露出竖线），隐藏。
+   注意：文件树的拖拽手柄 .filer-resize-handle 在 code 模式改为「文件树 / 编辑器」分隔手柄，
+   不再隐藏（见下方规则）。 */
+body.code-mode #sidebarResizeHandle { display: none !important; }
+body.code-mode .filer-panel-toggle-btn { display: none !important; }
+
+/* ---- 文件树 / 编辑器 之间的拖拽手柄（仅 code 模式；夹在树 order:1 与编辑器 order:3 之间）----
+   与「编辑器 / 对话栏」手柄同款：1px 细线 + 透明 ::before 向两侧撑 3px 扩大热区。 */
+body.code-mode .filer-resize-handle {
+    display: block; order: 2; flex: 0 0 1px; width: 1px; align-self: stretch;
+    position: relative; z-index: 20; background: var(--border-color);
+    cursor: col-resize; transition: background 0.15s;
+}
+body.code-mode .filer-resize-handle::before {
+    content: ''; position: absolute; top: 0; bottom: 0; left: -3px; right: -3px;
+    cursor: col-resize;
+}
+body.code-mode .filer-resize-handle:hover,
+body.code-mode .filer-resize-handle.dragging { background: var(--accent); }
+
+/* .main-area 在 code 模式变成 flex row：编辑器(左/中) + 对话(右)
+   body 级 flex 顺序：侧边栏(0) | 文件树(1) | 树/编辑器手柄(2) | 主区/编辑器(3) */
+body.code-mode .main-area { order: 3; flex-direction: row; }
+body.code-mode .welcome-view { display: none !important; }
+
+/* 浏览器（非 Electron）下 code 模式无窗口控件，拖拽条无意义，隐藏 */
+body.code-mode:not(.is-electron) .titlebar-drag-region { display: none !important; }
+
+/* Electron + code 模式：右上角原生窗口控件（最小化/最大化/关闭，36px 高）会压住
+   中间编辑器 tab 栏与右侧对话 tab 栏。给 .main-area（只含 编辑器+对话，不含左侧
+   活动栏/文件树）留出 36px 顶部内边距把两者整体下移；并把拖拽条改成绝对定位的
+   顶部通栏覆盖这段留白，保持顶部可拖动窗口。 */
+body.is-electron.code-mode .main-area { position: relative; padding-top: 36px; }
+body.is-electron.code-mode .titlebar-drag-region {
+    display: block; position: absolute; top: 0; left: 0; right: 0;
+    height: 36px; margin: 0; z-index: 30; -webkit-app-region: drag;
+}
+
+/* chat-view 在 code 模式退居右侧定宽栏（order:3，排在编辑器 order:1 与拖拽手柄 order:2 之后）。
+   分隔线交给拖拽手柄绘制（1px），此处不再画左边框，避免 1px+1px 叠成粗线 */
+body.code-mode .chat-view {
+    display: flex !important; flex: 0 1 var(--code-chat-width);
+    min-width: 320px; order: 3;
+}
+body.code-mode .chat-view .messages-wrap { padding-left: 10px; padding-right: 10px; }
+
+/* code 模式对话栏定宽（min-width:320px），输入区工具条过于拥挤：隐藏附件/图片/斜杠命令/技能/子代理/历史
+   等按钮，仅保留模型 + 思考深度选择器与右侧语音/发送。附件仍可拖拽添加，斜杠命令仍可直接输入 / 触发。 */
+body.code-mode #chatView .input-toolbar .attach-btn { display: none !important; }
+
+/* code 模式：缩小右侧语音/发送圆钮，避免在窄对话栏里占用过多空间 */
+body.code-mode #chatView .voice-btn,
+body.code-mode #chatView .send-btn {
+    width: 28px; height: 28px;
+}
+body.code-mode #chatView .voice-btn svg { width: 16px; height: 16px; }
+body.code-mode #chatView .send-btn svg { width: 16px; height: 16px; }
+body.code-mode #chatView .input-toolbar { gap: 4px; }
+body.code-mode #chatView .toolbar-right { gap: 3px; }
+
+/* code 模式：模型选择器展示图标（配合窄宽时只留图标） */
+body.code-mode #chatView .model-selector-current .model-icon { display: block; }
+body.code-mode #chatView .model-selector-current { max-width: 150px; padding: 4px 8px; }
+body.code-mode #chatView .model-selector-current .model-name { max-width: 96px; }
+
+/* 对话栏声明为容器，供下方容器查询按实际宽度响应 */
+body.code-mode .chat-view { container-type: inline-size; container-name: codechat; }
+
+/* 对话栏收窄到阈值：模型/思考深度下拉框只保留图标，隐藏文字与箭头，节省横向空间 */
+@container codechat (max-width: 380px) {
+    .input-toolbar .model-selector-current .model-name,
+    .input-toolbar .model-selector-current .model-arrow,
+    .input-toolbar .thinking-selector-current .thinking-name,
+    .input-toolbar .thinking-selector-current .model-arrow {
+        display: none;
+    }
+    .input-toolbar .model-selector-current,
+    .input-toolbar .thinking-selector-current {
+        gap: 0; padding: 5px 7px;
+    }
+}
+
+/* ---- 编辑器 / 对话栏之间的拖拽手柄（仅 code 模式；夹在二者之间 order:2）----
+   视觉：一条 1px 细线（等同原分隔线）；热区：用透明 ::before 向两侧各撑 3px（共 ~7px），
+   所以看着还是一条线，但好拖。hover/拖拽时细线点亮为主题色。 */
+.code-chat-resize-handle { display: none; }
+body.code-mode .code-chat-resize-handle {
+    display: block; order: 2; flex: 0 0 1px; width: 1px; align-self: stretch;
+    position: relative; z-index: 20; background: var(--border-color);
+    cursor: col-resize; transition: background 0.15s;
+}
+body.code-mode .code-chat-resize-handle::before {
+    content: ''; position: absolute; top: 0; bottom: 0; left: -3px; right: -3px;
+    cursor: col-resize;
+}
+body.code-mode .code-chat-resize-handle:hover,
+body.code-mode .code-chat-resize-handle.dragging { background: var(--accent); }
+
+/* ---- 对话栏收起按钮（对话标签栏右侧）---- */
+.code-chat-collapse-btn { display: none; }
+body.code-mode #chatView .code-chat-collapse-btn {
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0; align-self: center;
+    width: 28px; height: 28px; border: 1px solid var(--border-color); background: var(--bg-hover);
+    border-radius: 7px; color: var(--text-secondary); cursor: pointer;
+}
+body.code-mode #chatView .code-chat-collapse-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ---- 对话栏收起态：隐藏对话栏与拖拽手柄，编辑器独占 ---- */
+body.code-mode.chat-collapsed .chat-view,
+body.code-mode.chat-collapsed .code-chat-resize-handle { display: none !important; }
+
+/* ---- 悬浮展开按钮（仅收起态、code 模式显示于右侧边缘）---- */
+.code-chat-expand-btn { display: none; }
+body.code-mode.chat-collapsed .code-chat-expand-btn {
+    display: flex; align-items: center; justify-content: center;
+    position: fixed; top: 58px; right: 8px; width: 30px; height: 30px; z-index: 100;
+    border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-sidebar);
+    color: var(--text-secondary); cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+    transition: background 0.2s, color 0.2s;
+}
+body.code-mode.chat-collapsed .code-chat-expand-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+/* ---- 中间编辑器面板 ---- */
+.code-editor-pane { display: none; }
+body.code-mode .code-editor-pane {
+    display: flex; order: 1; flex: 1; min-width: 0; flex-direction: column; background: var(--bg-main);
+}
+
+/* diff/文件浮层打开时接管中间编辑器列：隐藏编辑器面板，让 #gitDiffViewer(flex:1) 独占中间区。
+   否则二者同为 flex:1 会各占一半，右侧残留「代码审查」占位空白。 */
+body.code-mode.viewer-open .code-editor-pane { display: none; }
+body.code-mode.viewer-open .git-diff-viewer { order: 1; }
+
+.code-editor-empty {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; color: var(--text-secondary); padding: 0 24px; text-align: center;
+}
+.code-editor-empty svg { opacity: 0.4; }
+.code-editor-empty-title { font-size: 16px; font-weight: 600; color: var(--text-primary); }
+.code-editor-empty-desc { font-size: 13px; line-height: 1.7; white-space: pre-line; }
+
+/* ---- 未选项目时的欢迎面板（打开文件夹 / 新建项目 / 最近项目）---- */
+.code-project-welcome {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    padding: 24px; overflow-y: auto; background: var(--bg-main);
+}
+.code-welcome-inner {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    width: 100%; max-width: 460px; text-align: center;
+}
+.code-welcome-logo { opacity: 0.4; color: var(--text-secondary); }
+.code-welcome-title { font-size: 18px; font-weight: 600; color: var(--text-primary); }
+.code-welcome-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
+.code-welcome-actions { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.code-welcome-action {
+    display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 16px;
+    border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-hover);
+    color: var(--text-primary); font-size: 13.5px; cursor: pointer; text-align: left;
+    transition: border-color 0.15s, background 0.15s;
+}
+.code-welcome-action svg { flex-shrink: 0; color: var(--text-secondary); }
+.code-welcome-action:hover { border-color: var(--accent); color: var(--accent); }
+.code-welcome-action:hover svg { color: var(--accent); }
+.code-welcome-recent { width: 100%; margin-top: 12px; text-align: left; }
+.code-welcome-recent-title { font-size: 11.5px; color: var(--text-secondary); margin: 0 2px 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+.code-welcome-recent-empty { font-size: 12.5px; color: var(--text-secondary); text-align: center; padding: 8px 0; }
+.code-welcome-recent-item {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px;
+    cursor: pointer; color: var(--text-primary); transition: background 0.15s;
+}
+.code-welcome-recent-item:hover { background: var(--bg-hover); }
+.code-welcome-recent-item svg { flex-shrink: 0; color: var(--text-secondary); }
+.code-welcome-recent-info { flex: 1; min-width: 0; }
+.code-welcome-recent-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.code-welcome-recent-path { font-size: 11px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono); }
+
+.code-editor-main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.code-editor-tabbar {
+    display: flex; align-items: center; gap: 2px; height: 38px; padding: 0 8px; flex-shrink: 0;
+    border-bottom: 1px solid var(--border-color); background: var(--bg-sidebar);
+    overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+}
+.code-editor-tabbar::-webkit-scrollbar { height: 0; width: 0; }
+.code-editor-tab {
+    display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 6px 6px 0 0;
+    font-size: 12.5px; color: var(--text-secondary); cursor: pointer; white-space: nowrap; max-width: 200px;
+    border: 1px solid transparent; border-bottom: none;
+}
+.code-editor-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+.code-editor-tab.active { background: var(--bg-main); color: var(--text-primary); border-color: var(--border-color); }
+.code-editor-tab-name { overflow: hidden; text-overflow: ellipsis; }
+.code-editor-tab-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex-shrink: 0; display: none; }
+.code-editor-tab.dirty .code-editor-tab-dot { display: block; }
+.code-editor-tab.dirty .code-editor-tab-close { display: none; }
+.code-editor-tab-close { border: none; background: none; cursor: pointer; color: var(--text-secondary); font-size: 15px; line-height: 1; padding: 0 3px; border-radius: 3px; flex-shrink: 0; }
+.code-editor-tab-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.code-editor-host { flex: 1; min-height: 0; position: relative; }
+.code-editor-host .CodeMirror { height: 100%; font-family: var(--font-mono); font-size: 13px; line-height: 1.6; }
+
+/* CodeMirror overlay 滚动条统一：overlay 是 addon 自绘 div（不走原生 ::-webkit-scrollbar），
+   simplescrollbars.css 里硬编码了 #bcd，与 diff / 全局原生滚动条不一致。
+   这里覆盖为引用 theme.css 的 --scrollbar-* 公共变量，两端观感对齐。 */
+.CodeMirror-overlayscroll-vertical,
+.CodeMirror-overlayscroll-horizontal { z-index: 6; }
+.CodeMirror-overlayscroll-vertical { width: var(--scrollbar-size); }
+.CodeMirror-overlayscroll-horizontal { height: var(--scrollbar-size); }
+.CodeMirror-overlayscroll-vertical div,
+.CodeMirror-overlayscroll-horizontal div {
+    background: var(--scrollbar-thumb);
+    border-radius: var(--scrollbar-radius);
+}
+.CodeMirror-overlayscroll-vertical div:hover,
+.CodeMirror-overlayscroll-horizontal div:hover {
+    background: var(--scrollbar-thumb-hover);
+}
+
+/* 底部状态栏（文件名 / 语言标签 / 保存按钮）按需求隐藏；保存仍可用 Ctrl+S。
+   JS 仍引用其中的 statusPath/statusLang/dirty/saveBtn 元素，故保留 DOM 只做视觉隐藏。 */
+.code-editor-statusbar {
+    display: none; align-items: center; justify-content: space-between; height: 30px; padding: 0 12px;
+    flex-shrink: 0; border-top: 1px solid var(--border-color); font-size: 11.5px; color: var(--text-secondary);
+    background: var(--bg-sidebar);
+}
+.code-editor-status-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
+.code-editor-status-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.code-editor-dirty { color: var(--accent); font-weight: 500; }
+.code-editor-save-btn {
+    display: flex; align-items: center; gap: 5px; padding: 3px 10px; border: none; border-radius: 6px;
+    background: var(--accent); color: #fff; cursor: pointer; font-size: 11.5px; transition: opacity 0.15s;
+}
+.code-editor-save-btn:hover { opacity: 0.88; }
+.code-editor-save-btn:disabled { opacity: 0.45; cursor: default; }
+
+/* ---- 本地终端面板（编辑器区底部，body.terminal-open 时显示）---- */
+:root { --code-terminal-height: 240px; }
+.code-terminal-pane { display: none; }
+.code-terminal-resize-handle { display: none; }
+body.code-mode.terminal-open .code-terminal-pane {
+    display: flex; flex-direction: column; flex-shrink: 0;
+    height: var(--code-terminal-height); min-height: 120px;
+    border-top: 1px solid var(--border-color); background: var(--bg-main);
+}
+body.code-mode.terminal-open .code-terminal-resize-handle {
+    display: block; height: 5px; flex-shrink: 0; cursor: row-resize;
+    background: transparent; margin-top: -3px; position: relative; z-index: 5;
+}
+body.code-mode.terminal-open .code-terminal-resize-handle:hover { background: var(--accent); opacity: 0.5; }
+
+.code-terminal-tabbar {
+    display: flex; align-items: center; justify-content: space-between; height: 32px;
+    padding: 0 10px; flex-shrink: 0; border-bottom: 1px solid var(--border-color); background: var(--bg-sidebar);
+}
+.code-terminal-title { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }
+.code-terminal-title svg { color: var(--text-secondary); }
+.code-terminal-actions { display: flex; align-items: center; gap: 2px; }
+.code-terminal-act-btn {
+    display: flex; align-items: center; justify-content: center; width: 26px; height: 24px;
+    border: none; background: none; border-radius: 5px; cursor: pointer; color: var(--text-secondary);
+    transition: background 0.15s, color 0.15s;
+}
+.code-terminal-act-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* 内联命令行：整个 body 为一块可滚动区，输出与输入行内相接 */
+.code-terminal-body {
+    flex: 1; min-height: 0; overflow-y: auto; cursor: text;
+    background: var(--bg-main); padding: 6px 12px 8px;
+    font-family: var(--font-mono); font-size: 12.5px; line-height: 1.55;
+    color: var(--text-primary);
+}
+.code-terminal-output {
+    white-space: pre-wrap; word-break: break-word;
+}
+.code-terminal-sys { color: var(--text-secondary); }
+.code-terminal-echo { color: var(--accent); }
+/* 输入框：无边框、无背景，与上方输出同字体，光标就地跟在提示符后 */
+.code-terminal-input {
+    border: none; outline: none; background: transparent; color: var(--text-primary);
+    font-family: var(--font-mono); font-size: 12.5px; line-height: 1.55;
+    padding: 0; margin: 0; min-width: 2px; caret-color: var(--accent);
+}
+
+
+/* 移动端：code 模式退化，隐藏编辑器，仅保留树+对话 */
+@media (max-width: 900px) {
+    body.code-mode .code-editor-pane { display: none; }
+    body.code-mode .chat-view { flex: 1; }
+    body.code-mode .filer-panel { position: fixed; left: 0; top: 0; z-index: 300; box-shadow: 2px 0 12px rgba(0,0,0,0.2); }
+    /* 窄屏对话栏占满，拖拽/收起无意义 */
+    body.code-mode .filer-resize-handle,
+    body.code-mode .code-chat-resize-handle,
+    body.code-mode .code-chat-collapse-btn,
+    body.code-mode.chat-collapsed .code-chat-expand-btn { display: none !important; }
+    body.code-mode.chat-collapsed .chat-view { display: flex !important; }
+}
+
+/* ========== 服务端目录选择器（添加项目弹窗）========== */
+.dir-picker { display: flex; flex-direction: column; height: 100%; background: var(--bg-main); color: var(--text-primary); }
+.dir-picker-bar { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
+.dir-picker-up { width: 30px; height: 30px; flex-shrink: 0; border: 1px solid var(--border-color); background: var(--bg-hover); border-radius: 7px; cursor: pointer; color: var(--text-secondary); display: flex; align-items: center; justify-content: center; }
+.dir-picker-up:hover { color: var(--text-primary); background: var(--bg-hover); filter: brightness(0.96); }
+.dir-picker-path { flex: 1; min-width: 0; height: 30px; border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-sidebar); color: var(--text-primary); padding: 0 10px; font-size: 12px; font-family: var(--font-mono); outline: none; }
+.dir-picker-path:focus { border-color: var(--accent); }
+.dir-picker-go { flex-shrink: 0; height: 30px; padding: 0 12px; border: none; border-radius: 7px; background: var(--bg-hover); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; font-size: 12px; }
+.dir-picker-go:hover { filter: brightness(0.96); }
+.dir-picker-list { flex: 1; overflow-y: auto; padding: 6px; min-height: 0; }
+.dir-picker-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 7px; cursor: pointer; font-size: 13px; color: var(--text-sidebar); }
+.dir-picker-item:hover { background: var(--bg-hover); }
+.dir-picker-item svg { flex-shrink: 0; color: var(--text-secondary); }
+.dir-picker-item-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dir-picker-loading, .dir-picker-empty { padding: 20px; text-align: center; font-size: 12px; color: var(--text-secondary); }
+.dir-picker-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--border-color); flex-shrink: 0; }
+.dir-picker-hint { font-size: 11.5px; color: var(--text-secondary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dir-picker-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.dir-picker-actions .btn-primary, .dir-picker-actions .btn-secondary { height: 32px; padding: 0 14px; border-radius: 7px; font-size: 13px; cursor: pointer; border: 1px solid var(--border-color); }
+.dir-picker-actions .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.dir-picker-actions .btn-primary:hover { opacity: 0.9; }
+.dir-picker-actions .btn-secondary { background: var(--bg-hover); color: var(--text-primary); }
+
+/* ========== 新建项目对话框 ========== */
+.new-project-dialog { display: flex; flex-direction: column; gap: 14px; padding: 18px; background: var(--bg-main); color: var(--text-primary); }
+.new-project-row { display: flex; flex-direction: column; gap: 6px; }
+.new-project-label { font-size: 12px; color: var(--text-secondary); }
+.new-project-parent { display: flex; gap: 6px; }
+.new-project-input {
+    width: 100%; height: 34px; padding: 0 10px; font-size: 13px; box-sizing: border-box;
+    border: 1px solid var(--border-color); border-radius: 7px;
+    background: var(--bg-sidebar); color: var(--text-primary); outline: none;
+}
+/* 父目录行：输入框与浏览按钮同行，占满剩余宽度（此处 flex 作用于水平主轴，不影响高度）*/
+.new-project-parent .new-project-input { flex: 1 1 auto; width: auto; min-width: 0; }
+.new-project-input:focus, .new-project-input:focus-visible {
+    border-color: var(--accent); outline: none;
+}
+.new-project-browse {
+    flex-shrink: 0; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-hover);
+    color: var(--text-secondary); cursor: pointer;
+}
+.new-project-browse:hover { color: var(--accent); border-color: var(--accent); }
+.new-project-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.new-project-foot .btn-primary, .new-project-foot .btn-secondary {
+    height: 34px; padding: 0 16px; border-radius: 7px; font-size: 13px; cursor: pointer; border: 1px solid var(--border-color);
+}
+.new-project-foot .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.new-project-foot .btn-primary:hover { opacity: 0.9; }
+.new-project-foot .btn-secondary { background: var(--bg-hover); color: var(--text-primary); }
+
+/* ---- 对话正文字号收敛：code 模式对话栏被压窄，14px 默认字号显大，统一到 12px 与紧凑风格对齐（不影响 chat 模式）---- */
+body.code-mode #chatView .md-content { font-size: 12px; }
+body.code-mode #chatView .msg-row.user .msg-bubble { font-size: 12px; }
+body.code-mode #chatView .md-content pre code { font-size: 11px; }
+body.code-mode #chatView .md-content table { font-size: 11px; }
+body.code-mode #chatView .thinking-bubble { font-size: 12px; padding: 6px 0; }
+/* 输入框字号与对话正文统一到 12px */
+body.code-mode #chatView .input-box textarea { font-size: 12px; }
+body.code-mode #chatView .input-box textarea::placeholder { font-size: 12px; }
+
+/* ---- Code 模式输入区域适配 ----
+   对话栏被压窄到 ~440px，输入框相关元素改为全宽，与容器对齐 */
+body.code-mode #chatView .input-wrap { padding: 6px 10px 12px; }
+body.code-mode #chatView .input-box { max-width: 100%; }
+body.code-mode #chatView .todo-chip-wrap { max-width: 100%; }
+body.code-mode #chatView .context-status { max-width: 100%; }
+
+/* ---- 思考块 / 工具卡 / 批量分组：code 模式紧凑化 ----
+   窄对话栏里默认 13px 字号 + 10px/14px 内边距的块显得又大又占地方，
+   统一收敛字号到 12px、内边距压到 6px/10px，圆角略收、外边距减半，贴合紧凑风格。 */
+body.code-mode #chatView .thinking-block { margin: 6px 0; border-radius: 8px; }
+body.code-mode #chatView .thinking-block-header { padding: 6px 10px; font-size: 12px; }
+body.code-mode #chatView .thinking-block-label { font-size: 12px; }
+body.code-mode #chatView .thinking-block-toggle { font-size: 11px; }
+body.code-mode #chatView .thinking-block-body { padding: 0 10px 8px; font-size: 12px; line-height: 1.6; }
+body.code-mode #chatView .thinking-block-body .md-content { font-size: 12px; }
+
+body.code-mode #chatView .tool-card { margin: 6px 0; border-radius: 8px; }
+body.code-mode #chatView .tool-card-header { padding: 6px 10px; gap: 6px; font-size: 12px; }
+body.code-mode #chatView .tool-type-icon { font-size: 13px; }
+body.code-mode #chatView .tool-file-lang { font-size: 12px; }
+body.code-mode #chatView .tool-args { font-size: 11px; }
+body.code-mode #chatView .tool-card-body { padding: 0 10px 8px; font-size: 11px; }
+
+body.code-mode #chatView .tool-batch-group { margin: 6px 0; border-radius: 8px; }
+body.code-mode #chatView .tool-batch-header { padding: 6px 10px; gap: 8px; font-size: 12px; }
+body.code-mode #chatView .tool-batch-progress { font-size: 11px; }
+body.code-mode #chatView .batch-tool-items { padding: 2px 6px 6px; }
+body.code-mode #chatView .batch-tool-items > .tool-card { margin: 3px 0; }

@@ -1,0 +1,192 @@
+/*
+ * Copyright 2017-2025 noear.org and authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.gourdai.agent.session;
+
+import org.noear.redisx.RedisClient;
+import org.noear.redisx.plus.RedisList;
+import org.noear.solon.Utils;
+import com.gourdai.agent.Agent;
+import com.gourdai.agent.AgentSession;
+import org.noear.solon.ai.chat.ChatRole;
+import org.noear.solon.ai.chat.message.ChatMessage;
+import org.noear.solon.flow.FlowContext;
+import org.noear.solon.lang.Preview;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.*;
+import java.util.concurrent.locks.ReentrantLock;
+
+/**
+ * Redis 智能体会话适配器 (带内存缓存层)
+ *
+ * @author oisin
+ * @since 3.8.1
+ */
+@Preview("3.8.1")
+public class RedisAgentSession implements AgentSession {
+    private static final Logger LOG = LoggerFactory.getLogger(RedisAgentSession.class);
+
+    private final String sessionId;
+    private final String messagesKey;
+    private final String snapshotKey;
+    private final RedisClient redisClient;
+    private final ReentrantLock locker = new ReentrantLock();
+
+    // 内存缓存层
+    private final InMemoryAgentSession cache;
+
+    public RedisAgentSession(String sessionId, RedisClient redisClient) {
+        Objects.requireNonNull(sessionId, "sessionId is required");
+        Objects.requireNonNull(redisClient, "redisClient is required");
+
+        this.sessionId = sessionId;
+        this.messagesKey = sessionId + ":messages";
+        this.snapshotKey = sessionId + ":snapshot";
+        this.redisClient = redisClient;
+
+        // --- 1. 严格遵循原逻辑加载快照 (使用 instanceId 读取) ---
+        FlowContext snapshot = null;
+        String json = redisClient.getBucket().get(sessionId);
+        if (json != null) {
+            snapshot = FlowContext.fromJson(json);
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Session [{}] loaded from Redis.", sessionId);
+            }
+        }
+
+        if (snapshot == null) {
+            snapshot = FlowContext.of(sessionId);
+        }
+
+        // --- 2. 初始化缓存层 ---
+        this.cache = new InMemoryAgentSession(snapshot);
+
+        // --- 3. 初始化加载历史消息到缓存 ---
+        loadMessagesToCache();
+
+        // 注入当前实例，确保外部调用 updateSnapshot 走持久化逻辑
+        this.cache.getContext().put(Agent.KEY_SESSION, this);
+    }
+
+    private void loadMessagesToCache() {
+        // 从 Redis 捞取最近的 50 条消息
+        List<String> rawList = redisClient.openSession().key(messagesKey).listGetRange(0, 49);
+        if (rawList != null && !rawList.isEmpty()) {
+            List<ChatMessage> history = new ArrayList<>();
+            for (String json : rawList) {
+                history.add(ChatMessage.fromJson(json));
+            }
+            // 保持原有顺序逻辑：Redis LPUSH 出来的需要反转后存入内存 cache
+            Collections.reverse(history);
+            this.cache.addMessage(history);
+        }
+    }
+
+    @Override
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    @Override
+    public List<ChatMessage> getMessages() {
+        // 走缓存
+        return cache.getMessages();
+    }
+
+    @Override
+    public List<ChatMessage> getLatestMessages(int windowSize) {
+        // 走缓存
+        return cache.getLatestMessages(windowSize);
+    }
+
+    @Override
+    public void removeLatestMessage(int windowSize) {
+        // 记录删除前的消息数
+        int sizeBefore = cache.getMessages().size();
+
+        // 1. 先从内存层安全删除
+        cache.removeLatestMessage(windowSize);
+
+        // 2. 计算实际删除的条数（ToolCall 链可能会导致实际删除数量大于 windowSize）
+        int actualRemoved = sizeBefore - cache.getMessages().size();
+
+        // 3. 同步到 Redis：从末尾删除实际被移除的条数
+        RedisList list = redisClient.getList(messagesKey);
+        for (int i = 0; i < actualRemoved; i++) {
+            if (list.size() > 0) {
+                list.removeAt(list.size() - 1);
+            }
+        }
+    }
+
+    @Override
+    public void addMessage(Collection<? extends ChatMessage> messages) {
+        if (Utils.isEmpty(messages)) return;
+
+        // 1. 同步到内存
+        cache.addMessage(messages);
+
+        // 2. 同步到 Redis (保持原逻辑)
+        for (ChatMessage msg : messages) {
+            if (msg.getRole() != ChatRole.SYSTEM) {
+                redisClient.getList(messagesKey).add(ChatMessage.toJson(msg));
+            }
+        }
+    }
+
+    @Override
+    public boolean isEmpty() {
+        return cache.isEmpty();
+    }
+
+    @Override
+    public void clear() {
+        cache.clear();
+        redisClient.getList(messagesKey).clear();
+        // 物理清理按照原逻辑涉及的 key
+        redisClient.getBucket().remove(sessionId);
+        redisClient.getBucket().remove(snapshotKey);
+    }
+
+    @Override
+    public Map<String, Object> attrs() {
+        return cache.attrs();
+    }
+
+    @Override
+    public void updateSnapshot() {
+        locker.lock();
+
+        try {
+            // 严格遵循原逻辑：使用 snapshotKey 持久化
+            redisClient.getBucket().store(snapshotKey, cache.getContext().toJson());
+        } catch (Exception e) {
+            LOG.error("Persistence snapshot failed: {}", e.toString());
+        } finally {
+            locker.unlock();
+        }
+
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Session [{}] snapshot persisted to Redis.", snapshotKey);
+        }
+    }
+
+    @Override
+    public FlowContext getContext() {
+        return cache.getContext();
+    }
+}

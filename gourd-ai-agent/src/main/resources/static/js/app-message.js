@@ -1,0 +1,1812 @@
+/* ===== app-message.js ===== */
+/* 消息渲染：消息气泡 + 思考动画 + 命令输出 + HITL + 回退 */
+/* 依赖：app-base.js */
+
+/* 复制图标（icon-only，用户与 AI 消息共用） */
+var COPY_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+var OK_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+/* 重新运行（循环箭头）与继续运行（快进）图标 */
+var RERUN_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>';
+var CONTINUE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>';
+
+/* trace 用量小图标（线条风格，替代 emoji：输入=下箭头 / 缓存=循环 / 输出=上箭头 / 耗时=时钟） */
+var TRACE_IN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>';
+var TRACE_CACHE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>';
+var TRACE_OUT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>';
+var TRACE_TIME_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>';
+
+/* ===== Message Rendering (Session-Aware) ===== */
+function appendUserMessage(sess, text, imageDataUrls, fileAttachments, createdAt) {
+    var row = $('<div>').addClass('msg-row user')[0];
+    row.setAttribute('data-user-msg-idx', sess.userMsgCounter++);
+    row.innerHTML = '<div class="user-msg-col"><div class="msg-bubble"></div><div class="user-msg-footer"><span class="msg-time user-msg-time"></span><button class="user-copy-btn" title="' + GourdI18n.t('chat.copy') + '">' + COPY_SVG + '</button></div></div>';
+    var bubble = $(row).find('.msg-bubble')[0];
+
+    // Multiple images
+    if (imageDataUrls && imageDataUrls.length > 0) {
+        var imgWrap = $('<div>').addClass('user-attach-imgs')[0];
+        for (var i = 0; i < imageDataUrls.length; i++) {
+            var img = $('<img>').attr('src', imageDataUrls[i].dataUrl || imageDataUrls[i])
+                .attr('style', 'max-height:120px;max-width:200px;border-radius:8px;object-fit:cover;')[0];
+            $(imgWrap).append(img);
+        }
+        $(bubble).append(imgWrap);
+    }
+
+    // Multiple file attachments
+    if (fileAttachments && fileAttachments.length > 0) {
+        for (var j = 0; j < fileAttachments.length; j++) {
+            var tag = $('<div>').addClass('user-attach-file')[0];
+            tag.innerHTML = '<span>📎</span>'
+                + '<span class="user-attach-file-name">' + escapeHtml(fileAttachments[j].name) + '</span>'
+                + '<span class="user-attach-file-size">(' + formatFileSize(fileAttachments[j].size) + ')</span>';
+            $(bubble).append(tag);
+        }
+    }
+
+    var span = $('<span>').addClass('user-msg-text md-content')[0];
+    span.setAttribute('data-md-raw', text);
+    span.innerHTML = renderMd(text);
+    $(bubble).append(span);
+    if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(span);
+    if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(span);
+    if (typeof processMermaidBlocks === 'function') processMermaidBlocks(span);
+
+    // 长消息或含代码块时放宽气泡宽度，避免被挤成窄高条
+    var hasCodeBlock = $(span).find('pre').length > 0;
+    var isLongUserText = text && text.length > 100;
+    if (hasCodeBlock || isLongUserText) $(row).addClass('wide-user');
+
+    var copyBtn = $(row).find('.user-copy-btn')[0];
+    $(copyBtn).on('click', function() {
+        var txtEl = $(bubble).find('.user-msg-text')[0];
+        var md = txtEl ? (txtEl.getAttribute('data-md-raw') || txtEl.innerText) : '';
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(md).then(function() {
+                $(copyBtn).addClass('copied');
+                copyBtn.innerHTML = OK_SVG;
+                setTimeout(function() {
+                    $(copyBtn).removeClass('copied');
+                    copyBtn.innerHTML = COPY_SVG;
+                }, 1500);
+            });
+        }
+    });
+
+    // 时间戳（实时发送不传 createdAt 时兜底为当前时间，与历史加载行为一致）
+    var msgTime = createdAt || Date.now();
+    var timeEl = $(row).find('.user-msg-time')[0];
+    if (timeEl) $(timeEl).text(formatMsgTime(msgTime));
+
+    addImageLightbox(bubble);
+    $(sess.container).append(row);
+    // 容器不在 DOM 树中（如 loadMessages 的临时容器阶段）时跳过滚动，避免无效回流
+    if (sess.sessionId === activeSessionId && document.contains(sess.container)) scrollToBottom(true);
+}
+
+function appendSystemNotice(sess, text) {
+    var row = $('<div>').addClass('msg-row system-notice')[0];
+    row.innerHTML = '<div class="system-notice-bubble">' + escapeHtml(text) + '</div>';
+    $(sess.container).append(row);
+    if (sess.sessionId === activeSessionId) scrollToBottom(true);
+}
+
+function ensureAssistantBubble(sess) {
+    if (!sess.currentBubbleEl) {
+        removeThinking(sess);
+        var row = $('<div>').addClass('msg-row assistant')[0];
+        // 存储当前 runId，用于后续删除同一运行的消息
+        if (sess.currentRunId) {
+            row.setAttribute('data-run-id', sess.currentRunId);
+        }
+        row.innerHTML = '<div class="msg-bubble"><div class="md-content"></div>'
+            + '<div class="msg-meta-row">'
+            + '<div class="msg-time" style="display:none"></div>'
+            + '</div>'
+            + '<div class="msg-actions">'
+            + '<button class="user-copy-btn copy-btn" title="' + GourdI18n.t('chat.copy') + '">' + COPY_SVG + '</button>'
+            + '<button class="user-copy-btn rerun-btn" title="' + GourdI18n.t('chat.rerun') + '">' + RERUN_SVG + '</button>'
+            + '<button class="user-copy-btn continue-btn" title="' + GourdI18n.t('chat.continue_run') + '">' + CONTINUE_SVG + '</button>'
+            + '</div></div>';
+        $(sess.container).append(row);
+        sess.currentBubbleEl = $(row).find('.md-content')[0];
+        var copyBtn = $(row).find('.copy-btn')[0];
+        // 复制目标为「最终答案」：统一从 .md-content 的 data-md-raw 读取。
+        // 历史消息与流式结束后后端写入的最终答案都带该属性；流式接收过程中不写，故复制不到中间片段。
+        // 无 data-md-raw 时（旧数据/异常）回退到尾部首个非空块的 innerText。
+        var bubbleEl = $(row).find('.msg-bubble')[0];
+        $(copyBtn).on('click', function() {
+            var md = '';
+            var blocks = $(bubbleEl).children('.md-content');
+            for (var bi = blocks.length - 1; bi >= 0; bi--) {
+                var raw = blocks[bi].getAttribute('data-md-raw');
+                if (raw != null && raw.trim()) { md = raw; break; }
+            }
+            if (!md) {
+                for (var bj = blocks.length - 1; bj >= 0; bj--) {
+                    var t = blocks[bj].innerText || '';
+                    if (t.trim()) { md = t; break; }
+                }
+            }
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(md).then(function() {
+                    $(copyBtn).addClass('copied');
+                    copyBtn.innerHTML = OK_SVG;
+                    setTimeout(function() {
+                        $(copyBtn).removeClass('copied');
+                        copyBtn.innerHTML = COPY_SVG;
+                    }, 1500);
+                });
+            }
+        });
+        // 重新运行 / 继续运行：复用后端已有的 /rerun、/continue 命令。
+        // rerun：删除同一 runId 的所有 AI 消息行（旧回复），新回复流式渲染到新气泡，与后端回退保持一致。
+        // continue：保留当前气泡，新内容自然追加到新气泡，呈现“接着往下写”的效果。
+        var rerunBtn = $(row).find('.rerun-btn')[0];
+        var continueBtn = $(row).find('.continue-btn')[0];
+        function triggerCommand(cmd, removeRow) {
+            if (sess.isStreaming) return;
+            if (typeof sendCommandSilent !== 'function') return;
+            sendCommandSilent(cmd, function() {
+                if (removeRow) {
+                    // 删除同一 runId 的所有元素（消息行、工具卡片、思考块等）
+                    var runId = row.getAttribute('data-run-id');
+                    if (runId) {
+                        // 删除所有具有相同 runId 的元素
+                        $(sess.container).find('[data-run-id="' + runId + '"]').remove();
+                    } else {
+                        // 兼容旧数据：如果没有 runId，只删除当前行
+                        $(row).remove();
+                    }
+                    // 重置会话状态
+                    sess.currentBubbleEl = null;
+                    sess.thinkingBlockEl = null;
+                    sess.pendingToolCard = null;
+                }
+            });
+        }
+        if (rerunBtn) $(rerunBtn).on('click', function() { triggerCommand('/rerun', true); });
+        if (continueBtn) $(continueBtn).on('click', function() { triggerCommand('/continue', false); });
+        // 流式输出过程中隐藏复制按钮，待 finishStream 收尾后再显示；
+        // 非流式（历史加载）保持原有显示逻辑。
+        if (sess.isStreaming) {
+            $(row).find('.msg-actions').hide();
+            // 流式中提前创建常驻的内联等待指示器（默认不可见但占位），避免后续显隐造成跳动。
+            ensureInlineThinking(sess);
+        }
+    }
+    return sess.currentBubbleEl;
+}
+
+function ensureThinkingBlock(sess) {
+    if (!sess.thinkingBlockEl) {
+        ensureAssistantBubble(sess);
+        // 若当前气泡已渲染过正文（上一段 text/agent 答复），新思考块必须落在这段正文之后，
+        // 而非之前（否则多个思考块会堆叠到消息顶部，把正文顶到下方）。
+        // 做法与 appendActionEndChunk 一致：在底部新建空 .md-content 并让 currentBubbleEl 指向它，
+        // 随后 before(空气泡) 使思考块落到旧正文之后；该空气泡承接本思考块之后的正文。
+        var cur = sess.currentBubbleEl;
+        // 「已有正文」不能只看 DOM：正文经 requestAnimationFrame 异步落盘，chunk 密集到达时
+        // text 的内容可能仍缓存在 reasonBuffer 里、contentRafId 尚未触发，此刻 md-content 还是空的。
+        // 若此时仅凭 children/textContent 判空，会把思考块插到空气泡之前，随后待渲染的正文落进该气泡，
+        // 造成「先到的正文反被顶到后到的思考块之下」（思考块错误置顶）。故把待渲染缓冲一并计入。
+        var hasPendingText = (sess.reasonBuffer && sess.reasonBuffer.trim().length > 0) || !!sess.contentRafId;
+        var hasContent = cur && ((cur.children && cur.children.length > 0) || (cur.textContent || '').trim().length > 0 || hasPendingText);
+        if (hasContent) {
+            // 先把 rAF 里挂起的正文刷进旧气泡，避免其稍后写入新（错误）气泡
+            if (sess.contentRafId) {
+                cancelAnimationFrame(sess.contentRafId);
+                sess.contentRafId = null;
+                cur.innerHTML = renderMd(sess.reasonBuffer);
+                if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(cur);
+                if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(cur);
+            }
+            sess.reasonBuffer = '';
+            var freshMd = $('<div>').addClass('md-content')[0];
+            insertBeforeActions(sess, freshMd);
+            sess.currentBubbleEl = freshMd;
+        }
+        var block = $('<div>').addClass('thinking-block streaming')[0];
+        // 存储当前 runId，用于后续删除同一运行的消息
+        if (sess.currentRunId) {
+            block.setAttribute('data-run-id', sess.currentRunId);
+        }
+        // 与工具卡片保持一致：简洁展示关闭时才默认展开
+        if (window.cliPrintSimplified === false) $(block).addClass('expanded');
+        block.innerHTML = '<div class="thinking-block-header">'
+            + '<span class="tool-type-icon">🧠</span>'
+            + '<span class="thinking-block-label" data-i18n-thinking="progress">' + GourdI18n.t('chat.thinking_in_progress') + '</span>'
+            + '<span class="thinking-timer-wrap" style="margin-left:4px">'
+            + '<span class="thinking-current-timer">0s</span>'
+            + '</span>'
+            + '<span class="thinking-status-dot"></span>'
+            + '</div>'
+            + '<div class="thinking-block-body"><div class="md-content"></div></div>';
+        $(sess.currentBubbleEl).before(block);
+        $(block).find('.thinking-block-header').on('click', function() {
+            $(block).toggleClass('expanded');
+        });
+        sess.thinkingBlockEl = block;
+        sess.thinkingBodyMdEl = $(block).find('.thinking-block-body .md-content')[0];
+        sess.thinkingBodyWrapEl = $(block).find('.thinking-block-body')[0];
+        // 监听思考区域滚动：判断用户是否主动向上翻看
+        $(sess.thinkingBodyWrapEl).on('scroll', function() {
+            var gap = sess.thinkingBodyWrapEl.scrollHeight - sess.thinkingBodyWrapEl.scrollTop - sess.thinkingBodyWrapEl.clientHeight;
+            sess.thinkingUserScrolledUp = gap > 60;
+        });
+        sess.thinkingBuffer = '';
+        var currentTimerSpan = $(block).find('.thinking-current-timer')[0];
+        startThinkingTimerDual(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime', currentTimerSpan, null);
+    }
+    return sess.thinkingBlockEl;
+}
+
+function setAssistantTime(sess, ts) {
+    var row = sess.currentBubbleEl ? $(sess.currentBubbleEl).closest('.msg-row')[0] : null;
+    if (!row) return;
+    var timeEl = $(row).find('.msg-time')[0];
+    if (!timeEl) return;
+    $(timeEl).text(formatMsgTime(ts || Date.now()));
+    timeEl.style.display = '';
+}
+
+function insertBeforeActions(sess, el) {
+    // 若存在常驻的内联等待指示器，新内容应插在其上方，保证指示器始终在气泡底部。
+    var anchor = (sess.inlineThinkingEl && sess.inlineThinkingEl.parentNode) ? sess.inlineThinkingEl : null;
+    if (anchor) { $(anchor).before(el); return; }
+    // 否则插到「页脚」之上。页脚 = meta 行（时间/用量）+ 操作按钮，二者固定在气泡底部，
+    // 正文一律累积在 meta 行之上。（曾有 bug：meta 行停在首个内容块之后，被后续流式内容顶到消息顶部。）
+    var bubble = sess.currentBubbleEl.parentNode;
+    var footer = $(bubble).find('.msg-meta-row').first()[0] || $(bubble).find('.msg-actions').first()[0];
+    if (footer) $(footer).before(el);
+}
+
+function finishThinkingBlock(sess) {
+    if (sess.thinkingBlockEl) {
+        stopThinkingTimer(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime');
+        if (sess.reasonRafId) {
+            cancelAnimationFrame(sess.reasonRafId);
+            sess.reasonRafId = null;
+            if (sess.thinkingBodyMdEl) {
+                sess.thinkingBodyMdEl.innerHTML = renderMd(sess.thinkingBuffer);
+            }
+        }
+        if (sess.thinkingBodyMdEl && typeof processMermaidBlocks === 'function') processMermaidBlocks(sess.thinkingBodyMdEl);
+        $(sess.thinkingBlockEl).removeClass('streaming');
+        var elapsed = '';
+        if (sess.thinkingBlockStartTime) {
+            elapsed = ' (' + Math.floor((Date.now() - sess.thinkingBlockStartTime) / 1000) + 's)';
+        }
+        var label = $(sess.thinkingBlockEl).find('.thinking-block-label')[0];
+        if (label) {
+            $(label).text(GourdI18n.t('chat.thinking_finished') + elapsed);
+            label.setAttribute('data-i18n-thinking', 'finished');
+            label.setAttribute('data-i18n-elapsed', elapsed);
+        }
+        $(sess.thinkingBlockEl).find('.thinking-block-dots').remove();
+        $(sess.thinkingBlockEl).find('.thinking-timer-wrap').remove();
+        sess.thinkingBlockEl = null;
+        sess.thinkingBodyMdEl = null;
+        sess.thinkingBodyWrapEl = null;
+        sess.thinkingBuffer = '';
+    }
+}
+
+function clearThinkTags(text) {
+    return text.replace(/<\s*\/?think\s*>/gi, '');
+}
+
+function appendReasonChunk(sess, text) {
+    removeThinking(sess);
+    ensureThinkingBlock(sess);
+    sess.thinkingBuffer += clearThinkTags(text);
+    if (!sess.reasonRafId) {
+        sess.reasonRafId = requestAnimationFrame(function() {
+            sess.reasonRafId = null;
+            if (!sess.thinkingBlockEl) return;
+            if (sess.thinkingBodyMdEl) {
+                sess.thinkingBodyMdEl.innerHTML = renderMd(sess.thinkingBuffer);
+            }
+            if (sess.thinkingBodyWrapEl) {
+                // 仅当用户未主动向上滚动时才自动跟随底部
+                if (!sess.thinkingUserScrolledUp) {
+                    sess.thinkingBodyWrapEl.scrollTop = sess.thinkingBodyWrapEl.scrollHeight;
+                }
+            }
+            if (sess.sessionId === activeSessionId) {
+                if (!userScrolledUp && messagesWrap) {
+                    // 同步赋值减少跳帧
+                    messagesWrap.scrollTop = messagesWrap.scrollHeight;
+                }
+            }
+        });
+    }
+}
+
+function finishPendingTool(sess) {
+    if (sess.pendingToolCard) {
+        var icon = $(sess.pendingToolCard).find('.tool-status-icon')[0];
+        if (icon) { icon.className = 'tool-status-icon done'; icon.innerHTML = ''; }
+
+        sess.pendingToolCard = null;
+    }
+}
+
+/* ===== Tool header meta helpers（类型图标 / 语言图标 / diff 统计 / 文件名回填） ===== */
+/* 左侧工具类型图标（emoji，按工具名映射） */
+function toolTypeIcon(name) {
+    var map = { edit: '\u270f\ufe0f', write: '\ud83d\udcdd', read: '\ud83d\udcd6', grep: '\ud83d\udd0d', glob: '\ud83d\udcc1', ls: '\ud83d\udcc1', bash: '\u26a1', todowrite: '\u2705', todoread: '\u2705', websearch: '\ud83c\udf10', webfetch: '\ud83d\udd17', codesearch: '\ud83d\udd0e', skill: '\ud83e\udde9', task: '\ud83e\udd16', multitask: '\ud83e\udd16', generate: '\u2728' };
+    return map[name] || '\ud83d\udd27';
+}
+
+/* 工具名本地化映射：后端裸工具名 → i18n key。
+   未列出的工具（如 MCP / OpenAPI 动态工具）回退原样显示。 */
+var TOOL_I18N_KEY = {
+    read: 'chat.tool_read', write: 'chat.tool_write', edit: 'chat.tool_edit',
+    glob: 'chat.tool_glob', grep: 'chat.tool_grep', ls: 'chat.tool_ls',
+    bash: 'chat.tool_bash', bash_start: 'chat.tool_bash', bash_wait: 'chat.tool_bash',
+    bash_stdin: 'chat.tool_bash', bash_stop: 'chat.tool_bash',
+    skill: 'chat.tool_skill',
+    todo: 'chat.tool_todo', todowrite: 'chat.tool_todo', todoread: 'chat.tool_todo',
+    code: 'chat.tool_code', codesearch: 'chat.tool_codesearch',
+    websearch: 'chat.tool_websearch', webfetch: 'chat.tool_webfetch',
+    task: 'chat.tool_task', multitask: 'chat.tool_multitask', generate: 'chat.tool_generate',
+    mcp: 'chat.tool_mcp', openapi: 'chat.tool_openapi', lsp: 'chat.tool_lsp', memory: 'chat.tool_memory'
+};
+/* 将工具名本地化用于展示。toolTitle 可能形如 "agentName/toolName"（子代理内部调用），
+   拆出前缀单独保留、仅翻译工具名部分；主代理时 toolTitle===toolName。未知工具回退原样。 */
+function localizeToolName(toolName, toolTitle) {
+    var prefix = '';
+    var base = toolTitle || toolName || 'tool';
+    if (toolName) {
+        var sep = base.lastIndexOf('/' + toolName);
+        if (sep >= 0 && base.slice(sep + 1) === toolName) {
+            prefix = base.slice(0, sep + 1);  // 含末尾 '/'
+            base = toolName;
+        }
+    }
+    var key = TOOL_I18N_KEY[base];
+    return prefix + (key && window.GourdI18n ? GourdI18n.t(key) : base);
+}
+window.localizeToolName = localizeToolName;
+/* 文件语言图标（emoji，按扩展名映射） */
+function langIconEmoji(path) {
+    var ext = (String(path).split('.').pop() || '').toLowerCase();
+    var map = { java:'\u2615', js:'\ud83d\udfe8', mjs:'\ud83d\udfe8', ts:'\ud83d\udd37', jsx:'\u269b\ufe0f', tsx:'\u269b\ufe0f', py:'\ud83d\udc0d', css:'\ud83c\udfa8', scss:'\ud83c\udfa8', html:'\ud83c\udf10', json:'\ud83d\udd27', xml:'\ud83d\udcf0', md:'\ud83d\udcc4', sql:'\ud83d\uddc4\ufe0f', sh:'\ud83d\udc1a', go:'\ud83d\udc39', rs:'\ud83e\udd80', vue:'\ud83d\udc9a', yml:'\u2699\ufe0f', yaml:'\u2699\ufe0f' };
+    return map[ext] || '\ud83d\udcc4';
+}
+/* 从 diff 文本统计增/删行数（排除 +++/--- 文件头） */
+function computeDiffStat(args, text) {
+    var diff = (args && typeof args.diff === 'string') ? args.diff : null;
+    if (!diff && typeof text === 'string' && text.lastIndexOf('---', 0) === 0) diff = text;
+    if (!diff) return null;
+    var add = 0, del = 0;
+    diff.split('\n').forEach(function(l) {
+        if (l.charAt(0) === '+' && l.substr(0, 3) !== '+++') add++;
+        else if (l.charAt(0) === '-' && l.substr(0, 3) !== '---') del++;
+    });
+    return { add: add, del: del };
+}
+/* 回填工具卡头部：文件名（带语言图标）+ diff 增删统计。幂等，可多次调用。 */
+function updateToolHeaderMeta(cardEl, toolName, args, text) {
+    var header = $(cardEl).find('.tool-card-header')[0];
+    if (!header) return;
+    var nameEl = $(header).find('.tool-name')[0];
+    if (!nameEl) return;
+    var fp = args && (args.file_path || args.path);
+    if (fp) {
+        var base = String(fp).split(/[\\/]/).pop();
+        var fileEl = $(header).find('.tool-file')[0];
+        if (!fileEl) {
+            fileEl = document.createElement('span');
+            fileEl.className = 'tool-file';
+            nameEl.parentNode.insertBefore(fileEl, nameEl.nextSibling);
+        }
+        fileEl.innerHTML = '<span class="tool-file-lang">' + langIconEmoji(fp) + '</span>' + escapeHtml(base);
+        fileEl.title = fp;
+    }
+    var stat = computeDiffStat(args, text);
+    if (stat && (stat.add || stat.del)) {
+        var anchor = $(header).find('.tool-file')[0] || nameEl;
+        var statEl = $(header).find('.tool-diff-stat')[0];
+        if (!statEl) {
+            statEl = document.createElement('span');
+            statEl.className = 'tool-diff-stat';
+            anchor.parentNode.insertBefore(statEl, anchor.nextSibling);
+        }
+        statEl.innerHTML = (stat.add ? '<span class="add">+' + stat.add + '</span>' : '')
+            + (stat.del ? '<span class="del">-' + stat.del + '</span>' : '');
+    }
+}
+window.updateToolHeaderMeta = updateToolHeaderMeta;
+
+/* 统一设置卡状态点：依据 chunk.text 是否以 __ERROR__ 开头判定。后端 WebStreamBuilder
+   在工具真正出错（Exception）时仍然发 action_end，但文本前缀为 "__ERROR__"；
+   正常执行结果不带此标记。失败则显示红点，成功显示绿点。 */
+function setToolCardStatus(cardEl, text) {
+    var icon = $(cardEl).find('.tool-status-icon').first()[0];
+    if (!icon) return;
+
+    var isError = typeof text === 'string' && text.startsWith('__ERROR__');
+
+    setTimeout(function() {
+        requestAnimationFrame(function() {
+            if (icon) {
+                if (isError) {
+                    icon.className = 'tool-status-icon reject';
+                } else {
+                    icon.className = 'tool-status-icon done';
+                }
+                icon.innerHTML = '';
+            }
+        });
+    }, 300);
+}
+
+
+window.setToolCardStatus = setToolCardStatus;
+
+/* 工具失败时把当前正在执行（loading）的卡片状态点置为红点。
+   后端失败走 error 独立通道，不会发 action_end，故卡片会残留在 loading；
+   若不处理，finishStream 会将其强刷为绿点（误报成功）。此处改赋红点。 */
+function markToolCardFailed(sess) {
+    var icons = [];
+    if (sess.pendingToolCard) {
+        var pi = $(sess.pendingToolCard).find('.tool-status-icon').first()[0];
+        if (pi) icons.push(pi);
+    }
+    // 并行批量 / id 模式下无 pendingToolCard，兑掉容器内所有残留 loading 的卡片
+    if (!icons.length && sess.container) {
+        $(sess.container).find('.tool-status-icon.loading').each(function() { icons.push(this); });
+    }
+    icons.forEach(function(icon) { icon.className = 'tool-status-icon reject'; icon.innerHTML = ''; });
+    sess.pendingToolCard = null;
+}
+window.markToolCardFailed = markToolCardFailed;
+
+/* ===== Tool Body Renderer Registry =====
+   工具结果渲染注册表：按 toolName 注册专用渲染器，解耦硬编码的 if-else。
+   renderer(bodyEl, text, args) 渲染成功返回 true；返回 falsy 则由调用方做纯文本兜底。
+   新增工具的专用展示只需 window._toolRenderers[name] = fn，无需改动主流程。 */
+window._toolRenderers = window._toolRenderers || {};
+
+/* edit：git-diff 风格逐行着色 + 行号 */
+window._toolRenderers.edit = function(bodyEl, text, args) {
+    var diff = (args && typeof args.diff === 'string') ? args.diff : null;
+    var result = (typeof text === 'string') ? text : null;
+    if (!diff && result && result.startsWith('---')) { diff = result; result = null; }
+    if (!diff && !result) return false;
+    bodyEl.style.padding = '0';
+    bodyEl.style.maxHeight = '400px';
+    bodyEl.style.overflow = 'auto';
+    bodyEl.style.fontFamily = 'var(--font-mono)';
+    bodyEl.style.fontSize = '12px';
+    bodyEl.style.lineHeight = '1.5';
+
+    var lines = (diff || '').split('\n');
+    var html = '';
+    var oldLineNo = 0, newLineNo = 0;
+    var hunkRe = /^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/;
+
+    for (var i = 0; diff && i < lines.length; i++) {
+        var rawLine = lines[i];
+        var line = escapeHtml(rawLine);
+
+        if (rawLine.startsWith('+++') || rawLine.startsWith('---')) {
+            html += '<div class="git-diff-line git-line-head">'
+                + '<span class="git-line-num"></span>'
+                + '<span class="git-line-num"></span>'
+                + '<span class="git-line-text">' + line + '</span></div>';
+        } else if (rawLine.startsWith('@@')) {
+            var m = rawLine.match(hunkRe);
+            if (m) {
+                oldLineNo = parseInt(m[1], 10);
+                newLineNo = parseInt(m[2], 10);
+            }
+            html += '<div class="git-diff-line git-line-hunk">'
+                + '<span class="git-line-num"></span>'
+                + '<span class="git-line-num"></span>'
+                + '<span class="git-line-text">' + line + '</span></div>';
+        } else if (rawLine.startsWith('+')) {
+            html += '<div class="git-diff-line git-line-add">'
+                + '<span class="git-line-num"></span>'
+                + '<span class="git-line-num">' + (newLineNo++) + '</span>'
+                + '<span class="git-line-text">' + line + '</span></div>';
+        } else if (rawLine.startsWith('-')) {
+            html += '<div class="git-diff-line git-line-del">'
+                + '<span class="git-line-num">' + (oldLineNo++) + '</span>'
+                + '<span class="git-line-num"></span>'
+                + '<span class="git-line-text">' + line + '</span></div>';
+        } else {
+            html += '<div class="git-diff-line git-line-ctx">'
+                + '<span class="git-line-num">' + (oldLineNo++) + '</span>'
+                + '<span class="git-line-num">' + (newLineNo++) + '</span>'
+                + '<span class="git-line-text">' + line + '</span></div>';
+        }
+    }
+    // 输出段：成功时仅展示 diff（结果提示与改动重复，显示冗余，已隐藏）；
+    // 仅在出错时渲染错误信息，避免编辑失败时卡片体空白。
+    if (result && result !== diff) {
+        // NOTE: "成功完成" 为后端工具执行成功返回的固定文案，此处判断是否包含该字样以区分正常结果与错误信息；如需改为常量应同步修改后端 WebStreamBuilder
+        var isErr = result.indexOf("成功完成") < 0;
+        if (isErr) {
+            if (diff) html += '<div class="edit-result-sep"></div>';
+            html += '<div class="edit-result is-error">'
+                + '<span class="edit-result-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> ' + GourdI18n.t('chat.edit_failed') + '</span>'
+                + '<span class="edit-result-text">' + escapeHtml(result) + '</span></div>';
+        }
+    }
+    bodyEl.innerHTML = html;
+    return true;
+};
+
+/* write / read：按 file_path 推断语言，hljs 语法高亮 */
+function renderHighlightedFile(bodyEl, text, args) {
+    if (!text) return false;
+    var filePath = (args && args.file_path) || '';
+    var lang = (typeof window.guessLang === 'function') ? window.guessLang(filePath) : '';
+    if (lang && typeof hljs !== 'undefined') {
+        try {
+            var highlighted = hljs.highlight(text, { language: lang, ignoreIllegals: true });
+            bodyEl.innerHTML = '<pre style="margin:0;padding:10px;overflow:auto;border-radius:0;background:var(--bg-code, #f5f5f5);line-height:1.5"><code class="hljs">' + highlighted.value + '</code></pre>';
+            return true;
+        } catch(e) {
+            return false;
+        }
+    }
+    return false;
+}
+window._toolRenderers.write = renderHighlightedFile;
+window._toolRenderers.read = renderHighlightedFile;
+
+/* grep：按 '路径:行号: 内容' 逐行解析，同一文件归组，行号高亮、内容等宽。
+   命中"未找到结果。"等非结果文本则交还兜底。 */
+window._toolRenderers.grep = function(bodyEl, text, args) {
+    if (!text) return false;
+    var lineRe = /^(.*?):(\d+):\s?(.*)$/;
+    var lines = text.split('\n');
+    var groups = [];
+    var index = {};
+    var matched = 0;
+    for (var i = 0; i < lines.length; i++) {
+        var raw = lines[i];
+        if (!raw) continue;
+        var m = raw.match(lineRe);
+        if (!m) {
+            if (groups.length && (raw.indexOf('\u672a\u5b8c') >= 0 || raw.indexOf('\u8b66\u544a') >= 0 || raw.indexOf('\u622a\u65ad') >= 0)) {
+                groups[groups.length - 1].note = (groups[groups.length - 1].note || '') + raw + ' ';
+            }
+            continue;
+        }
+        matched++;
+        var p = m[1];
+        if (!(p in index)) { index[p] = groups.length; groups.push({ path: p, hits: [] }); }
+        groups[index[p]].hits.push({ ln: m[2], content: m[3] });
+    }
+    if (matched === 0) return false;
+    var html = '<div class="grep-result">';
+    var totalHits = 0;
+    groups.forEach(function(g) { totalHits += g.hits.length; });
+    html += '<div class="tool-summary">' + groups.length + ' ' + GourdI18n.t('chat.files') + ' / ' + totalHits + ' ' + GourdI18n.t('chat.matches') + '</div>';
+    groups.forEach(function(g) {
+        html += '<div class="grep-file"><span class="grep-file-icon"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 1.5h4.75L12.5 5.75V13.5a1 1 0 01-1 1H4a1 1 0 01-1-1V2.5a1 1 0 011-1z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/><path d="M8.75 1.5v4.25H12.5" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg></span>' + escapeHtml(g.path) + '</div>';
+        g.hits.forEach(function(h) {
+            html += '<div class="grep-hit"><span class="grep-ln">' + escapeHtml(h.ln) + '</span>'
+                + '<span class="grep-code">' + escapeHtml(h.content) + '</span></div>';
+        });
+        if (g.note) html += '<div class="grep-note">' + escapeHtml(g.note.trim()) + '</div>';
+    });
+    html += '</div>';
+    bodyEl.innerHTML = html;
+    return true;
+};
+
+/* glob / ls：按 '[FILE] path' / '[DIR] path/' 解析为带图标的文件列表；
+   ls 递归 tree（缩进 + 树形字符）走兜底等宽展示，避免破坏对齐。 */
+function renderFileListing(bodyEl, text, args) {
+    if (!text) return false;
+    if (text.indexOf('\u672a\u627e\u5230') >= 0 && text.indexOf('[') < 0) return false;
+    var lines = text.split('\n');
+    var entryRe = /^\[(FILE|DIR)\]\s+(.*)$/;
+    var items = [];
+    var hasTree = false;
+    for (var i = 0; i < lines.length; i++) {
+        var raw = lines[i];
+        if (!raw) continue;
+        var m = raw.match(entryRe);
+        if (m) { items.push({ dir: m[1] === 'DIR', path: m[2] }); }
+        else if (/[\u2502\u251c\u2514]/.test(raw)) { hasTree = true; break; }
+    }
+    if (hasTree || items.length === 0) return false;
+    var html = '<div class="file-listing"><div class="tool-summary">' + items.length + ' ' + GourdI18n.t('chat.items') + '</div>';
+    items.forEach(function(it) {
+        var icon = it.dir
+            ? '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4a1 1 0 011-1h3.5l1.5 1.5H13a1 1 0 011 1V12a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>'
+            : '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 1.5h4.75L12.5 5.75V13.5a1 1 0 01-1 1H4a1 1 0 01-1-1V2.5a1 1 0 011-1z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/><path d="M8.75 1.5v4.25H12.5" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>';
+        html += '<div class="file-entry' + (it.dir ? ' is-dir' : '') + '">'
+            + '<span class="file-entry-icon">' + icon + '</span>'
+            + '<span class="file-entry-path">' + escapeHtml(it.path) + '</span></div>';
+    });
+    html += '</div>';
+    bodyEl.innerHTML = html;
+    return true;
+}
+window._toolRenderers.glob = renderFileListing;
+window._toolRenderers.ls = renderFileListing;
+
+/* bash：终端风格输出块，等宽、深色、保留换行 */
+window._toolRenderers.bash = function(bodyEl, text, args) {
+    bodyEl.style.padding = '0';
+    var cmd = (args && args.command) ? args.command : '';
+    var html = '<div class="bash-output">';
+    if (cmd) html += '<div class="bash-cmd"><span class="bash-prompt">$</span> ' + escapeHtml(cmd) + '</div>';
+    html += '<pre class="bash-stdout">' + escapeHtml(text || '(' + GourdI18n.t('chat.no_output') + ')') + '</pre>';
+    html += '</div>';
+    bodyEl.innerHTML = html;
+    return true;
+};
+
+/* todowrite / todoread：内容为 markdown 任务清单，按 markdown 语法高亮展示原文（不做 HTML 渲染，保留 #、-、[ ] 等原始符号）。
+   todowrite 优先取入参 todos（提交的清单原文），todoread 取返回值 text。 */
+function renderTodoMarkdown(bodyEl, text, args) {
+    var md = (args && typeof args.todos === 'string' && args.todos.trim()) ? args.todos : text;
+    if (!md || typeof md !== 'string' || !md.trim()) return false;
+    var inner;
+    if (typeof hljs !== 'undefined') {
+        try { inner = hljs.highlight(md, { language: 'markdown' }).value; } catch(e) {}
+    }
+    if (!inner) inner = md.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    bodyEl.innerHTML = '<pre style="margin:0;padding:10px"><code class="hljs language-markdown">' + inner + '</code></pre>';
+    return true;
+}
+window._toolRenderers.todowrite = renderTodoMarkdown;
+window._toolRenderers.todoread = renderTodoMarkdown;
+
+/* 分发：命中专用 renderer 且渲染成功返回 true，否则交由调用方做纯文本兜底 */
+function renderToolBody(bodyEl, toolName, text, args) {
+    var renderer = window._toolRenderers[toolName];
+    if (typeof renderer === 'function') {
+        try {
+            if (renderer(bodyEl, text, args)) return true;
+        } catch(e) {}
+    }
+    return false;
+}
+
+/* 抽取：把 args 对象格式化为短字符串（供卡片头部 tool-args 展示）。
+   与 appendActionEndChunk 内的实现保持一致，供 action_start 复用。 */
+function formatToolArgsStr(args) {
+    function formatArgValue(v) {
+        if (v === null) return 'null';
+        if (v === undefined) return 'undefined';
+        if (typeof v === 'string') return v.replace(/\n/g, ' ');
+        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+        if (Array.isArray(v)) return '[' + v.length + GourdI18n.t('chat.items') + ']';
+        if (typeof v === 'object') {
+            var keys = Object.keys(v);
+            if (keys.length === 0) return '{}';
+            if (keys.length > 3) return '{' + keys.slice(0, 2).join(',') + ',...}';
+            var inner = [];
+            keys.forEach(function(k) { inner.push(k + ':' + formatArgValue(v[k])); });
+            var s = '{' + inner.join(',') + '}';
+            return s.length > 30 ? '{' + keys.join(',') + '}' : s;
+        }
+        return String(v);
+    }
+    if (!args || typeof args !== 'object') return '';
+    var parts = [];
+    // 跳过大体积字段（由 body 渲染器专门展示），避免头部塞入整段 diff/内容
+    var skip = { diff: 1, content: 1, todos: 1 };
+    Object.keys(args).forEach(function(k) { if (skip[k]) return; parts.push(k + '=' + formatArgValue(args[k])); });
+    var argsStr = parts.join(' ');
+    if (argsStr.length > 80) argsStr = argsStr.substring(0, 77) + '...';
+    return argsStr;
+}
+
+/* 解析 chunk 归属的智能体输出状态：args.agentName 非空且该智能体卡片仍在活跃登记中时，
+   返回其独立状态对象（每个智能体一份，支持并行多智能体互不串卡）；否则返回 null。
+   注意：本函数与 resolveAgentCardBody 必须定义在顶层作用域——app-streaming.js 的 onWebChunk
+   会直接调用它们；若嵌在某个函数体内（曾误嵌入 appendActionStartChunk），调用处抛 ReferenceError
+   且被 onWebChunk 的 try/catch 静默吞掉，导致全部 reason/text/action 块无法渲染。
+   归一化：agentDesc 为 null/undefined 时按空串处理，与 appendAgentBadge 的 agentId 构造保持一致，
+   否则 description 缺省时会因 "name:null" ≠ "name:" 而归属失配、内容漏进主对话。 */
+function resolveAgentState(sess, args) {
+    var agentName = args && args.agentName;
+    var agentDesc = (args && args.agentDesc != null) ? args.agentDesc : '';
+    if (agentName && sess.agentCards && sess.agentCards[agentName + ':' + agentDesc] && sess.agentStates) {
+        return sess.agentStates[agentName + ':' + agentDesc] || null;
+    }
+    return null;
+}
+
+/* 解析 chunk 归属的智能体卡片 .agent-card-body 容器（供工具卡等需要直接插入元素的场景）。
+   与 resolveAgentState 的归属判定保持一致。 */
+function resolveAgentCardBody(sess, args) {
+    var st = resolveAgentState(sess, args);
+    return st ? st.bodyEl : null;
+}
+
+/* action_start：工具调用前（来源引擎 ActionChunk）提前渲染 loading 卡片骨架。
+   - 有 actionId（并发/并行场景）：卡片按 id 登记到 sess.toolCardsById，action_end 靠 id 精确配对，
+     不再依赖到达顺序；同一并行批次（短时间窗口内连续到达）的只读工具卡片归入同一「批量容器」分组展示。
+   - 无 actionId（旧数据/兼容）：退回原有 sess.pendingToolCard 位置配对逻辑，行为不变。 */
+function appendActionStartChunk(sess, toolName, args, toolTitle, actionId, agentBody) {
+    ensureAssistantBubble(sess);
+
+    var argsStr = formatToolArgsStr(args);
+    var argsHtml = argsStr ? '<span class="tool-args">' + escapeHtml(argsStr) + '</span>' : '';
+
+    var card = $('<div>').addClass('tool-card')[0];
+    if (sess.currentRunId) {
+        card.setAttribute('data-run-id', sess.currentRunId);
+    }
+    if (actionId) card.setAttribute('data-action-id', actionId);
+    if (window.cliPrintSimplified === false) $(card).addClass('expanded');
+    card.innerHTML = '<div class="tool-card-header">'
+        + '<span class="tool-type-icon">' + toolTypeIcon(toolName) + '</span>'
+        + '<span class="tool-status-icon loading"></span>'
+        + '<span class="tool-name">' + escapeHtml(localizeToolName(toolName, toolTitle)) + '</span>'
+        + argsHtml
+        + '</div>'
+        + '<div class="tool-card-body"></div>';
+    tagToolName($(card).find('.tool-name')[0], toolName, toolTitle);
+    updateToolHeaderMeta(card, toolName, args, null);
+
+    $(card).find('.tool-card-header').on('click', function() {
+        $(card).toggleClass('expanded');
+    });
+
+/* 确定插入容器：如果 args.agentName 存在，说明这是子代理内部的工具调用，
+     应插入到对应的 .agent-card-body 容器内（复用主智能体样式），而不是主代理的气泡中 */
+    var insertAgentBody = agentBody || resolveAgentCardBody(sess, args);
+
+    if (actionId && !sess.approvedToolCard) {
+        // id 模式：登记卡片，供 action_end 精确回填；并做批量分组
+        // （HITL 审批结果回填态例外——让位给位置配对，复用审批卡，避免多卡）
+        if (!sess.toolCardsById) sess.toolCardsById = {};
+        sess.toolCardsById[actionId] = card;
+
+        var now = Date.now();
+        // 回放态：所有 chunk 瞬时到达，用真实时钟会把全部卡片错归为同一批次。
+        // 改用持久化的 createdAt 作为时钟（由 replaySession 写入 sess._replayClock），
+        // 还原真实的到达间隙，使并行批量分组与流式时一致。
+        if (sess._replaying && typeof sess._replayClock === 'number') now = sess._replayClock;
+        var BATCH_WINDOW = 800; // ms：窗口内连续到达的 start 视为同一并行批次
+        var batch = sess.currentBatch;
+            // 归属守卫：既有批次属于某智能体容器而本卡属于另一作用域（主对话或其他智能体）时，
+            // 不复用该批次，强制新开分组，避免不同智能体的工具卡混进同一个批量分组
+            var batchOwner = batch ? (batch.agentBody || null) : null;
+            var ownerMismatch = batch && (batchOwner || insertAgentBody) && batchOwner !== insertAgentBody;
+            if (batch && !ownerMismatch && (now - batch.lastStartAt) <= BATCH_WINDOW && document.contains(batch.groupEl)) {
+            // 归入既有批量分组。必须从 batch.groupEl 内找 items 容器：同一智能体卡片内可能
+            // 先后出现多个批量分组，按 insertAgentBody 范围搜索会命中旧的（已结束的）分组容器
+            var items = $(batch.groupEl).find('.batch-tool-items');
+            items.append(card);
+            batch.count++;
+            batch.lastStartAt = now;
+            updateBatchGroupHeader(batch);
+        } else {
+            // 开启新的批量分组容器（首个 start 先建组；若最终只有一个，收尾时降级为普通单卡样式）
+            var group = $('<div>').addClass('tool-batch-group')[0];
+            if (sess.currentRunId) group.setAttribute('data-run-id', sess.currentRunId);
+            group.innerHTML = '<div class="tool-batch-header">'
+                + '<span class="tool-type-icon"></span>'
+                + '<span class="tool-status-icon loading"></span>'
+                + '<span class="tool-batch-title"></span>'
+                + '<span class="tool-batch-progress"></span>'
+                + '</div>'
+                + '<div class="batch-tool-items"></div>';
+            $(group).find('.tool-batch-header').on('click', function() {
+                $(group).toggleClass('expanded');
+            });
+            if (window.cliPrintSimplified === false) $(group).addClass('expanded');
+            $(group).find('.batch-tool-items').append(card);
+
+            // 决定插入位置
+            if (insertAgentBody) {
+                // 子代理内部：插入 .agent-card-body
+                $(insertAgentBody).append(group);
+            } else {
+                // 主代理：正常插入气泡
+                insertBeforeActions(sess, group);
+            }
+            sess.currentBatch = {
+                groupEl: group,
+                count: 1,
+                doneCount: 0,
+                lastStartAt: now,
+                toolName: toolName,
+                agentBody: insertAgentBody || null
+            };
+            updateBatchGroupHeader(sess.currentBatch);
+        }
+    } else {
+        // 兼容路径：无 id，沿用位置配对
+        finishPendingTool(sess);
+        // 决定插入位置
+        if (insertAgentBody) {
+            $(insertAgentBody).append(card);
+        } else {
+            insertBeforeActions(sess, card);
+        }
+        sess.pendingToolCard = card;
+        sess.pendingToolStarted = true;
+    }
+
+    if (sess.sessionId === activeSessionId) scrollToBottom();
+}
+
+/* 更新批量分组头部：类型图标 + 标题（正在读取 N 个）+ 进度（done/total） */
+function updateBatchGroupHeader(batch) {
+    if (!batch || !batch.groupEl) return;
+    var iconEl = $(batch.groupEl).find('.tool-type-icon')[0];
+    var titleEl = $(batch.groupEl).find('.tool-batch-title')[0];
+    var progEl = $(batch.groupEl).find('.tool-batch-progress')[0];
+    if (iconEl) iconEl.textContent = toolTypeIcon(batch.toolName);
+    var cn = localizeToolName(batch.toolName, null);
+    if (titleEl) {
+        titleEl.textContent = GourdI18n.t('chat.batch_tool') + cn + ' · ' + batch.count + ' ' + GourdI18n.t('chat.items');
+        titleEl.setAttribute('data-i18n-batch-tool', batch.toolName == null ? '' : batch.toolName);
+        titleEl.setAttribute('data-i18n-batch-count', batch.count);
+    }
+    if (progEl) progEl.textContent = batch.doneCount + '/' + batch.count;
+}
+
+/* 批量分组收尾：全部完成后头部转完成态；若分组内只有 1 项，降级为普通单卡（去掉分组外壳），
+   避免非并行场景平白多一层分组 UI。 */
+function finishBatchGroup(sess, batch) {
+    if (!batch || !batch.groupEl) return;
+    var group = batch.groupEl;
+
+    if (batch.count <= 1) {
+        // 只有一项：把内部单卡提升到分组所在位置，移除分组外壳
+        var only = $(group).find('.batch-tool-items > .tool-card').first()[0];
+        if (only && group.parentNode) {
+            group.parentNode.insertBefore(only, group);
+            group.parentNode.removeChild(group);
+        }
+    } else {
+        var icon = $(group).find('.tool-batch-header .tool-status-icon').first()[0];
+        if (icon) {
+            // 批量组统一绿标；纯色圆点，不放内部图标；
+            // 延迟切换确保用户能看到 loading 绿点闪烁。
+            setTimeout(function() {
+                if (icon) {
+                    icon.className = 'tool-status-icon done';
+                    icon.innerHTML = '';
+                }
+            }, 300);
+        }
+    }
+
+    if (sess.currentBatch === batch) sess.currentBatch = null;
+}
+
+/* 统一填充工具卡片结果体：命中专用 renderer 则用之，否则纯文本兜底；
+   若结果被后端预览截断（meta.truncated），在体末追加「展开全文」按钮，点击按 seq 拉全文重渲染。 */
+function fillToolBody(sess, bodyEl, toolName, text, args, meta) {
+    if (!renderToolBody(bodyEl, toolName, text, args)) {
+        bodyEl.textContent = text || '';
+    }
+    if (meta && meta.truncated && meta.seq) {
+        appendExpandFullBtn(sess, bodyEl, toolName, args, meta);
+    }
+}
+
+/* 为被截断的工具结果体追加「展开全文」按钮。点击调用 /web/chat/replay/full 按 seq 取全文，
+   成功后用完整文本重渲染该体（去掉按钮）。拉取中禁用按钮防重复点击。 */
+function appendExpandFullBtn(sess, bodyEl, toolName, args, meta) {
+    var kb = meta.fullLength ? Math.round(meta.fullLength / 1024) : 0;
+    var btn = $('<button>').addClass('tool-expand-full')
+        .text(kb ? (GourdI18n.t('chat.expand_full_size', [kb])) : GourdI18n.t('chat.expand_full'))[0];
+    btn.setAttribute('type', 'button');
+    $(btn).on('click', function(e) {
+        e.stopPropagation();   // 别冒泡到卡片头触发折叠
+        if (btn.disabled) return;
+        btn.disabled = true;
+        btn.textContent = GourdI18n.t('chat.loading_dots');
+        var rootQ = (window.appMode === 'code' && window.currentProjectRoot) ? '&root=' + encodeURIComponent(window.currentProjectRoot) : '';
+        $.get('/web/chat/replay/full?sessionId=' + encodeURIComponent(sess.sessionId)
+                + '&seq=' + encodeURIComponent(meta.seq) + rootQ, function(resp) {
+            var full = resp && resp.data;
+            if (typeof full !== 'string' || !full) { btn.disabled = false; btn.textContent = GourdI18n.t('chat.expand_failed'); return; }
+            bodyEl.removeAttribute('style');
+            bodyEl.innerHTML = '';
+            if (!renderToolBody(bodyEl, toolName, full, args)) { bodyEl.textContent = full; }
+            if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(bodyEl);
+            if (sess.sessionId === activeSessionId) scrollToBottom();
+        }).fail(function() {
+            btn.disabled = false;
+            btn.textContent = GourdI18n.t('chat.expand_failed');
+        });
+    });
+    bodyEl.appendChild(btn);
+}
+
+function appendActionEndChunk(sess, toolName, text, args, toolTitle, actionId, meta, agentBody) {
+    // id 分支：并发/并行场景按 actionId 精确回填对应卡片（不依赖到达顺序），并推进批量分组进度。
+    // 若正处于 HITL 审批结果回填态（sess.approvedToolCard 存在），让位给下方审批卡复用逻辑，避免两张卡。
+    if (actionId && !sess.approvedToolCard && sess.toolCardsById && sess.toolCardsById[actionId]) {
+        var idCard = sess.toolCardsById[actionId];
+        delete sess.toolCardsById[actionId];
+
+        var idArgsStr = formatToolArgsStr(args);
+        $(idCard).find('.tool-name').text(localizeToolName(toolName, toolTitle));
+        tagToolName($(idCard).find('.tool-name')[0], toolName, toolTitle);
+        updateToolHeaderMeta(idCard, toolName, args, text);
+        var idArgsEl = $(idCard).find('.tool-args')[0];
+        if (idArgsStr) {
+            if (idArgsEl) { idArgsEl.textContent = idArgsStr; }
+            else { $('<span>').addClass('tool-args').text(idArgsStr).insertAfter($(idCard).find('.tool-name')); }
+        }
+        var idBody = $(idCard).find('.tool-card-body')[0];
+        if (idBody) {
+            if (idBody) {
+                idBody.removeAttribute('style');
+                idBody.innerHTML = '';
+                fillToolBody(sess, idBody, toolName, text, args, meta);
+            }
+        }
+        setToolCardStatus(idCard, text);
+
+        // 推进批量分组进度；本卡属于当前批次时更新计数，全部完成则收尾分组
+        // （归属守卫：批次作用域与本卡不一致时不推进，避免把别家工具计入本批次）
+        var b = sess.currentBatch;
+        var idOwner = agentBody || resolveAgentCardBody(sess, args);
+        if (b && b.groupEl && (b.agentBody || null) === (idOwner || null) && $.contains(b.groupEl, idCard)) {
+            b.doneCount++;
+            updateBatchGroupHeader(b);
+            if (b.doneCount >= b.count) {
+                finishBatchGroup(sess, b);
+            }
+        }
+        // 推进正文指针：新建空 .md-content 落在工具卡/分组「之后」，让工具执行完后到达的
+        // text/agent 正文写入卡片下方，而非停留在旧气泡里被卡片顶到上方。
+        // （与无 actionId 旧路径一致；缺此步会导致正文在上、工具卡垫底的错序渲染。）
+        // 归属守卫：本卡属于智能体卡片内部时不动主对话正文指针，避免打断主气泡渲染
+        if (!idOwner) {
+            sess.reasonBuffer = '';
+            var idMd = $('<div>').addClass('md-content')[0];
+            insertBeforeActions(sess, idMd);
+            sess.currentBubbleEl = idMd;
+        }
+        if (sess.sessionId === activeSessionId) scrollToBottom();
+        return;
+    }
+
+    // 复用分支：若该工具卡由 action_start 提前创建（loading 中），直接填充结果体并转完成态，避免重复建卡
+    if (sess.pendingToolStarted && sess.pendingToolCard) {
+        var pc = sess.pendingToolCard;
+        sess.pendingToolStarted = false;
+        var pcArgsStr = formatToolArgsStr(args);
+        $(pc).find('.tool-name').text(localizeToolName(toolName, toolTitle));
+        tagToolName($(pc).find('.tool-name')[0], toolName, toolTitle);
+        updateToolHeaderMeta(pc, toolName, args, text);
+        var pcArgsEl = $(pc).find('.tool-args')[0];
+        if (pcArgsStr) {
+            if (pcArgsEl) { pcArgsEl.textContent = pcArgsStr; }
+            else { $('<span>').addClass('tool-args').text(pcArgsStr).insertAfter($(pc).find('.tool-name')); }
+        }
+        var pcBody = $(pc).find('.tool-card-body')[0];
+        if (pcBody) {
+            pcBody.removeAttribute('style');
+            pcBody.innerHTML = '';
+            fillToolBody(sess, pcBody, toolName, text, args, meta);
+        }
+        finishPendingTool(sess);
+        setToolCardStatus(pc, text);
+        if (window._todoChunkHandlers) { /* todo 由 streaming 层单独处理，这里不重复 */ }
+        // 归属守卫：该卡属于智能体卡片内部时不动主对话正文指针
+        if (!$(pc).closest('.agent-card').length) {
+            sess.reasonBuffer = '';
+            var pcMd = $('<div>').addClass('md-content')[0];
+            insertBeforeActions(sess, pcMd);
+            sess.currentBubbleEl = pcMd;
+        }
+        if (sess.sessionId === activeSessionId) scrollToBottom();
+        return;
+    }
+    finishPendingTool(sess);
+    ensureAssistantBubble(sess);
+
+    // 参考 CliShell 简化打印方式，将 args 拼接为短字符串
+    function formatArgValue(v) {
+        if (v === null) return 'null';
+        if (v === undefined) return 'undefined';
+        if (typeof v === 'string') return v.replace(/\n/g, ' ');
+        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+        if (Array.isArray(v)) return '[' + v.length + GourdI18n.t('chat.items') + ']';
+        if (typeof v === 'object') {
+            var keys = Object.keys(v);
+            if (keys.length === 0) return '{}';
+            if (keys.length > 3) return '{' + keys.slice(0, 2).join(',') + ',...}';
+            var inner = [];
+            keys.forEach(function(k) { inner.push(k + ':' + formatArgValue(v[k])); });
+            var s = '{' + inner.join(',') + '}';
+            return s.length > 30 ? '{' + keys.join(',') + '}' : s;
+        }
+        return String(v);
+    }
+    var argsHtml = '';
+    if (args && typeof args === 'object') {
+        var parts = [];
+        var skipArgs = { diff: 1, content: 1, todos: 1 };
+        Object.keys(args).forEach(function(k) {
+            if (skipArgs[k]) return; parts.push(k + '=' + formatArgValue(args[k]));
+        });
+        var argsStr = parts.join(' ');
+        if (argsStr.length > 80) argsStr = argsStr.substring(0, 77) + '...';
+        if (argsStr) argsHtml = '<span class="tool-args">' + escapeHtml(argsStr) + '</span>';
+    }
+
+    // 复用分支：若刚批准过 HITL，结果渲染进同一张审批卡片，避免出现两张卡
+    if (sess.approvedToolCard) {
+        var rc = sess.approvedToolCard;
+        sess.approvedToolCard = null;
+        $(rc).find('.tool-name').text(localizeToolName(toolName, toolTitle));
+        tagToolName($(rc).find('.tool-name')[0], toolName, toolTitle);
+        updateToolHeaderMeta(rc, toolName, args, text);
+        setToolCardStatus(rc, text);
+        var rcArgsEl = $(rc).find('.tool-args')[0];
+        if (argsStr) {
+            if (rcArgsEl) { rcArgsEl.textContent = argsStr; }
+            else { $('<span>').addClass('tool-args').text(argsStr).insertAfter($(rc).find('.tool-name')); }
+        }
+        var rcBody = $(rc).find('.tool-card-body')[0];
+        if (rcBody) {
+            rcBody.removeAttribute('style');
+            rcBody.innerHTML = '';
+            fillToolBody(sess, rcBody, toolName, text, args, meta);
+        }
+        if (window.cliPrintSimplified === false) $(rc).addClass('expanded');
+        else $(rc).removeClass('expanded');
+        sess.pendingToolCard = rc;
+        sess.reasonBuffer = '';
+        var rcMd = $('<div>').addClass('md-content')[0];
+        insertBeforeActions(sess, rcMd);
+        sess.currentBubbleEl = rcMd;
+        if (sess.sessionId === activeSessionId) scrollToBottom();
+        return;
+    }
+
+    var card = $('<div>').addClass('tool-card')[0];
+    // 存储当前 runId，用于后续删除同一运行的消息
+    if (sess.currentRunId) {
+        card.setAttribute('data-run-id', sess.currentRunId);
+    }
+    if (window.cliPrintSimplified === false) $(card).addClass('expanded');
+    card.innerHTML = '<div class="tool-card-header">'
+        + '<span class="tool-type-icon">' + toolTypeIcon(toolName) + '</span>'
+        + '<span class="tool-status-icon loading"></span>'
+        + '<span class="tool-name">' + escapeHtml(localizeToolName(toolName, toolTitle)) + '</span>'
+        + argsHtml
+        + '</div>'
+        + '<div class="tool-card-body"></div>';
+    tagToolName($(card).find('.tool-name')[0], toolName, toolTitle);
+    updateToolHeaderMeta(card, toolName, args, text);
+
+    // 工具结果渲染：委托注册表分发，未命中专用 renderer 则纯文本兜底；截断则挂展开按钮
+    var toolBody = $(card).find('.tool-card-body')[0];
+    fillToolBody(sess, toolBody, toolName, text, args, meta);
+    setToolCardStatus(card, text);
+
+    $(card).find('.tool-card-header').on('click', function() {
+        $(card).toggleClass('expanded');
+    });
+
+    // 归属守卫：子代理的工具结果（无 action_start 前置建卡时）同样插入智能体卡片内部
+    if (agentBody) {
+        $(agentBody).append(card);
+        sess.pendingToolCard = card;
+        if (sess.sessionId === activeSessionId) scrollToBottom();
+        return;
+    }
+
+    insertBeforeActions(sess, card);
+    sess.pendingToolCard = card;
+
+    sess.reasonBuffer = '';
+    var newMd = $('<div>').addClass('md-content')[0];
+    insertBeforeActions(sess, newMd);
+    sess.currentBubbleEl = newMd;
+    if (sess.sessionId === activeSessionId) scrollToBottom();
+}
+
+function appendContentChunk(sess, text, append) {
+    var clean = clearThinkTags(text);
+    sess.reasonBuffer = append ? sess.reasonBuffer + clean : clean;
+    // 节流：同一帧内只渲染一次，避免模型输出极快时高频渲染导致页面闪动
+    if (!sess.contentRafId) {
+        sess.contentRafId = requestAnimationFrame(function() {
+            var el = ensureAssistantBubble(sess);
+            // 流式接收过程中不写 data-md-raw（该属性是复制源，仅由 finishStream 后后端最终答案写入）；
+            // 避免复制到被工具调用切开的中间片段。
+            el.innerHTML = renderMd(sess.reasonBuffer);
+            // 按钮仅添加一次（通过 data-hljs-collected 标记跳过已有按钮的 pre）
+            addCodeBlockButtons(el);
+            // 流式过程中不实时高亮，等 finishStream 时再一次性处理，避免高亮引起的布局跳动
+            // highlightCodeBlocks 延迟执行导致高度变化是抖动的主因
+
+            sess.contentRafId = null;
+
+            if (sess.sessionId === activeSessionId) {
+                if (!userScrolledUp && messagesWrap && !sess._skipScroll) {
+                    // 直接用同步赋值减少跳帧；scrollToBottom 的 rAF 在这里已经太晚
+                    messagesWrap.scrollTop = messagesWrap.scrollHeight;
+                }
+            }
+        });
+    }
+}
+
+function appendErrorChunk(sess, text) {
+    ensureAssistantBubble(sess);
+    var errEl = $('<div>').addClass('chunk-error').text(text)[0];
+    insertBeforeActions(sess, errEl);
+    if (sess.sessionId === activeSessionId) scrollToBottom();
+}
+
+/**
+ * 渲染「正在重试」提示。同一次推理回合内多次重试会复用同一个提示元素（只更新文案），
+ * 避免堆叠多条。待后续真实内容（reason/text/action 等）到达时由 clearRetryChunk 清除。
+ */
+function appendRetryChunk(sess, text) {
+    ensureAssistantBubble(sess);
+    if (sess.retryEl && sess.retryEl.parentNode) {
+        // 复用已有提示，仅更新文案
+        var txt = $(sess.retryEl).find('.chunk-retry-text')[0];
+        if (txt) txt.textContent = text;
+    } else {
+        var el = $('<div>').addClass('chunk-retry')[0];
+        el.appendChild($('<span>').addClass('chunk-retry-spinner')[0]);
+        el.appendChild($('<span>').addClass('chunk-retry-text').text(text)[0]);
+        sess.retryEl = el;
+        insertBeforeActions(sess, el);
+    }
+    if (sess.sessionId === activeSessionId) scrollToBottom();
+}
+
+/**
+ * 清除重试提示（重试后成功产出内容，或本轮结束时调用）。
+ */
+function clearRetryChunk(sess) {
+    if (sess.retryEl) {
+        if (sess.retryEl.parentNode) sess.retryEl.parentNode.removeChild(sess.retryEl);
+        sess.retryEl = null;
+    }
+}
+
+/* ===== Trace Badge ===== */
+function appendTraceBadge(sess, chunk) {
+    ensureAssistantBubble(sess);
+    // 后端携带的最终答案为权威复制源，写到当前 .md-content 的 data-md-raw（与历史消息统一属性名），供复制按钮读取。
+    if (chunk.finalAnswer != null && sess.currentBubbleEl) {
+        sess.currentBubbleEl.setAttribute('data-md-raw', chunk.finalAnswer);
+    }
+    function fmtK(n) {
+        if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'm';
+        if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+        return n.toString();
+    }
+    function fmtSec(s) {
+        if (s >= 60) { var m = Math.floor(s / 60), r = s % 60; return r > 0 ? m + 'min ' + r + 's' : m + 'min'; }
+        return s + 's';
+    }
+    // 图标化：以小图标替代"输入/缓存/输出/耗时"文字标签，节省横向空间；title 保留完整中文语义以便悬停理解
+    function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function item(icon, val, tip) {
+        return '<span class="trace-item" title="' + esc(tip) + '"><span class="trace-ic">' + icon + '</span>' + esc(val) + '</span>';
+    }
+    var parts = [];
+    if (chunk.inputTokens) {
+        parts.push(item(TRACE_IN_SVG, fmtK(chunk.inputTokens), GourdI18n.t('chat.input_tokens')));
+        // 缓存读取占比通常很大（开启 Prompt Caching 后输入几乎全走缓存），单独标注避免"输入虚小"的误解
+        if (chunk.cacheReadTokens) parts.push(item(TRACE_CACHE_SVG, fmtK(chunk.cacheReadTokens), GourdI18n.t('chat.cache_read_tokens')));
+    }
+    if (chunk.outputTokens != null) parts.push(item(TRACE_OUT_SVG, fmtK(chunk.outputTokens), GourdI18n.t('chat.output_tokens')));
+    if (chunk.elapsedSeconds != null) parts.push(item(TRACE_TIME_SVG, fmtSec(chunk.elapsedSeconds), GourdI18n.t('chat.elapsed_time')));
+    if (parts.length === 0) return;
+
+    // \u521b\u5efa\u6216\u66f4\u65b0 trace \u5143\u7d20
+    var row = sess.currentBubbleEl ? $(sess.currentBubbleEl).closest('.msg-row')[0] : null;
+    if (!row) return;
+
+    var metaRow = $(row).find('.msg-meta-row')[0];
+    if (!metaRow) return;
+
+    var traceEl = $(metaRow).find('.msg-trace')[0];
+    if (traceEl) {
+        // \u5982\u679c\u5df2\u5b58\u5728\uff0c\u66f4\u65b0\u5185\u5bb9
+        traceEl.innerHTML = parts.join('');
+    } else {
+        // \u5982\u679c\u4e0d\u5b58\u5728\uff0c\u521b\u5efa\u65b0\u7684 trace \u5143\u7d20
+        var badge = $('<span>').addClass('msg-trace');
+        badge[0].innerHTML = parts.join('');
+        $(metaRow).append(badge[0]);
+    }
+
+    if (sess.sessionId === activeSessionId) scrollToBottom();
+}
+
+/* ===== Agent Card (子代理智能体卡片 — 容器型)
+   结构：
+     .agent-card (容器外壳)
+       .agent-card-header (头部：状态点 + 图标 + 标签 + 描述)
+       .agent-card-body (完整内容体 — 复用外部主智能体样式：thinking-block / tool-card / md-content)
+  
+   agent_start 创建容器并登记到 sess.agentCards，agent_end 更新状态并追加 resultSummary。
+   子代理内部复用外部主智能体的渲染流程，所有内容都插入到 .agent-card-body 内。 */
+    function appendAgentBadge(sess, chunk, isStart) {
+    var agentName = chunk.toolName || (chunk.args && chunk.args.agentName) || 'agent';
+    var desc = chunk.text || (chunk.args && chunk.args.description) || '';
+    var agentId = agentName + ':' + desc;
+            
+    // agent_end：查找已有容器并更新
+    if (!isStart) {
+        if (sess.agentCards && sess.agentCards[agentId]) {
+            var existCard = sess.agentCards[agentId];
+            var statusIcon = $(existCard).find('.agent-status-icon').first()[0];
+            var success = chunk.args && chunk.args.success !== false;
+            if (statusIcon) {
+                statusIcon.className = 'agent-status-icon ' + (success ? 'done' : 'reject');
+            }
+
+            // 强刷：确保该智能体 pending 的正文/思考都先渲染（按各自独立状态，支持并行）
+            var endState = (sess.agentStates && sess.agentStates[agentId]) || null;
+            if (endState) {
+                if (endState.bodyRafId) { cancelAnimationFrame(endState.bodyRafId); endState.bodyRafId = null; }
+                if (endState.thinkingRafId) { cancelAnimationFrame(endState.thinkingRafId); endState.thinkingRafId = null; }
+                if (endState.thinkingBlockEl && endState.thinkingBuffer) {
+                    if (endState.thinkingBodyMdEl) {
+                        endState.thinkingBodyMdEl.innerHTML = renderMd(clearThinkTags(endState.thinkingBuffer));
+                        if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(endState.thinkingBodyMdEl);
+                        if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(endState.thinkingBodyMdEl);
+                        if (typeof processMermaidBlocks === 'function') processMermaidBlocks(endState.thinkingBodyMdEl);
+                    }
+                    finishAgentThinkingBlock(sess, endState);
+                }
+                if (endState.bodyMd && endState.bodyText) {
+                    endState.bodyMd.innerHTML = renderMd(endState.bodyText);
+                    if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(endState.bodyMd);
+                    if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(endState.bodyMd);
+                    if (typeof processMermaidBlocks === 'function') processMermaidBlocks(endState.bodyMd);
+                }
+            }
+
+            // resultSummary 作为独立的 .md-content 块追加到 .agent-card-body 末尾。
+            // 去重守卫：卡片已有流式正文时（单任务 ReasonChunk 增量 / multitask ThoughtChunk 结果），
+            // resultSummary 与其同文，成功时不再追加，避免卡片内同一段内容出现两次；
+            // 失败（success=false）时 summary 承载错误信息，仍需追加。
+            var hasStreamedBody = !!(endState && endState.bodyText && endState.bodyText.trim());
+            if (chunk.args && chunk.args.resultSummary && (!success || !hasStreamedBody)) {
+                var summaryMd = $('<div>').addClass('md-content').addClass('agent-result-summary')[0];
+                summaryMd.innerHTML = renderMd(chunk.args.resultSummary);
+                if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(summaryMd);
+                if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(summaryMd);
+                if (typeof processMermaidBlocks === 'function') processMermaidBlocks(summaryMd);
+                var agentCardBody = $(existCard).find('.agent-card-body')[0];
+                if (agentCardBody) agentCardBody.appendChild(summaryMd);
+            }
+
+            $(existCard).removeClass('agent-card-streaming');
+            delete sess.agentCards[agentId];
+            if (sess.agentStates) delete sess.agentStates[agentId];
+            
+            // 恢复 currentBubbleEl：在卡片后创建新的 md-content，让主代理后续正文不跑进智能体容器
+            var newMdAfter = $('<div>').addClass('md-content')[0];
+            insertBeforeActions(sess, newMdAfter);
+            sess.currentBubbleEl = newMdAfter;
+            sess.reasonBuffer = '';
+
+            // 清除该智能体的活跃状态（仅清自己，不影响并行的其他智能体；
+            // endState 为 null 时不降级为全量清理，避免误伤并行中的其他智能体）
+            if (endState) {
+                clearAgentState(sess, endState);
+            }
+
+            if (sess.sessionId === activeSessionId) {
+                setTimeout(scrollToBottom, 50);
+            }
+            return;
+        }
+    }
+
+    // 创建容器型智能体卡片
+    var card = $('<div>').addClass('agent-card')[0];
+    if (sess.currentRunId) card.setAttribute('data-run-id', sess.currentRunId);
+    
+    var statusClass = isStart ? 'loading' : 'done';
+    var argsHtml = desc ? '<span class="tool-args">' + escapeHtml(desc) + '</span>' : '';
+    card.innerHTML = '<div class="agent-card-header">'
+        + '<span class="agent-status-icon ' + statusClass + '"></span>'
+        + '<span class="agent-icon">🤖</span>'
+        + '<span class="agent-label" data-i18n="chat.agent_label">' + GourdI18n.t('chat.agent_label') + '</span>'
+        + '<span class="agent-name">' + escapeHtml(agentName) + '</span>'
+        + argsHtml
+        + '</div>'
+        + '<div class="agent-card-body"></div>';
+    
+    if (isStart) $(card).addClass('agent-card-streaming');
+    if (window.cliPrintSimplified === false) $(card).addClass('expanded');
+    
+    $(card).find('.agent-card-header').on('click', function() {
+        $(card).toggleClass('expanded');
+    });
+        
+    insertBeforeActions(sess, card);
+
+    // 创建正文输出容器，子代理的 text/agent chunk 写入这里
+    var agentCardBody = $(card).find('.agent-card-body')[0];
+    var bodyMd = $('<div>').addClass('md-content')[0];
+    agentCardBody.appendChild(bodyMd);
+
+    // 每个智能体一份独立输出状态（支持并行 multitask，避免多卡片内容互串）
+    var agentState = {
+        id: agentId,
+        card: card,
+        bodyEl: agentCardBody,
+        bodyMd: bodyMd,
+        bodyText: '',
+        bodyRafId: null,
+        thinkingBlockEl: null,
+        thinkingBodyMdEl: null,
+        thinkingBodyWrapEl: null,
+        thinkingBuffer: '',
+        thinkingRafId: null,
+        thinkingTimerId: null,
+        thinkingStartTime: null
+    };
+    if (!sess.agentStates) sess.agentStates = {};
+    sess.agentStates[agentId] = agentState;
+    sess._agentStateLast = agentState;
+
+    // 旧单例标记（兼容 'agent' 型 chunk 等不携带 agentName 的旧路径）
+    sess._agentCardBody = agentCardBody;
+    sess._agentBodyMd = bodyMd;
+    sess._agentBodyText = '';
+    sess._agentBodyRafId = null;
+
+    // 登记到 sess.agentCards 供后续工具调用嵌套
+    if (isStart) {
+        if (!sess.agentCards) sess.agentCards = {};
+        sess.agentCards[agentId] = card;
+    }
+
+    if (sess.sessionId === activeSessionId) {
+        setTimeout(scrollToBottom, 50);
+    }
+}
+
+/* 清理子智能体相关状态。传入 st 时仅清理该智能体（并行场景互不影响）；不传则全量清理。 */
+function clearAgentState(sess, st) {
+    if (st) {
+        if (st.thinkingRafId) { cancelAnimationFrame(st.thinkingRafId); }
+        if (st.thinkingTimerId) { clearInterval(st.thinkingTimerId); }
+        if (st.bodyRafId) { cancelAnimationFrame(st.bodyRafId); }
+        if (sess.agentStates) delete sess.agentStates[st.id];
+        if (sess._agentStateLast === st) sess._agentStateLast = null;
+        if (sess._agentCardBody === st.bodyEl) {
+            sess._agentCardBody = null;
+            sess._agentBodyMd = null;
+            sess._agentBodyText = '';
+            sess._agentBodyRafId = null;
+        }
+        return;
+    }
+    // 全量清理（流重置/会话切换）
+    if (sess.agentStates) {
+        for (var k in sess.agentStates) {
+            var s = sess.agentStates[k];
+            if (s.thinkingRafId) { cancelAnimationFrame(s.thinkingRafId); }
+            if (s.thinkingTimerId) { clearInterval(s.thinkingTimerId); }
+            if (s.bodyRafId) { cancelAnimationFrame(s.bodyRafId); }
+        }
+        sess.agentStates = {};
+    }
+    sess._agentStateLast = null;
+    if (sess._agentThinkingRafId) { cancelAnimationFrame(sess._agentThinkingRafId); sess._agentThinkingRafId = null; }
+    sess._agentThinkingBlockEl = null;
+    sess._agentThinkingBodyMdEl = null;
+    sess._agentThinkingBodyWrapEl = null;
+    sess._agentThinkingBuffer = '';
+    sess._agentBodyMd = null;
+    sess._agentBodyText = '';
+    if (sess._agentBodyRafId) { cancelAnimationFrame(sess._agentBodyRafId); sess._agentBodyRafId = null; }
+    sess._agentCardBody = null;
+}
+
+/* 在子智能体块内创建 thinking-block */
+function ensureAgentThinkingBlock(sess, st) {
+    if (!st || st.thinkingBlockEl) return;
+    // 若正文缓冲区有未渲染内容，先强刷出来，确保新思考块落在旧正文之后
+    if (st.bodyText && st.bodyMd) {
+        if (st.bodyRafId) { cancelAnimationFrame(st.bodyRafId); st.bodyRafId = null; }
+        st.bodyMd.innerHTML = renderMd(st.bodyText);
+        if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(st.bodyMd);
+    }
+    // 新思考块应插到最后已有内容之后（按到达顺序），而非始终置顶
+    var block = $('<div>').addClass('thinking-block streaming')[0];
+    if (sess.currentRunId) block.setAttribute('data-run-id', sess.currentRunId);
+    if (window.cliPrintSimplified === false) $(block).addClass('expanded');
+    block.innerHTML = '<div class="thinking-block-header">'
+        + '<span class="tool-type-icon">🧠</span>'
+        + '<span class="thinking-block-label" data-i18n-thinking="progress">' + GourdI18n.t('chat.thinking_in_progress') + '</span>'
+        + '<span class="thinking-timer-wrap" style="margin-left:4px">'
+        + '<span class="thinking-current-timer">0s</span></span>'
+        + '<span class="thinking-status-dot"></span></div>'
+        + '<div class="thinking-block-body"><div class="md-content"></div></div>';
+    $(block).find('.thinking-block-header').on('click', function() { $(block).toggleClass('expanded'); });
+    st.bodyEl.appendChild(block);
+    st.thinkingBlockEl = block;
+    st.thinkingBodyMdEl = $(block).find('.thinking-block-body .md-content')[0];
+    st.thinkingBodyWrapEl = $(block).find('.thinking-block-body')[0];
+    st.thinkingBuffer = '';
+    $(st.thinkingBodyWrapEl).on('scroll', function() {
+        var gap = st.thinkingBodyWrapEl.scrollHeight - st.thinkingBodyWrapEl.scrollTop - st.thinkingBodyWrapEl.clientHeight;
+        sess.thinkingUserScrolledUp = gap > 60;
+    });
+    var currentTimerSpan = $(block).find('.thinking-current-timer')[0];
+    st.thinkingStartTime = Date.now();
+    if (st.thinkingTimerId) clearInterval(st.thinkingTimerId);
+    st.thinkingTimerId = setInterval(function() {
+        if (!currentTimerSpan || !currentTimerSpan.parentNode) { clearInterval(st.thinkingTimerId); st.thinkingTimerId = null; return; }
+        $(currentTimerSpan).text(Math.floor((Date.now() - st.thinkingStartTime) / 1000) + 's');
+    }, 1000);
+}
+
+/* 结束子智能体的 thinking-block。不传 st 时结束所有正打开的智能体思考块。 */
+function finishAgentThinkingBlock(sess, st) {
+    if (!st) {
+        if (sess.agentStates) {
+            for (var k in sess.agentStates) {
+                if (sess.agentStates[k].thinkingBlockEl) finishAgentThinkingBlock(sess, sess.agentStates[k]);
+            }
+        }
+        return;
+    }
+    if (!st.thinkingBlockEl) return;
+    if (st.thinkingTimerId) { clearInterval(st.thinkingTimerId); st.thinkingTimerId = null; }
+    $(st.thinkingBlockEl).removeClass('streaming');
+    var elapsed = '';
+    if (st.thinkingStartTime) elapsed = ' (' + Math.floor((Date.now() - st.thinkingStartTime) / 1000) + 's)';
+    var label = $(st.thinkingBlockEl).find('.thinking-block-label')[0];
+    if (label) { $(label).text(GourdI18n.t('chat.thinking_finished') + elapsed); label.setAttribute('data-i18n-thinking', 'finished'); label.setAttribute('data-i18n-elapsed', elapsed); }
+    $(st.thinkingBlockEl).find('.thinking-block-dots').remove();
+    $(st.thinkingBlockEl).find('.thinking-timer-wrap').remove();
+    st.thinkingBlockEl = null; st.thinkingBodyMdEl = null; st.thinkingBodyWrapEl = null; st.thinkingBuffer = '';
+}
+
+/* 子代理 reason chunk → thinking-block */
+function appendAgentReasonChunk(sess, text, st) {
+    if (!st) return;
+    ensureAgentThinkingBlock(sess, st);
+    st.thinkingBuffer += clearThinkTags(text);
+    if (!st.thinkingRafId) {
+        st.thinkingRafId = requestAnimationFrame(function() {
+            st.thinkingRafId = null;
+            if (!st.thinkingBlockEl) return;
+            if (st.thinkingBodyMdEl) st.thinkingBodyMdEl.innerHTML = renderMd(st.thinkingBuffer);
+            if (st.thinkingBodyWrapEl && !sess.thinkingUserScrolledUp) st.thinkingBodyWrapEl.scrollTop = st.thinkingBodyWrapEl.scrollHeight;
+            if (sess.sessionId === activeSessionId && !userScrolledUp && messagesWrap) messagesWrap.scrollTop = messagesWrap.scrollHeight;
+        });
+    }
+}
+
+/* 子代理正文 chunk → md-content (节流渲染) */
+function appendAgentBodyContent(sess, text, st) {
+    if (!st) st = sess._agentStateLast;
+    if (!st || !st.bodyMd) return;
+    st.bodyText = (st.bodyText || '') + text;
+    if (!st.bodyRafId) {
+        st.bodyRafId = requestAnimationFrame(function() {
+            st.bodyRafId = null;
+            var body = st.bodyMd;
+            if (body && document.contains(body)) {
+                body.innerHTML = renderMd(st.bodyText);
+                addCodeBlockButtons(body);
+            }
+            if (sess.sessionId === activeSessionId && !userScrolledUp && messagesWrap) messagesWrap.scrollTop = messagesWrap.scrollHeight;
+        });
+    }
+}
+
+/* ===== Command Output ===== */
+function appendCommandOutput(sess, text) {
+    ensureAssistantBubble(sess);
+    var mdEl = $('<div>').addClass('md-content')[0];
+    mdEl.innerHTML = renderMd(text);
+    if (typeof processMermaidBlocks === 'function') processMermaidBlocks(mdEl);
+    insertBeforeActions(sess, mdEl);
+    if (sess.sessionId === activeSessionId) scrollToBottom();
+}
+
+/* ===== Thinking Indicators ===== */
+function startThinkingTimer(sess, timerKey, startTimeKey, labelEl, anchorTime) {
+    // anchorTime 用于让计时锚定整段响应起点（sess.messageStartTime），
+    // 这样指示器反复显隐时秒数保持连续，不会从 0 重来。
+    sess[startTimeKey] = anchorTime || Date.now();
+    if (sess[timerKey]) clearInterval(sess[timerKey]);
+    function tick() {
+        if (!labelEl || !labelEl.parentNode) { clearInterval(sess[timerKey]); sess[timerKey] = null; return; }
+        var elapsed = Math.floor((Date.now() - sess[startTimeKey]) / 1000);
+        $(labelEl).text(elapsed + 's');
+    }
+    tick();
+    sess[timerKey] = setInterval(tick, 1000);
+}
+
+function stopThinkingTimer(sess, timerKey, startTimeKey) {
+    if (sess[timerKey]) { clearInterval(sess[timerKey]); sess[timerKey] = null; }
+    sess[startTimeKey] = null;
+}
+
+// 双计时器版本：同时更新当前思考计时和总时间计时
+// currentTimerSpan: 显示当前思考阶段的时间
+// totalTimerSpan: 显示从消息开始到现在的总时间
+function startThinkingTimerDual(sess, timerKey, startTimeKey, currentTimerSpan, totalTimerSpan) {
+    sess[startTimeKey] = Date.now();
+    if (sess[timerKey]) clearInterval(sess[timerKey]);
+    function tick() {
+        if (!currentTimerSpan || !currentTimerSpan.parentNode) { clearInterval(sess[timerKey]); sess[timerKey] = null; return; }
+        var now = Date.now();
+        // 当前思考阶段时间
+        var currentElapsed = Math.floor((now - sess[startTimeKey]) / 1000);
+        $(currentTimerSpan).text(currentElapsed + 's');
+        // 总时间（从消息发送开始）
+        if (totalTimerSpan && sess.messageStartTime) {
+            var totalElapsed = Math.floor((now - sess.messageStartTime) / 1000);
+            $(totalTimerSpan).text(totalElapsed + 's');
+        }
+    }
+    tick();
+    sess[timerKey] = setInterval(tick, 1000);
+}
+
+// 启动等待指示器：尚无气泡时，在消息区独立显示一行「圆点 + Ns」（无文字）
+function showThinking(sess) {
+    removeThinking(sess);
+    sess.thinkingEl = $('<div>').addClass('thinking-row')[0];
+    sess.thinkingEl.innerHTML = '<div class="thinking-bubble">' + DOTS_HTML 
+        + '<span class="thinking-timer-wrap">'
+        + '<span class="thinking-current-timer">0s</span>'
+        + '</span></div>';
+    $(sess.container).append(sess.thinkingEl);
+    var currentTimerSpan = $(sess.thinkingEl).find('.thinking-current-timer')[0];
+    startThinkingTimerDual(sess, 'thinkingTimerId', 'thinkingStartTime', currentTimerSpan, null);
+    if (sess.sessionId === activeSessionId) scrollToBottom(true);
+}
+function removeThinking(sess) {
+    stopThinkingTimer(sess, 'thinkingTimerId', 'thinkingStartTime');
+    if (sess.thinkingEl) { $(sess.thinkingEl).remove(); sess.thinkingEl = null; }
+}
+
+// 气泡内的间隙等待指示器（「圆点 + Ns」，无文字）。
+// 关键：元素一旦创建便常驻气泡底部（actions 之前），不可见时用 visibility:hidden 占位，
+// 避免显隐导致的高度跳动；流式结束时再由 purgeInlineThinking 彻底移除。
+function ensureInlineThinking(sess) {
+    if (!sess.currentBubbleEl) return null;
+    if (sess.inlineThinkingEl && sess.inlineThinkingEl.parentNode) return sess.inlineThinkingEl;
+    var el = $('<div>').addClass('inline-thinking hidden-reserve')[0];
+    el.innerHTML = DOTS_HTML + '<span class="thinking-timer-wrap">'
+        + '<span class="thinking-current-timer">0s</span>'
+        + '</span>';
+    sess.inlineThinkingEl = el;
+    // 指示器固定在正文底部、页脚（meta 行/操作按钮）之上，使正文与用量行的相对顺序恒为「正文 → meta」。
+    var bubble = sess.currentBubbleEl.parentNode;
+    var footer = $(bubble).find('.msg-meta-row').first()[0] || $(bubble).find('.msg-actions').first()[0];
+    if (footer) $(footer).before(el);
+    return el;
+}
+function showInlineThinking(sess) {
+    var el = ensureInlineThinking(sess);
+    if (!el) return;
+    $(el).removeClass('hidden-reserve');
+    var currentTimerSpan = $(el).find('.thinking-current-timer')[0];
+    startThinkingTimerDual(sess, 'inlineThinkingTimerId', 'inlineThinkingStartTime', currentTimerSpan, null);
+    if (sess.sessionId === activeSessionId) scrollToBottom();
+}
+function removeInlineThinking(sess) {
+    stopThinkingTimer(sess, 'inlineThinkingTimerId', 'inlineThinkingStartTime');
+    if (sess.inlineThinkingEl) { $(sess.inlineThinkingEl).addClass('hidden-reserve'); }
+}
+function purgeInlineThinking(sess) {
+    stopThinkingTimer(sess, 'inlineThinkingTimerId', 'inlineThinkingStartTime');
+    if (sess.inlineThinkingEl) { $(sess.inlineThinkingEl).remove(); sess.inlineThinkingEl = null; }
+}
+
+/* ===== HITL ===== */
+function appendHitlCard(sess, toolName, command) {
+    ensureAssistantBubble(sess);
+
+    // 采用 tool-card 视觉体系：审批通过后原地复用为工具结果卡片
+    var argsHtml = command ? '<span class="tool-args">' + escapeHtml(command) + '</span>' : '';
+    var card = $('<div>').addClass('tool-card hitl-pending expanded')[0];
+    // 存储当前 runId，用于后续删除同一运行的消息
+    if (sess.currentRunId) {
+        card.setAttribute('data-run-id', sess.currentRunId);
+    }
+    card.innerHTML = '<div class="tool-card-header">'
+        + '<span class="tool-status-icon warn"><i class="layui-icon layui-icon-tips" style="font-size:13px"></i></span>'
+        + '<span class="tool-name">' + GourdI18n.t('chat.need_auth') + escapeHtml(toolName || 'unknown') + '</span>'
+        + argsHtml
+        + '</div>'
+        + '<div class="tool-card-body">' + (command ? escapeHtml(command) : GourdI18n.t('chat.waiting_auth')) + '</div>'
+        + '<div class="hitl-card-actions">'
+        + '<button class="hitl-btn hitl-btn-approve" data-i18n="chat.approve">' + GourdI18n.t('chat.approve') + '</button>'
+        + '<button class="hitl-btn hitl-btn-reject" data-i18n="chat.reject">' + GourdI18n.t('chat.reject') + '</button>'
+        + '</div>';
+    (function() {
+        var hn = $(card).find('.tool-name')[0];
+        if (hn) { hn.setAttribute('data-i18n-hitl', 'need_auth'); hn.setAttribute('data-i18n-hitl-tool', toolName || 'unknown'); }
+    })();
+
+    $(card).find('.tool-card-header').on('click', function() {
+        $(card).toggleClass('expanded');
+    });
+
+    insertBeforeActions(sess, card);
+
+    var approveBtn = $(card).find('.hitl-btn-approve')[0];
+    var rejectBtn = $(card).find('.hitl-btn-reject')[0];
+
+    $(approveBtn).on('click', function() {
+        approveBtn.disabled = true;
+        rejectBtn.disabled = true;
+        // 转为"执行中"，标记后续 action 结果复用此卡片
+        var icon = $(card).find('.tool-status-icon')[0];
+        if (icon) { icon.className = 'tool-status-icon loading'; icon.innerHTML = ''; }
+        $(card).find('.hitl-card-actions').remove();
+        $(card).removeClass('hitl-pending');
+        sess.approvedToolCard = card;
+        handleHitlResponse(sess, 'approve');
+    });
+
+    $(rejectBtn).on('click', function() {
+        approveBtn.disabled = true;
+        rejectBtn.disabled = true;
+        var icon = $(card).find('.tool-status-icon')[0];
+        if (icon) { icon.className = 'tool-status-icon reject'; icon.innerHTML = ''; }
+        $(card).find('.tool-name').text(GourdI18n.t('chat.rejected') + (toolName || 'unknown'));
+        (function() { var hn = $(card).find('.tool-name')[0]; if (hn) { hn.setAttribute('data-i18n-hitl', 'rejected'); hn.setAttribute('data-i18n-hitl-tool', toolName || 'unknown'); } })();
+        $(card).find('.hitl-card-actions').remove();
+        $(card).removeClass('hitl-pending expanded');
+        sess.approvedToolCard = null;
+        handleHitlResponse(sess, 'reject');
+    });
+
+    if (sess.sessionId === activeSessionId) scrollToBottom();
+}
+
+function handleHitlResponse(sess, action) {
+    if (sess.eventSource) { sess.eventSource.close(); sess.eventSource = null; }
+    resetStreamState(sess);
+
+    sess.isStreaming = true;
+    if (sess.sessionId === activeSessionId) {
+        isStreaming = true;
+        setBtnStopMode();
+    }
+    showThinking(sess);
+
+    // 通过 HTTP POST 发送 HITL 决策，结果通过 WebSocket 推送
+    var formData = new FormData();
+    formData.append('hitlAction', action);
+    formData.append('sessionId', sess.sessionId);
+
+    fetch(SSE_ENDPOINT, {
+        method: 'POST',
+        body: formData
+    }).then(function(resp) {
+        // HTTP 响应只有 {"status":"ok"}，实际数据通过 WebSocket 推送
+    }).catch(function(err) {
+        console.error('HITL error:', err);
+        // 通过回调占位调用 finishStream（由 app-streaming.js 注册）
+        if (onFinishStream) onFinishStream(sess);
+    });
+}
+
+/* ===== Rewind Handling ===== */
+function handleRewind(sess, count) {
+    if (count <= 0) return;
+    // count = 要删除的消息条数，从末尾倒序删除
+    var toRemove = count;
+    var rows = $(sess.container).find('.msg-row');
+    var actual = Math.min(toRemove, rows.length);
+    for (var i = 0; i < actual; i++) {
+        $(rows[rows.length - 1]).remove();
+        rows = $(sess.container).find('.msg-row');
+    }
+    resetStreamState(sess);
+    if (sess.sessionId === activeSessionId) scrollToBottom(true);
+}
+
+/* ===== Code Block Copy Buttons ===== */
+function addCodeBlockButtons(container) {
+    if (!container) return;
+    var pres = $(container).find('pre');
+    for (var i = 0; i < pres.length; i++) {
+        if ($(pres[i]).find('.code-copy-btn').length) continue;
+        var btn = $('<button>').addClass('code-copy-btn').text(GourdI18n.t('chat.copy'))[0];
+        $(btn).on('click', function(e) {
+            e.stopPropagation();
+            var pre = $(this).closest('pre')[0];
+            var code = pre ? $(pre).find('code')[0] : null;
+            var text = code ? $(code).text() : (pre ? $(pre).text() : '');
+            var self = this;
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(function() {
+                    $(self).text(GourdI18n.t('chat.copy_success')).addClass('copied');
+                    setTimeout(function() {
+                        $(self).text(GourdI18n.t('chat.copy')).removeClass('copied');
+                    }, 1500);
+                });
+            }
+        });
+        $(pres[i]).append(btn);
+    }
+}
+
+/* ===== Image Lightbox ===== */
+function addImageLightbox(container) {
+    if (!container) return;
+    var imgs = $(container).find('.msg-bubble img, .md-content img');
+    for (var i = 0; i < imgs.length; i++) {
+        if ($(imgs[i]).data('lightbox')) continue;
+        $(imgs[i]).data('lightbox', '1');
+        imgs[i].style.cursor = 'zoom-in';
+        $(imgs[i]).on('click', function(e) {
+            e.stopPropagation();
+            openLightbox(this.src);
+        });
+    }
+}
+
+function openLightbox(src) {
+    var overlay = $('<div>').addClass('lightbox-overlay')[0];
+    var img = $('<img>').attr('src', src)[0];
+    $(overlay).append(img);
+    $(overlay).on('click', function() {
+        $(overlay).remove();
+    });
+    $(document).on('keydown', function handler(e) {
+        if (e.key === 'Escape') {
+            $(overlay).remove();
+            $(document).off('keydown', handler);
+        }
+    });
+    $(document.body).append(overlay);
+}
+
+/* ===== 动态标签的语言切换重译 =====
+   工具卡/思考块/批量分组/HITL 等在流式渲染时把译文写死进 DOM 文本节点，不带 data-i18n，
+   translateDOM 扫不到；语言切换时按渲染阶段存下的原始数据（工具名/状态/耗时）用新语言重建。
+   .agent-label、HITL 审批按钮为纯 key 独占元素，已加 data-i18n 交由 translateDOM 处理，此处不含。 */
+function tagToolName(el, toolName, toolTitle) {
+    if (!el) return;
+    el.setAttribute('data-i18n-tool', toolName == null ? '' : toolName);
+    if (toolTitle) el.setAttribute('data-i18n-tooltitle', toolTitle);
+    else el.removeAttribute('data-i18n-tooltitle');
+}
+window.tagToolName = tagToolName;
+
+function relocalizeDynamicLabels() {
+    if (!window.GourdI18n) return;
+    document.querySelectorAll('.tool-name[data-i18n-tool]').forEach(function(el) {
+        el.textContent = localizeToolName(el.getAttribute('data-i18n-tool'), el.getAttribute('data-i18n-tooltitle') || null);
+    });
+    document.querySelectorAll('.tool-name[data-i18n-hitl]').forEach(function(el) {
+        el.textContent = GourdI18n.t('chat.' + el.getAttribute('data-i18n-hitl')) + (el.getAttribute('data-i18n-hitl-tool') || 'unknown');
+    });
+    document.querySelectorAll('.tool-batch-title[data-i18n-batch-tool]').forEach(function(el) {
+        var tn = el.getAttribute('data-i18n-batch-tool');
+        var c = el.getAttribute('data-i18n-batch-count') || '0';
+        el.textContent = GourdI18n.t('chat.batch_tool') + localizeToolName(tn, null) + ' · ' + c + ' ' + GourdI18n.t('chat.items');
+    });
+    document.querySelectorAll('.thinking-block-label[data-i18n-thinking]').forEach(function(el) {
+        var st = el.getAttribute('data-i18n-thinking');
+        var suffix = el.getAttribute('data-i18n-elapsed') || '';
+        el.textContent = GourdI18n.t(st === 'finished' ? 'chat.thinking_finished' : 'chat.thinking_in_progress') + suffix;
+    });
+}
+window.relocalizeDynamicLabels = relocalizeDynamicLabels;
+document.addEventListener('i18n:localeChanged', relocalizeDynamicLabels);

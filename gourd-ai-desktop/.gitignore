@@ -1,0 +1,15 @@
+# Node
+node_modules/
+package-lock.json
+
+# Electron Builder 输出
+out/
+
+# 构建时生成的资源（JAR + JRE + UI），不入版本控制
+build/extraResources/gourd-ai-agent.jar
+build/extraResources/jre/
+build/ui/
+
+# OS
+.DS_Store
+Thumbs.db

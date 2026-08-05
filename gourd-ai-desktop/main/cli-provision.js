@@ -1,0 +1,435 @@
+'use strict';
+
+/**
+ * cli-provision.js —— 桌面端「注册终端命令」
+ *
+ * 目的：桌面版安装后，用户在 cmd / PowerShell / Git Bash 里也能直接敲
+ *       `gourdai cli`、`gourdai web 0`、`gourdai run '你好'`，与旧的 CLI 安装模式一致。
+ *
+ * 关键点（与 CLI 安装模式的本质区别）：
+ * - 桌面端**自带完整 JRE**（extraResources/jre）与 `gourd-ai-agent.jar`（同一个 App 主类，
+ *   完整支持 cli/web/run/serve 子命令）。所以启动器**直接硬编码指向自带 java.exe + jar**，
+ *   全程**不检测系统 Java**（正是需求所强调的：有自己的 JRE，不用额外找 Java）。
+ * - 启动器写入安装目录的 `.gourdai/bin`（与后端 user.dir 下的 .gourdai 一致），
+ *   并把该目录加入用户 PATH。
+ * - 幂等自愈：每次 App 启动都重写启动器（安装目录变化/升级后自动刷新指向），PATH 已有则不动。
+ * - 全程 try/catch，任何失败都只告警、绝不影响 App 启动。
+ *
+ * 卸载：provision 时顺带写入自解释的卸载助手（win: desktop-cli-uninstall.ps1），
+ *       NSIS customUnInstall 会调用它删除启动器 + PATH 项（见 cmd/installer.nsh）。
+ *       助手带「只删我们打的 sentinel 标记、且与 CLI 安装共存时不误删」的保护逻辑。
+ */
+
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { execFile } = require('child_process');
+const { getResourcesDir } = require('./backend');
+
+// 启动器里埋的标记：卸载助手据此判断「这是桌面端写的」，避免误删 CLI 安装模式的启动器
+const SENTINEL = 'gourd-ai-desktop-provisioned';
+const HARNESS_HOME = '.gourdai';
+
+const IS_WIN = process.platform === 'win32';
+
+/**
+ * 是否运行于 Linux AppImage。
+ * AppImage 运行时把包挂载到**临时随机目录**（/tmp/.mount_XXXXXX/），每次启动都变、退出即卸载，
+ * 故 process.resourcesPath 指向的是短命路径。若把它烤进常驻启动器，App 关闭后路径即失效。
+ * → AppImage 环境直接跳过终端命令注册（deb 包 / CLI 安装模式有稳定路径，不受影响）。
+ * 判据：AppImage 运行时会注入 APPIMAGE(=.AppImage 文件绝对路径) 与 APPDIR(=挂载点) 环境变量。
+ */
+function isAppImage() {
+  return process.platform === 'linux' && !!(process.env.APPIMAGE || process.env.APPDIR);
+}
+
+function getUserHome() {
+  return IS_WIN ? (process.env.USERPROFILE || os.homedir()) : (process.env.HOME || os.homedir());
+}
+
+/**
+ * 启动器/PATH 落盘根：统一为<b>安装目录</b>（extraResources），与后端 Java 侧
+ * ({@code user.dir} 下的 .gourdai) 一致，不再写用户主目录 ~/.gourdai。
+ */
+function getHarnessBase() {
+  return getResourcesDir();
+}
+
+function getBinDir() {
+  return path.join(getHarnessBase(), HARNESS_HOME, 'bin');
+}
+
+/**
+ * 自带 JRE 的**控制台版** java 可执行文件（CLI 需要 stdin/stdout，必须用 java 而非 javaw）。
+ * @returns {string|null}
+ */
+function getBundledJava() {
+  const javaName = IS_WIN ? 'java.exe' : 'java';
+  const p = path.join(getResourcesDir(), 'jre', 'bin', javaName);
+  return fs.existsSync(p) ? p : null;
+}
+
+/**
+ * 自带的 gourd-ai-agent.jar
+ * @returns {string|null}
+ */
+function getBundledJar() {
+  const p = path.join(getResourcesDir(), 'gourd-ai-agent.jar');
+  return fs.existsSync(p) ? p : null;
+}
+
+/**
+ * 读取自带 JRE 的主版本号（从 jre/release 的 JAVA_VERSION 解析）。
+ * 用于决定是否追加 --enable-native-access=ALL-UNNAMED（仅 Java 21+ 认识，
+ * 老版本会因「无法识别的选项」直接启动失败，故只在确认 >=21 时才加）。
+ * @returns {number|null}
+ */
+function getBundledJavaMajor() {
+  try {
+    const releaseFile = path.join(getResourcesDir(), 'jre', 'release');
+    const text = fs.readFileSync(releaseFile, 'utf8');
+    const m = text.match(/JAVA_VERSION="?(\d+)/);
+    if (m) return parseInt(m[1], 10);
+  } catch (e) {
+    /* ignore */
+  }
+  return null;
+}
+
+/**
+ * 组装 JVM 参数（编码统一 UTF-8；21+ 追加 native-access）。
+ * @param {number|null} major
+ * @returns {string[]}
+ */
+function buildJavaOpts(major) {
+  const opts = [
+    '-Dfile.encoding=UTF-8',
+    '-Dstdout.encoding=UTF-8',
+    '-Dstderr.encoding=UTF-8',
+    '-Dstdin.encoding=UTF-8',
+  ];
+  if (typeof major === 'number' && major >= 21) {
+    opts.push('--enable-native-access=ALL-UNNAMED');
+  }
+  return opts;
+}
+
+// ── 启动器脚本内容 ─────────────────────────────────────────────────────────
+
+/** CMD/.bat 启动器（Windows 原生控制台） */
+function batContent(javaPath, jarPath, javaOpts, homeDir) {
+  // -Dgourdai.home 需整体加引号：安装路径常含空格（如 C:\Program Files\...），否则会被拆成多个参数
+  const homeOpt = '"-Dgourdai.home=' + homeDir + '"';
+  return [
+    '@echo off',
+    'rem ' + SENTINEL,
+    'rem Gourd AI CLI Launcher (Desktop bundled JRE) —— 由桌面端自动生成，勿手改',
+    'setlocal',
+    'rem 自愈：App 已卸载/移动（自带 JAR 不在）→ 提示并退出（NSIS 卸载器会清理启动器与 PATH）',
+    'if not exist "' + jarPath + '" (',
+    '    echo gourdai: Gourd AI 桌面端运行时未找到，可能已卸载或移动安装目录。1>&2',
+    '    exit /b 127',
+    ')',
+    '"' + javaPath + '" ' + javaOpts.join(' ') + ' ' + homeOpt + ' -jar "' + jarPath + '" %*',
+  ].join('\r\n') + '\r\n';
+}
+
+/** PowerShell 启动器（gourdai.ps1） */
+function ps1Content(javaPath, jarPath, javaOpts, homeDir) {
+  // 单引号字面量整体传递，避免安装路径含空格被 PowerShell 拆分为多参数
+  const homeOpt = "'-Dgourdai.home=" + homeDir + "'";
+  return [
+    '# ' + SENTINEL,
+    '# Gourd AI CLI Launcher (Desktop bundled JRE) —— 由桌面端自动生成，勿手改',
+    'param([Parameter(ValueFromRemainingArguments)]$RestArgs)',
+    'try {',
+    '    $OutputEncoding = [System.Text.Encoding]::UTF8',
+    '    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
+    '    [Console]::InputEncoding = [System.Text.Encoding]::UTF8',
+    '} catch {}',
+    'if (-not (Test-Path -LiteralPath "' + jarPath + '")) {',
+    '    [Console]::Error.WriteLine("gourdai: Gourd AI 桌面端运行时未找到，可能已卸载或移动安装目录。")',
+    '    exit 127',
+    '}',
+    '& "' + javaPath + '" ' + javaOpts.join(' ') + ' ' + homeOpt + ' -jar "' + jarPath + '" @RestArgs',
+    'exit $LASTEXITCODE',
+  ].join('\r\n') + '\r\n';
+}
+
+/**
+ * Git Bash / WSL / macOS / Linux 启动器（无扩展名 gourdai）。
+ * Windows 下把反斜杠路径转成正斜杠（Java 与 bash 均接受），并复用 CLI 安装模式的
+ * winpty 逻辑保证交互式行编辑正常。
+ *
+ * **自愈卸载**：mac 的 .dmg 拖拽卸载、以及权限受限场景都没有卸载钩子能清理用户目录里的
+ * 启动器。故启动器自身在运行前先探测自带 JAR 是否还在：若 App 已被删除（JAR 不存在）
+ * 且不存在 CLI 安装模式（gourd-ai-agent.jar），就删掉桌面端写的启动器并提示，避免留下死命令。
+ */
+function shContent(javaPath, jarPath, javaOpts, homeDir) {
+  const j = IS_WIN ? javaPath.replace(/\\/g, '/') : javaPath;
+  const jar = IS_WIN ? jarPath.replace(/\\/g, '/') : jarPath;
+  const bin = (IS_WIN ? getBinDir().replace(/\\/g, '/') : getBinDir());
+  // Java 在 Windows 上亦接受正斜杠；转换后避免反斜杠在 bash 里被转义
+  const home = IS_WIN ? homeDir.replace(/\\/g, '/') : homeDir;
+  const optStr = javaOpts.join(' ');
+  return [
+    '#!/bin/bash',
+    '# ' + SENTINEL,
+    '# Gourd AI CLI Launcher (Desktop bundled JRE) —— 由桌面端自动生成，勿手改',
+    'JAVA="' + j + '"',
+    'JAR="' + jar + '"',
+    'JAVA_OPTS="' + optStr + '"',
+    // -Dgourdai.home 单独成变量并在 exec 时加引号传参，避免安装路径含空格被词拆分
+    'HOME_OPT="-Dgourdai.home=' + home + '"',
+    '# 自愈：App 已卸载（自带 JAR 不在）→ 清掉桌面端写的启动器后优雅退出',
+    'if [ ! -f "$JAR" ]; then',
+    '    BIN="' + bin + '"',
+    '    if [ ! -f "$BIN/gourd-ai-agent.jar" ]; then',
+    '        for n in gourdai gourdai.bat gourdai.ps1 desktop-cli-uninstall.sh; do',
+    '            f="$BIN/$n"',
+    '            if [ -f "$f" ] && grep -qF "' + SENTINEL + '" "$f" 2>/dev/null; then rm -f "$f"; fi',
+    '        done',
+    '        rm -f "$BIN/desktop-cli-uninstall.sh" 2>/dev/null',
+    '    fi',
+    '    echo "gourdai: Gourd AI 桌面端似乎已卸载（未找到运行时）。已自动清理该命令。" >&2',
+    '    exit 127',
+    'fi',
+    '# Git Bash / MSYS 终端需要 winpty 才能正确处理行编辑',
+    'if [ -n "$MSYSTEM" ]; then',
+    '    JAVA_OPTS="$JAVA_OPTS -Djline.terminal.type=xterm-256color"',
+    '    if [ -t 0 ] && [ -t 1 ] && command -v winpty >/dev/null 2>&1; then',
+    '        exec winpty "$JAVA" $JAVA_OPTS "$HOME_OPT" -jar "$JAR" "$@"',
+    '    fi',
+    'fi',
+    'exec "$JAVA" $JAVA_OPTS "$HOME_OPT" -jar "$JAR" "$@"',
+    '',
+  ].join('\n');
+}
+
+// ── 卸载助手内容 ───────────────────────────────────────────────────────────
+
+/**
+ * Windows 卸载助手（desktop-cli-uninstall.ps1）。
+ * 写在安装目录的 .gourdai\bin（与启动器同处）；由 NSIS customUnInstall 在删除应用文件<b>之前</b>调用。
+ * 逻辑：只删带 sentinel 的启动器；与 CLI 安装模式共存（存在 gourd-ai-agent.jar）时保留 PATH；
+ *       清理干净后自删。
+ */
+function uninstallPs1Content() {
+  const binDir = getBinDir();
+  return [
+    '# Gourd AI 桌面端 CLI 命令卸载助手（由桌面端自动生成）',
+    '$ErrorActionPreference = "SilentlyContinue"',
+    '$bin = ' + JSON.stringify(binDir),
+    '$sentinel = "' + SENTINEL + '"',
+    '$names = @("gourdai.bat","gourdai.ps1","gourdai")',
+    '$hasCli = Test-Path (Join-Path $bin "gourd-ai-agent.jar")',
+    'foreach ($n in $names) {',
+    '    $f = Join-Path $bin $n',
+    '    if (Test-Path $f) {',
+    '        $c = Get-Content -Raw -LiteralPath $f',
+    '        if ($c -match $sentinel) { Remove-Item -Force -LiteralPath $f }',
+    '    }',
+    '}',
+    '# 仅当没有其它启动器、且不存在 CLI 安装（gourd-ai-agent.jar）时，才摘除 PATH 项',
+    '$remain = $false',
+    'foreach ($n in $names) { if (Test-Path (Join-Path $bin $n)) { $remain = $true } }',
+    'if ($hasCli) { $remain = $true }',
+    'if (-not $remain) {',
+    '    $p = [Environment]::GetEnvironmentVariable("Path","User")',
+    '    if ($p) {',
+    '        $target = $bin.TrimEnd("\\")',
+    '        $parts = $p -split ";" | Where-Object { $_ -and ($_.TrimEnd("\\") -ne $target) }',
+    '        [Environment]::SetEnvironmentVariable("Path", ($parts -join ";"), "User")',
+    '    }',
+    '}',
+    '# 助手自删',
+    'try { Remove-Item -Force -LiteralPath $MyInvocation.MyCommand.Path } catch {}',
+    '',
+  ].join('\r\n');
+}
+
+/**
+ * Unix 卸载助手（desktop-cli-uninstall.sh）。mac/linux 的包卸载器（AppImage 无、deb 需 postrm）
+ * 暂未自动挂接，此助手供用户手动执行。逻辑与 Windows 版一致。
+ */
+function uninstallShContent() {
+  const binDir = getBinDir();
+  return [
+    '#!/bin/bash',
+    '# Gourd AI 桌面端 CLI 命令卸载助手（由桌面端自动生成）',
+    'BIN="' + binDir + '"',
+    'SENTINEL="' + SENTINEL + '"',
+    'for n in gourdai gourdai.bat gourdai.ps1; do',
+    '    f="$BIN/$n"',
+    '    if [ -f "$f" ] && grep -qF "$SENTINEL" "$f" 2>/dev/null; then rm -f "$f"; fi',
+    'done',
+    '# 从各 shell rc 文件移除桌面端追加的 PATH 段',
+    'for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do',
+    '    [ -f "$rc" ] || continue',
+    '    if grep -qF "# Gourd AI Desktop CLI" "$rc" 2>/dev/null; then',
+    '        tmp="$(mktemp)"',
+    '        grep -vF "# Gourd AI Desktop CLI" "$rc" | grep -vF ".gourdai/bin" > "$tmp" && mv "$tmp" "$rc"',
+    '    fi',
+    'done',
+    '',
+  ].join('\n');
+}
+
+// ── 写文件（统一封装，控制换行/权限）─────────────────────────────────────────
+
+function writeScript(filePath, content, executable) {
+  fs.writeFileSync(filePath, content, { encoding: 'utf8' });
+  if (executable && !IS_WIN) {
+    try { fs.chmodSync(filePath, 0o755); } catch (e) { /* ignore */ }
+  }
+}
+
+// ── PATH 注册 ──────────────────────────────────────────────────────────────
+
+/**
+ * Windows：通过 PowerShell 的 .NET API 把安装目录的 .gourdai\bin 加入用户 PATH（幂等）。
+ * 用 -EncodedCommand 传脚本，彻底规避引号转义问题；.NET SetEnvironmentVariable
+ * 会广播 WM_SETTINGCHANGE，新开的终端即可生效（避免 setx 的 1024 字符截断坑）。
+ * @returns {Promise<void>}
+ */
+function ensurePathWindows() {
+  // 安装目录下的 .gourdai\bin（与后端一致）；用字面量注入 PowerShell，规避转义
+  const binDir = getBinDir();
+  const psScript = [
+    '$d = ' + JSON.stringify(binDir),
+    '$p = [Environment]::GetEnvironmentVariable("Path","User")',
+    'if ([string]::IsNullOrEmpty($p)) {',
+    '    [Environment]::SetEnvironmentVariable("Path", $d, "User")',
+    '} elseif (($p -split ";" | ForEach-Object { $_.TrimEnd("\\") }) -notcontains $d.TrimEnd("\\")) {',
+    '    [Environment]::SetEnvironmentVariable("Path", ($p.TrimEnd(";") + ";" + $d), "User")',
+    '}',
+  ].join('\n');
+  const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
+  return new Promise((resolve) => {
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
+      { windowsHide: true, timeout: 15000 },
+      (err) => {
+        if (err) console.warn('[cli-provision] 配置用户 PATH 失败:', err.message);
+        resolve();
+      }
+    );
+  });
+}
+
+/**
+ * Unix：把 PATH 段追加到对应 shell 的 rc 文件（幂等，靠 marker 判重）。
+ */
+function ensurePathUnix() {
+  const home = getUserHome();
+  const binDir = getBinDir();
+  const marker = '# Gourd AI Desktop CLI';
+  const line = 'export PATH="$PATH:' + binDir + '"';
+  const shell = path.basename(process.env.SHELL || 'bash');
+
+  const files = [];
+  if (shell === 'zsh') {
+    files.push(path.join(home, '.zshrc'));
+  } else if (shell === 'bash') {
+    if (process.platform === 'darwin') {
+      files.push(path.join(home, '.bash_profile'), path.join(home, '.bashrc'));
+    } else {
+      files.push(path.join(home, '.bashrc'), path.join(home, '.bash_profile'));
+    }
+  } else {
+    files.push(path.join(home, '.profile'), path.join(home, '.bashrc'), path.join(home, '.zshrc'));
+  }
+
+  for (const file of files) {
+    try {
+      let existing = '';
+      if (fs.existsSync(file)) {
+        existing = fs.readFileSync(file, 'utf8');
+        if (existing.includes(binDir)) continue; // 已配置
+      } else {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+      }
+      const prefix = existing.endsWith('\n') || existing === '' ? '' : '\n';
+      fs.appendFileSync(file, prefix + '\n' + marker + '\n' + line + '\n');
+    } catch (e) {
+      /* 单个文件失败不影响其它 */
+    }
+  }
+}
+
+// ── 主入口 ─────────────────────────────────────────────────────────────────
+
+/**
+ * 注册（或自愈刷新）桌面端的 `gourdai` 终端命令。
+ * 幂等、非阻塞、全程 try/catch。定位不到自带运行时则跳过（绝不回退系统 Java）。
+ * @returns {Promise<boolean>} 是否成功写入启动器
+ */
+async function provisionCli() {
+  try {
+    // Linux AppImage：资源路径是临时挂载（退出即失效），不能烤进常驻启动器 → 跳过。
+    if (isAppImage()) {
+      console.warn('[cli-provision] 检测到 AppImage 运行环境（资源路径临时），跳过终端命令注册');
+      return false;
+    }
+
+    const javaPath = getBundledJava();
+    const jarPath = getBundledJar();
+    if (!javaPath || !jarPath) {
+      console.warn('[cli-provision] 未找到自带 JRE/JAR，跳过终端命令注册',
+        '(java=' + javaPath + ', jar=' + jarPath + ')');
+      return false;
+    }
+
+    const binDir = getBinDir();
+    fs.mkdirSync(binDir, { recursive: true });
+
+    const javaOpts = buildJavaOpts(getBundledJavaMajor());
+    // 全局配置区根（安装/资源目录），注入 -Dgourdai.home 让 ACP 子进程（cwd=工作区）也能定位全局配置
+    const homeDir = getResourcesDir();
+
+    // 三种启动器一律重写（自愈：安装目录变化后自动指向新路径）
+    writeScript(path.join(binDir, 'gourdai.bat'), batContent(javaPath, jarPath, javaOpts, homeDir), false);
+    writeScript(path.join(binDir, 'gourdai.ps1'), ps1Content(javaPath, jarPath, javaOpts, homeDir), false);
+    writeScript(path.join(binDir, 'gourdai'), shContent(javaPath, jarPath, javaOpts, homeDir), true);
+
+    // 卸载助手（win 由 NSIS 调用，unix 供手动执行）
+    if (IS_WIN) {
+      writeScript(path.join(binDir, 'desktop-cli-uninstall.ps1'), uninstallPs1Content(), false);
+    } else {
+      writeScript(path.join(binDir, 'desktop-cli-uninstall.sh'), uninstallShContent(), true);
+    }
+
+    // 配置 PATH（幂等）
+    if (IS_WIN) {
+      await ensurePathWindows();
+    } else {
+      ensurePathUnix();
+    }
+
+    console.log('[cli-provision] 终端命令已就绪: ' + path.join(binDir, 'gourdai') + ' （新开终端后可用 `gourdai cli` / `gourdai web 0`）');
+    return true;
+  } catch (err) {
+    console.warn('[cli-provision] 注册终端命令失败（不影响 App 启动）:', err && err.message);
+    return false;
+  }
+}
+
+module.exports = {
+  provisionCli,
+  getBinDir,
+  // 导出便于测试
+  _internal: {
+    getBundledJava,
+    getBundledJar,
+    getBundledJavaMajor,
+    buildJavaOpts,
+    batContent,
+    ps1Content,
+    shContent,
+    uninstallPs1Content,
+    uninstallShContent,
+    isAppImage,
+    SENTINEL,
+  },
+};

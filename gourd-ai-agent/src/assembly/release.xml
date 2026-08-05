@@ -1,0 +1,53 @@
+<assembly>
+    <id>release</id>
+    <formats>
+        <format>tar.gz</format>
+    </formats>
+
+    <baseDirectory>gourd-ai-agent</baseDirectory>
+
+    <fileSets>
+
+        <!-- gourd-ai-agent cli jar -->
+        <fileSet>
+            <directory>${project.build.directory}</directory>
+            <outputDirectory>./bin</outputDirectory>
+            <includes>
+                <include>gourd-ai-agent.jar</include>
+            </includes>
+        </fileSet>
+
+        <!-- scripts (install/uninstall/run) -->
+        <fileSet>
+            <directory>${project.basedir}/release</directory>
+            <outputDirectory>.</outputDirectory>
+            <fileMode>0755</fileMode>
+            <includes>
+                <include>config.yml</include>
+                <include>AGENTS.md</include>
+                <include>install.sh</include>
+                <include>install.ps1</include>
+            </includes>
+        </fileSet>
+
+        <fileSet>
+            <directory>${project.basedir}/release/bin</directory>
+            <outputDirectory>./bin</outputDirectory>
+            <fileMode>0755</fileMode>
+            <includes>
+                <include>uninstall.sh</include>
+                <include>uninstall.ps1</include>
+            </includes>
+        </fileSet>
+
+        <!-- skills -->
+        <fileSet>
+            <directory>${project.basedir}/release/skills</directory>
+            <outputDirectory>./skills</outputDirectory>
+            <includes>
+                <include>**/*</include>
+            </includes>
+        </fileSet>
+
+    </fileSets>
+</assembly>

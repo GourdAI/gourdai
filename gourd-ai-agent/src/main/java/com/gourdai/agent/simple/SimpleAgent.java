@@ -1,0 +1,560 @@
+/*
+ * Copyright 2017-2025 noear.org and authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.gourdai.agent.simple;
+
+import com.gourdai.agent.*;
+import org.noear.snack4.Feature;
+import org.noear.snack4.ONode;
+import com.gourdai.agent.exception.LlmNoReturnException;
+import com.gourdai.agent.team.TeamProtocol;
+import com.gourdai.agent.team.TeamTrace;
+import org.noear.solon.ai.chat.*;
+import org.noear.solon.ai.chat.message.AssistantMessage;
+import org.noear.solon.ai.chat.message.ChatMessage;
+import org.noear.solon.ai.chat.prompt.Prompt;
+import org.noear.solon.ai.chat.session.InMemoryChatSession;
+import org.noear.solon.ai.chat.talent.Talent;
+import org.noear.solon.ai.chat.tool.FunctionTool;
+import org.noear.solon.ai.chat.tool.ToolProvider;
+import org.noear.solon.ai.chat.tool.ToolSchemaUtil;
+import org.noear.solon.ai.util.RetryTask;
+import org.noear.solon.core.util.Assert;
+import org.noear.solon.core.util.RankEntity;
+import org.noear.solon.flow.FlowContext;
+import org.noear.solon.lang.Preview;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.lang.reflect.Type;
+import java.util.*;
+import java.util.function.Consumer;
+import java.util.function.Function;
+
+/**
+ * 简单智能体实现
+ * <p>专注于单次直接响应，具备：指令增强、历史窗口管理、自动重试、JSON 格式强制约束等特性</p>
+ *
+ * @author oisin
+ * @since 3.8.1
+ */
+@Preview("3.8.1")
+public class SimpleAgent implements Agent<SimpleRequest, SimpleResponse> {
+    private static final Logger LOG = LoggerFactory.getLogger(SimpleAgent.class);
+    private final SimpleAgentConfig config;
+
+    private SimpleAgent(SimpleAgentConfig config) {
+        Objects.requireNonNull(config, "Missing config!");
+        this.config = config;
+    }
+
+    protected SimpleAgentConfig getConfig() {
+        return config;
+    }
+
+    @Override
+    public String name() {
+        return config.getName();
+    }
+
+    @Override
+    public String role() {
+        if (config.getRole() == null) {
+            return config.getName();
+        }
+
+        return config.getRole();
+    }
+
+    @Override
+    public AgentProfile profile() {
+        return config.getProfile();
+    }
+
+    @Override
+    public SimpleRequest prompt(Prompt prompt) {
+        return new SimpleRequest(this, prompt);
+    }
+
+    @Override
+    public SimpleRequest prompt(String prompt) {
+        return new SimpleRequest(this, Prompt.of(prompt));
+    }
+
+    @Override
+    public SimpleRequest prompt() {
+        return new SimpleRequest(this, null);
+    }
+
+    @Override
+    public AssistantMessage call(Prompt prompt, AgentSession session) throws Throwable {
+        return call(prompt, session, null);
+    }
+
+    protected SimpleTrace getTrace(FlowContext context) {
+        SimpleTrace trace = context.getAs(config.getTraceKey());
+        if (trace == null) {
+            trace = new SimpleTrace();
+            context.put(config.getTraceKey(), trace);
+        }
+
+        return trace;
+    }
+
+    protected AssistantMessage call(Prompt prompt, AgentSession session, SimpleOptions options) throws Throwable {
+        final FlowContext context = session.getContext();
+        final TeamProtocol protocol = context.getAs(Agent.KEY_PROTOCOL); // 从上下文获取协议
+        final TeamTrace parentTeamTrace = TeamTrace.getCurrent(context);
+
+        // 初始化或恢复推理痕迹 (Trace)
+        SimpleTrace trace = getTrace(context);
+
+        if (options == null) {
+            options = config.getDefaultOptions().copy();
+        }
+
+        if (parentTeamTrace != null) {
+            //传递流控
+            options.setStreamSink(parentTeamTrace.getOptions().getStreamSink());
+        }
+
+        //添加必要的工具上下文
+        options.toolContextPut(ChatSession.ATTR_SESSIONID, session.getSessionId());
+
+        trace.prepare(config, options, session, protocol, config.getName());
+
+        if (Prompt.isEmpty(prompt)) {
+            //可能是旧问题（之前中断的）
+            prompt = trace.getOriginalPrompt();
+
+            if (Prompt.isEmpty(prompt)) {
+                LOG.warn("Prompt is empty!");
+                return ChatMessage.ofAssistant("");
+            }
+        } else {
+            trace.reset(prompt);
+            prompt.attrs().computeIfAbsent(ChatSession.ATTR_SESSIONID, (k) -> session.getSessionId());
+
+            //更新下快照（记录上面的数据）
+            session.updateSnapshot();
+        }
+
+        // 1. 构建请求消息
+        Prompt finalPrompt = prepareAgentPrompt(trace, parentTeamTrace, session, prompt);
+
+        // 2. 物理调用：执行带重试机制的 LLM 请求
+        AssistantMessage assistantMessage = null;
+
+        long startTime = System.currentTimeMillis();
+        try {
+            trace.getMetrics().reset();
+
+            assistantMessage = callWithRetry(trace, session, finalPrompt, options);
+        } finally {
+            trace.getMetrics().setTotalDuration(System.currentTimeMillis() - startTime);
+
+            // 父一级团队轨迹
+            if (parentTeamTrace != null) {
+                // 汇总 token 使用情况
+                parentTeamTrace.getMetrics().addMetrics(trace.getMetrics());
+            }
+        }
+
+        if (assistantMessage == null) {
+            return ChatMessage.ofAssistant("");
+        }
+
+        // 3. 状态回填：将输出结果自动映射到 FlowContext
+        if (Assert.isNotEmpty(config.getOutputKey())) {
+            context.put(config.getOutputKey(), assistantMessage.getContent());
+        }
+
+        // 4. 更新会话状态与快照
+        assistantMessage.addMetadata(AgentTrace.META_RUN_ID, trace.getRunId());
+        if (Assert.isNotEmpty(assistantMessage.getContent()) && Assert.isEmpty(assistantMessage.getToolCalls())) {
+            if (parentTeamTrace == null) {
+                session.addMessage(assistantMessage);
+            }
+        }
+
+        session.updateSnapshot();
+
+        if (LOG.isInfoEnabled()) {
+            LOG.info("SimpleAgent [{}] finished: {}", config.getName(), assistantMessage.getContent());
+        }
+
+        return assistantMessage;
+    }
+
+
+    /**
+     * 组装完整的 Prompt 消息列表（含 SystemPrompt、OutputSchema 及历史窗口）
+     */
+    private Prompt prepareAgentPrompt(SimpleTrace trace, TeamTrace parentTeamTrace, AgentSession session, Prompt originalPrompt) {
+        // 1. 获取基础 System Prompt
+        StringBuilder systemPromptBuf = new StringBuilder();
+        String baseSp = config.getSystemPromptFor(trace, session.getContext());
+        if (baseSp != null) {
+            systemPromptBuf.append(baseSp);
+        }
+
+        // 2. 【核心修复】注入协议指令（断面数据：如 Coder 写的代码就在这里）
+        FlowContext context = session.getContext();
+        if (trace.getProtocol() != null) {
+            // 调用协议注入，它会把 "## 当前接力任务断面" 附加到 spBuf 后面
+            trace.getProtocol().injectAgentInstruction(context, this, config.getLocale(), systemPromptBuf);
+        }
+
+        // 3. 注入 JSON Schema 指令
+        if (Assert.isNotEmpty(config.getOutputSchema())) {
+            config.getChatModel().getDialect().prepareOutputSchemaInstruction(
+                    config.getOutputSchema(),
+                    systemPromptBuf);
+//            spBuf.append("\n\n[IMPORTANT: OUTPUT FORMAT REQUIREMENT]\n")
+//                    .append("Please provide the response in JSON format strictly following this schema:\n")
+//                    .append(config.getOutputSchema());
+        }
+
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("SimpleAgent SystemPrompt rendered for trace [{}]: {}", name(), systemPromptBuf);
+        }
+
+        List<ChatMessage> messages = new ArrayList<>();
+
+        if (systemPromptBuf.length() > 0) {
+            messages.add(ChatMessage.ofSystem(systemPromptBuf.toString().trim()));
+        }
+
+        // 加载限定窗口大小的历史记录
+        if (parentTeamTrace == null && config.getSessionWindowSize() > 0) {
+            Collection<ChatMessage> history = session.getLatestMessages(config.getSessionWindowSize());
+            if (Assert.isNotEmpty(history)) {
+                for (ChatMessage message : history) {
+                    message.addMetadata(AgentTrace.META_FIRST, 1); //初心
+                    messages.add(message);
+                }
+            }
+        }
+
+        //新问题
+        for (ChatMessage message : originalPrompt.getMessages()) {
+            message.addMetadata(AgentTrace.META_FIRST, 1); //初心
+            message.addMetadata(AgentTrace.META_RUN_ID, trace.getRunId());
+            messages.add(message);
+        }
+
+
+        // 消息归档：同步当前用户请求到 Session 历史
+        if (parentTeamTrace == null && Prompt.isEmpty(originalPrompt) == false) {
+            for (ChatMessage message : originalPrompt.getMessages()) {
+                message.addMetadata(AgentTrace.META_RUN_ID, trace.getRunId());
+                if (parentTeamTrace == null) {
+                    session.addMessage(message);
+                }
+            }
+        }
+
+        return Prompt.of(messages).attrPut(originalPrompt.attrs());
+    }
+
+    /**
+     * 实现带指数延迟的自动重试调用
+     */
+    private AssistantMessage callWithRetry(SimpleTrace trace, AgentSession session, Prompt finalPrompt, ModelOptionsAmend<?, SimpleInterceptor> options) throws Throwable {
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("SimpleAgent [{}] calling model... messages: {}",
+                    config.getName(),
+                    ONode.serialize(finalPrompt.getMessages(), Feature.Write_PrettyFormat, Feature.Write_EnumUsingName));
+        }
+
+        final ChatSession chatSession;
+        final ChatRequestDesc chatReq;
+
+        if (config.getChatModel() != null) {
+            //构建 chatModel 请求
+            chatSession = InMemoryChatSession.builder().build();
+            chatReq = config.getChatModel()
+                    .prompt(finalPrompt)
+                    .session(chatSession)
+                    .options(o -> {
+                        o.agentName(trace.getAgentName());
+
+                        //配置工具
+                        o.toolAdd(options.tools());
+
+                        //协议工具
+                        if (trace.getProtocol() != null) {
+                            trace.getProtocol().injectAgentTools(session.getContext(), this, o::toolAdd);
+                        }
+
+                        o.toolContextPut(options.toolContext());
+                        o.talentAdd(options.talents());
+
+                        for(RankEntity<SimpleInterceptor> item : options.interceptors()) {
+                            //内部已支持启用控制
+                            o.interceptorAdd(item.index, item.target);
+                        }
+
+                        if (Assert.isNotEmpty(config.getOutputSchema())) {
+                            config.getChatModel().getDialect().prepareOutputFormatOptions(o);
+                            //o.optionSet("response_format", Utils.asMap("type", "json_object"));
+                        }
+
+                        o.autoToolCall(options.isAutoToolCall());
+                        o.optionSet(options.options());
+
+                        // 从 Agent 级选项复制缓存控制配置
+                        if (options.cacheControl() != null) {
+                            o.cacheControl(options.cacheControl());
+                        }
+                    });
+        } else {
+            chatSession = null;
+            chatReq = null;
+        }
+
+        try {
+            AssistantMessage rst = new RetryTask()
+                    .maxRetries(config.getMaxRetries())
+                    .initialDelayMs(config.getRetryDelayMs())
+                    .onRetry((attempt, e) -> {
+                        if (attempt == config.getMaxRetries()) {
+                            throw new RuntimeException("SimpleAgent [" + name() + "] failed after " + config.getMaxRetries() + " retries", e);
+                        }
+
+                        LOG.warn("SimpleAgent [{}] call failed, retrying({}/{}). Error: {}",
+                                name(), attempt, config.getMaxRetries(), e.toString());
+                    })
+                    .callWithRetry(() -> {
+                        // 运行中检查：如果流已被取消，直接跳出重试
+                        if (trace.getOptions().getStreamSink() != null && trace.getOptions().getStreamSink().isCancelled()) {
+                            return null;
+                        }
+
+                        return doCall(trace, session, finalPrompt, chatReq);
+                    });
+
+            if (chatSession != null) {
+                trace.getWorkingMemory().addMessage(chatSession.getMessages());
+            }
+
+            return rst;
+        } catch (Throwable e) {
+            if (e instanceof InterruptedException || e.getCause() instanceof InterruptedException) {
+                LOG.debug("InterruptedException");
+                return null;
+            }
+
+            throw e;
+        }
+    }
+
+    /**
+     * 执行底层物理调用，并注入 Tools, Interceptors 与 JSON 选项
+     */
+    private AssistantMessage doCall(SimpleTrace trace, AgentSession session, Prompt finalPrompt, ChatRequestDesc chatReq) throws Throwable {
+        if (chatReq != null) {
+            // chatModel 处理
+            final ChatResponse response;
+
+            if (trace.getOptions().getStreamSink() == null) {
+                response = chatReq.call();
+            } else {
+                response = chatReq.stream()
+                        .doOnNext(resp -> {
+                            trace.getOptions().getStreamSink().next(
+                                    new ChatChunk(trace, resp));
+                        })
+                        .blockLast();
+            }
+
+            if (response.isEmpty()) {
+                //触发重试
+                throw new LlmNoReturnException("The LLM did not return");
+            }
+
+            final AssistantMessage responseMessage;
+            if (response.isStream()) {
+                responseMessage = response.getAggregationMessage();
+            } else {
+                responseMessage = response.getMessage();
+            }
+
+            if (response.getUsage() != null) {
+                trace.getMetrics().addUsage(response.getUsage());
+            }
+
+            if (responseMessage.hasContent() && responseMessage.getMetadata().containsKey(Agent.META_AGENT)) {
+                String source = responseMessage.getMetadataAs("source");
+                if (Assert.isNotEmpty(source)) {
+                    return ChatMessage.ofAssistant(source);
+                }
+            }
+
+            String clearContent = responseMessage.hasContent() ? responseMessage.getResultContent() : "";
+            return ChatMessage.ofAssistant(clearContent);
+        } else {
+            // fallback 到自定义处理器
+            return config.getHandler().call(finalPrompt, session);
+        }
+    }
+
+    // Builder 静态方法与内部类保持不变...
+    public static Builder of() {
+        return new Builder();
+    }
+
+    public static Builder of(ChatModel chatModel) {
+        return new Builder().chatModel(chatModel);
+    }
+
+    public static class Builder {
+        private SimpleAgentConfig config = new SimpleAgentConfig();
+
+        public Builder then(Consumer<Builder> consumer) {
+            consumer.accept(this);
+            return this;
+        }
+
+        public Builder name(String name) {
+            config.setName(name);
+            return this;
+        }
+
+        public Builder role(String role) {
+            config.setRole(role);
+            return this;
+        }
+
+        public Builder profile(AgentProfile profile) {
+            config.setProfile(profile);
+            return this;
+        }
+
+        public Builder instruction(String instruction) {
+            config.setSystemPrompt(SimpleSystemPrompt.builder().instruction(instruction).build());
+            return this;
+        }
+
+        public Builder instruction(Function<SimpleTrace, String> instruction) {
+            config.setSystemPrompt(SimpleSystemPrompt.builder().instruction(instruction).build());
+            return this;
+        }
+
+        public Builder systemPrompt(AgentSystemPrompt<SimpleTrace> systemPrompt) {
+            config.setSystemPrompt(systemPrompt);
+            return this;
+        }
+
+        public Builder chatModel(ChatModel chatModel) {
+            config.setChatModel(chatModel);
+            return this;
+        }
+
+        public Builder handler(AgentHandler handler) {
+            config.setHandler(handler);
+            return this;
+        }
+
+        public Builder modelOptions(Consumer<ModelOptionsAmend<?, SimpleInterceptor>> amendConsumer) {
+            amendConsumer.accept(config.getDefaultOptions());
+            return this;
+        }
+
+        public Builder retryConfig(int maxRetries, long retryDelayMs) {
+            config.setRetryConfig(maxRetries, retryDelayMs);
+            return this;
+        }
+
+        public Builder sessionWindowSize(int sessionWindowSize) {
+            config.setSessionWindowSize(sessionWindowSize);
+            return this;
+        }
+
+        public Builder outputKey(String val) {
+            config.setOutputKey(val);
+            return this;
+        }
+
+        public Builder outputSchema(String val) {
+            config.setOutputSchema(val);
+            return this;
+        }
+
+        public Builder outputSchema(Type type) {
+            config.setOutputSchema(ToolSchemaUtil.buildOutputSchema(type));
+            return this;
+        }
+
+        public Builder defaultTalentAdd(Talent... talents) {
+            config.getDefaultOptions().talentAdd(talents);
+            return this;
+        }
+
+        public Builder defaultTalentAdd(Talent talent, int index) {
+            config.getDefaultOptions().talentAdd(index, talent);
+            return this;
+        }
+
+        public Builder defaultToolAdd(FunctionTool... tools) {
+            config.getDefaultOptions().toolAdd(tools);
+            return this;
+        }
+
+        public Builder defaultToolAdd(Collection<FunctionTool> tools) {
+            config.getDefaultOptions().toolAdd(tools);
+            return this;
+        }
+
+        public Builder defaultToolAdd(ToolProvider toolProvider) {
+            config.getDefaultOptions().toolAdd(toolProvider);
+            return this;
+        }
+
+
+        public Builder defaultToolContextPut(String key, Object value) {
+            config.getDefaultOptions().toolContextPut(key, value);
+            return this;
+        }
+
+        public Builder defaultToolContextPut(Map<String, Object> objectMap) {
+            config.getDefaultOptions().toolContextPut(objectMap);
+            return this;
+        }
+
+        public Builder defaultInterceptorAdd(SimpleInterceptor... vals) {
+            for (SimpleInterceptor val : vals) {
+                config.getDefaultOptions().interceptorAdd(0, val);
+            }
+            return this;
+        }
+
+        public Builder defaultInterceptorAdd(int index, SimpleInterceptor val) {
+            config.getDefaultOptions().interceptorAdd(index, val);
+            return this;
+        }
+
+        public SimpleAgent build() {
+            if (config.getHandler() == null && config.getChatModel() == null)
+                throw new IllegalStateException("Handler or ChatModel must be provided");
+
+            if (config.getName() == null) {
+                config.setName("simple_agent");
+            }
+
+            return new SimpleAgent(config);
+        }
+    }
+}

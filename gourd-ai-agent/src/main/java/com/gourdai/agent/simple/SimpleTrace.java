@@ -1,0 +1,141 @@
+/*
+ * Copyright 2017-2025 noear.org and authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.gourdai.agent.simple;
+
+import org.noear.solon.Utils;
+import com.gourdai.agent.AgentSession;
+import com.gourdai.agent.AgentTrace;
+import com.gourdai.agent.team.TeamProtocol;
+import com.gourdai.agent.trace.Metrics;
+import org.noear.solon.ai.chat.prompt.Prompt;
+import org.noear.solon.ai.chat.prompt.PromptImpl;
+import org.noear.solon.flow.FlowContext;
+
+/**
+ * Simple 运行轨迹记录器 (状态机上下文)
+ * <p>负责维护智能体推理过程中的短期记忆、执行路由、消息序列及上下文压缩。</p>
+ *
+ * @author oisin
+ * @since 3.8.4
+ */
+public class SimpleTrace implements AgentTrace {
+    private transient SimpleAgentConfig config;
+    private transient SimpleOptions options;
+    private transient AgentSession session;
+    private transient TeamProtocol protocol;
+
+    /**
+     * 智能体名字
+     */
+    private String agentName;
+
+    /**
+     * 运行ID
+     */
+    private String runId;
+    /**
+     * 任务提示词
+     */
+    private Prompt originalPrompt;
+    /**
+     * 工作记忆
+     */
+    private final Prompt workingMemory = new PromptImpl();
+
+    private final Metrics metrics = new Metrics();
+
+    /**
+     * 任务开始时间
+     */
+    private long beginTimeMs;
+
+    public SimpleTrace() {
+        //反序列化用
+    }
+
+    protected void prepare(SimpleAgentConfig config, SimpleOptions options, AgentSession session, TeamProtocol protocol, String agentName) {
+        this.config = config;
+        this.agentName = agentName;
+        this.options = options;
+        this.session = session;
+        this.protocol = protocol;
+    }
+
+    protected void reset(Prompt originalPrompt) {
+        this.originalPrompt = originalPrompt;
+        this.beginTimeMs = System.currentTimeMillis();
+        this.runId = Utils.uuid();
+    }
+
+    @Override
+    public String getRunId() {
+        if (runId == null) {
+            runId = Utils.uuid();
+        }
+
+        return runId;
+    }
+
+    @Override
+    public String getAgentName() {
+        return agentName;
+    }
+
+    @Override
+    public Prompt getWorkingMemory() {
+        return workingMemory;
+    }
+
+    @Override
+    public Metrics getMetrics() {
+        return metrics;
+    }
+
+    @Override
+    public long getBeginTimeMs() {
+        return beginTimeMs;
+    }
+
+    public SimpleAgentConfig getConfig() {
+        return config;
+    }
+
+    public SimpleOptions getOptions() {
+        return options;
+    }
+
+    public AgentSession getSession() {
+        return session;
+    }
+
+    public TeamProtocol getProtocol() {
+        return protocol;
+    }
+
+    public FlowContext getContext() {
+        if (session != null) {
+            return session.getContext();
+        } else {
+            return null;
+        }
+    }
+
+    @Override
+    public Prompt getOriginalPrompt() {
+        return originalPrompt;
+    }
+
+}

@@ -1,0 +1,34 @@
+{
+  "appId": "org.noear.gourd-ai-desktop",
+  "productName": "Gourd AI",
+  "copyright": "Copyright © 2026 noear.org",
+  "directories": {
+    "output": "out"
+  },
+  "files": [
+    "main/**/*",
+    "loading.html"
+  ],
+  "extraResources": [
+    {
+      "from": "build/extraResources/",
+      "to": "extraResources",
+      "filter": ["**/*", "!.gourdai", "!.gourdai/**"]
+    },
+    {
+      "from": "build/ui/",
+      "to": "ui"
+    }
+  ],
+  "mac": {
+    "icon": "build/icons/icon.icns",
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      }
+    ],
+    "category": "public.app-category.developer-tools",
+    "minimumSystemVersion": "11.0"
+  }
+}

@@ -1,0 +1,392 @@
+/*
+ * Copyright 2017-2025 noear.org and authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.gourdai.agent.team.protocol;
+
+import org.noear.snack4.ONode;
+import org.noear.solon.Utils;
+import com.gourdai.agent.Agent;
+import com.gourdai.agent.team.TeamAgent;
+import com.gourdai.agent.team.TeamAgentConfig;
+import com.gourdai.agent.team.TeamTrace;
+import com.gourdai.agent.team.task.SupervisorTask;
+import org.noear.solon.ai.chat.ChatRole;
+import org.noear.solon.ai.chat.message.UserMessage;
+import org.noear.solon.ai.chat.prompt.Prompt;
+import org.noear.solon.flow.FlowContext;
+import org.noear.solon.flow.GraphSpec;
+import org.noear.solon.lang.Preview;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+import static com.gourdai.agent.team.protocol.ContractNetProtocol.ID_BIDDING;
+
+/**
+ * 层级化协作协议 (Hierarchical Protocol)
+ *
+ * <p>核心特征：引入“运行看板”机制。各成员的产出被结构化提取并呈现在状态看板中，
+ * Supervisor 依据看板进度、成员负载及错误记录进行全局调度。</p>
+ */
+@Preview("3.8.1")
+public class HierarchicalProtocol extends TeamProtocolBase {
+    private static final Logger LOG = LoggerFactory.getLogger(HierarchicalProtocol.class);
+    private static final String KEY_HIERARCHY_STATE = "hierarchy_state_obj";
+    private static final String KEY_AGENT_USAGE = "agent_usage_map";
+    private static final int MAX_MEMO_LEN = 250;
+
+    /**
+     * 协作状态机：负责汇报数据的吸收、错误记录与状态持久化
+     */
+    public static class HierarchicalState {
+        private final ONode data = new ONode().asObject();
+
+        public void markError(String agentName, String error) {
+            data.getOrNew("_meta").getOrNew("errors").set(agentName, error);
+        }
+
+        public void clearError(String agentName) {
+            if (data.hasKey("_meta")) {
+                data.get("_meta").get("errors").remove(agentName);
+            }
+        }
+
+        /**
+         * 吸收成员产出：若为 JSON 则结构化合并，若为文本则记录到报告区
+         */
+        public void absorb(String agentName, String content, TeamProtocolBase protocol) {
+            if (Utils.isEmpty(content)) return;
+
+            // 1. 提取结构化数据存入 _results (用于逻辑计算)
+            ONode report = protocol.sniffJson(content);
+            if (report.isObject() && !report.isEmpty()) {
+                data.getOrNew("_results").set(agentName, report);
+            }
+
+            // 2. 【核心修改】：提取一段干净的文本存入 _reports (用于 Shadow Context 和汇总)
+            // 移除 content 中的 JSON 块，保留原始话术
+            String cleanContent = content.replaceAll("\\{.*\\}", "").trim();
+            if (cleanContent.length() > MAX_MEMO_LEN) {
+                cleanContent = cleanContent.substring(0, MAX_MEMO_LEN) + "...";
+            }
+            data.getOrNew("_reports").set(agentName, cleanContent);
+        }
+
+        @Override
+        public String toString() { return data.toJson(); }
+    }
+
+    public HierarchicalProtocol(TeamAgentConfig config) {
+        super(config);
+    }
+
+    @Override
+    public String name() { return "HIERARCHICAL"; }
+
+    @Override
+    public void buildGraph(GraphSpec spec) {
+        // 固定拓扑：Start -> Supervisor <-> Agents -> End
+        spec.addStart(Agent.ID_START).linkAdd(TeamAgent.ID_SUPERVISOR);
+
+        spec.addExclusive(new SupervisorTask(config)).then(ns -> {
+            linkAgents(ns);
+        }).linkAdd(Agent.ID_END);
+
+        config.getAgentMap().values().forEach(a ->
+                spec.addActivity(a).linkAdd(TeamAgent.ID_SUPERVISOR));
+
+        spec.addEnd(Agent.ID_END);
+    }
+
+    @Override
+    public void injectAgentInstruction(FlowContext context, Agent agent, Locale locale, StringBuilder sb) {
+        boolean isZh = Locale.CHINA.getLanguage().equals(locale.getLanguage());
+
+        // 增加明显的区块分割
+        sb.append("\n\n---"); // 视觉分割线，帮助模型切分注意力
+        sb.append(isZh ? "\n## 协作与汇报规范\n" : "\n## Collaboration & Reporting\n");
+
+        // 1. 强制汇报规范
+        sb.append(isZh
+                ? "\n1. 汇报要求：\n- 请在回复结尾使用 JSON 块反馈核心数据（例：{\"result\": \"...\", \"status\": \"done\"}）。"
+                : "\n1. Reporting Requirement:\n- End response with a JSON block for key data (e.g., {\"result\": \"...\", \"status\": \"done\"}).");
+
+
+        // 2. 动态追加完成标记提醒
+        if (agent instanceof TeamAgent) {
+            String marker = ((TeamAgent) agent).getConfig().getFinishMarker();
+            if (Utils.isNotEmpty(marker)) {
+                sb.append(isZh ? "\n2. **完成标记**：任务完成时，必须包含标记: " : "\n2. **Finish Marker**: Upon completion, must include: ")
+                        .append("`").append(marker).append("`\n");
+            }
+        }
+    }
+    /**
+     * 增强专家指令：注入汇报规范与多模态提醒
+     */
+    @Override
+    public Prompt prepareAgentPrompt(TeamTrace trace, Agent agent, Prompt originalPrompt, Locale locale) {
+        // 1. 获取基础 Prompt 包装
+        Prompt finalPrompt = super.prepareAgentPrompt(trace, agent, originalPrompt, locale);
+
+        // 2. 获取看板状态机
+        HierarchicalState state = (HierarchicalState) trace.getProtocolContext().get(KEY_HIERARCHY_STATE);
+        boolean isZh = Locale.CHINA.getLanguage().equals(locale.getLanguage());
+        StringBuilder sb = new StringBuilder();
+
+        // 逻辑：专家不看全局看板，但能看到“上一个同事干了什么”，解决断层
+        String lastAgent = trace.getLastAgentName();
+        if (state != null && Utils.isNotEmpty(lastAgent)) {
+            ONode dashboard = ONode.ofJson(state.toString());
+            if (dashboard.get("_reports").hasKey(lastAgent)) {
+                String lastSummary = dashboard.get("_reports").get(lastAgent).getString();
+
+                sb.append(isZh ? "\n\n### 前置背景 (Pre-Context)\n" : "\n\n### Pre-Context\n");
+                sb.append(isZh ? "- 来自 " : "- From ").append(lastAgent).append(": ")
+                        .append("**").append(lastSummary).append("**\n");
+
+                sb.append(isZh ? "> 请务必基于上述背景数据进行处理，不要修改原始关键信息。\n"
+                        : "> Please process based on the data above without altering core information.\n");
+            }
+        }
+
+        // 注入 A：透传主管的决策分析逻辑
+        // 在 SupervisorTask 分发决策时，应将原始决策文本存入 active_instruction
+        String activeInstruction = (String) trace.getProtocolContext().get("active_instruction");
+        if (Utils.isNotEmpty(activeInstruction)) {
+            sb.append(isZh ? "\n\n### 来自主管的最新指令 (Supervisor Directive)\n"
+                    : "\n\n### Supervisor Directive\n");
+            // 使用引用格式展示主管的分析过程，引导专家理解上下文
+            sb.append("> ").append(activeInstruction.trim().replace("\n", "\n> ")).append("\n");
+            sb.append("---\n");
+        }
+
+        // 注入 B：针对性的错误看板反馈
+        if (state != null) {
+            ONode dashboardNode = ONode.ofJson(state.toString());
+            ONode errors = dashboardNode.get("_meta").get("errors");
+
+            // 如果当前专家在看板中有待处理的错误记录
+            if (errors.hasKey(agent.name())) {
+                String errorMsg = errors.get(agent.name()).getString();
+                sb.append(isZh ? "\n### 错误修正请求：\n" : "\n### Error Correction Required:\n");
+                sb.append(isZh ? "- 你之前的执行结果未通过验证：" : "- Your previous response failed validation: ")
+                        .append("**").append(errorMsg).append("**\n");
+                sb.append(isZh ? "- 请根据主管的最新指令进行修复，并务必包含正确的完成标记。\n"
+                        : "- Please fix this based on the directive and ensure the correct finish marker.\n");
+            }
+        }
+
+
+        // 4. 多模态提醒
+        if (originalPrompt.getMessages().stream()
+                .filter(m -> m.getRole() == ChatRole.USER)
+                .map(m -> (UserMessage) m)
+                .anyMatch(UserMessage::isMultiModal)) {
+            sb.append(isZh
+                    ? "\n- [重要]：输入包含多媒体附件，请务必结合视觉或文件内容进行处理。"
+                    : "\n- [IMPORTANT]: Multimodal content detected. Process based on the attachments.");
+        }
+
+        if (sb.length() > 0) {
+            finalPrompt.addMessage(sb.toString());
+        }
+
+        return super.prepareAgentPrompt(trace, agent, finalPrompt, locale);
+    }
+
+    @Override
+    public void onAgentEnd(TeamTrace trace, Agent agent) {
+        // 1. 获取并初始化状态机（确保 context 中有该对象）
+        HierarchicalState state = (HierarchicalState) trace.getProtocolContext()
+                .computeIfAbsent(KEY_HIERARCHY_STATE, k -> new HierarchicalState());
+
+        String lastContent = trace.getLastAgentContent();
+
+        // 2. 调用 HierarchicalState 方法进行数据处理
+        if (Utils.isEmpty(lastContent)) {
+            state.markError(agent.name(), "Response is empty.");
+        } else {
+            // 1. 动态获取当前 Agent 的完成标记
+            // 如果是普通的 Agent，可能没有特定的 finishMarker（默认为空）
+            // 如果是 TeamAgent，则可以拿到它配置的标记（如 [DEV_TEAM_FINISH]）
+            String marker = null;
+            if (agent instanceof TeamAgent) {
+                marker = ((TeamAgent) agent).getConfig().getFinishMarker();
+            }
+
+            // 2. 判定逻辑：
+            // 如果有特定标记，则必须包含标记才算过
+            // 如果没有特定标记（普通专家），只要内容不为空且不含有“拒绝/失败”的语义特征即可
+            boolean isSuccess = true;
+            if (Utils.isNotEmpty(marker)) {
+                isSuccess = lastContent.contains(marker);
+            } else {
+                // 这里可以预留一个简单的语义判定，或者默认普通专家回复即代表完成
+                isSuccess = !lastContent.contains("FAILED");
+            }
+
+            if (!isSuccess) {
+                state.markError(agent.name(), "Task not finished (missing marker: " + marker + ")");
+            } else {
+                state.clearError(agent.name());
+            }
+
+            state.absorb(agent.name(), lastContent, this);
+        }
+
+        // 3. 统计负载
+        Map<String, Integer> usage = (Map<String, Integer>) trace.getProtocolContext()
+                .computeIfAbsent(KEY_AGENT_USAGE, k -> new HashMap<>());
+        usage.put(agent.name(), usage.getOrDefault(agent.name(), 0) + 1);
+
+        super.onAgentEnd(trace, agent);
+    }
+
+    @Override
+    public String resolveSupervisorRoute(FlowContext context, TeamTrace trace, String decision) {
+        if (decision != null && decision.contains(config.getFinishMarker())) {
+            //基于错误的通用阻断逻辑
+            HierarchicalState state = (HierarchicalState) trace.getProtocolContext().get(KEY_HIERARCHY_STATE);
+            if (state != null) {
+                ONode errors = ONode.ofJson(state.toString()).get("_meta").get("errors");
+                if (errors.isObject() && !errors.isEmpty()) {
+                    boolean isZh = Locale.CHINA.getLanguage().equals(config.getLocale().getLanguage());
+                    String errorHint = isZh ? "【系统干预】由于看板中仍有未解决的错误，任务不能结束。请指派相关专家修复。"
+                            : "[System] Task cannot end because errors exist. Assign agents to fix them.";
+
+                    // 1. 注入系统反馈
+                    trace.addRecord(ChatRole.SYSTEM, ID_BIDDING, errorHint, 0);
+                    // 2. 将决策存入 active_instruction 辅助下一轮 Prompt
+                    trace.getProtocolContext().put("active_instruction", errorHint);
+
+                    // 【关键修改点】：必须返回自身 ID，形成闭环，强制 LLM 在下一轮重新决策
+                    return TeamAgent.ID_SUPERVISOR;
+                }
+            }
+
+            // 正常结束逻辑
+            String finalAnswer = decision.replace(config.getFinishMarker(), "").trim();
+            trace.setFinalAnswer(finalAnswer);
+            return Agent.ID_END;
+        }
+
+        trace.getProtocolContext().put("active_instruction", decision);
+        return super.resolveSupervisorRoute(context, trace, decision);
+    }
+
+    /**
+     * 实时构建运行看板：注入成员能力、负载与错误信息
+     */
+    @Override
+    public void prepareSupervisorInstruction(FlowContext context, TeamTrace trace, StringBuilder sb) {
+        HierarchicalState state = (HierarchicalState) trace.getProtocolContext().get(KEY_HIERARCHY_STATE);
+        Map<String, Integer> usage = (Map<String, Integer>) trace.getProtocolContext().get(KEY_AGENT_USAGE);
+
+        boolean isZh = Locale.CHINA.getLanguage().equals(config.getLocale().getLanguage());
+        if (isZh) {
+            sb.append("\n## 运行看板 (Hierarchical Dashboard)\n");
+        } else {
+            sb.append("\n## Hierarchical Dashboard\n");
+        }
+
+        ONode dashboard = (state != null) ? ONode.ofJson(state.toString()) : new ONode().asObject();
+        ONode meta = dashboard.getOrNew("_meta");
+
+        if (usage != null && !usage.isEmpty()) { meta.set("agent_usage", usage); }
+
+        ONode capabilities = meta.getOrNew("capabilities");
+        config.getAgentMap().forEach((name, ag) -> {
+            if (ag.profile() != null) {
+                capabilities.set(name, ONode.ofBean(ag.profile().getInputModes()));
+            }
+        });
+
+        if (dashboard.isEmpty()) {
+            if (isZh) {
+                sb.append("> 暂无汇报，请下达初始指令。\n");
+            } else {
+                sb.append("> No reports yet. Issue instructions.\n");
+            }
+        } else {
+            sb.append("```json\n").append(dashboard.toJson()).append("\n```\n");
+        }
+
+        if (isZh) {
+            sb.append("\n### 派发指令准则 (Standard Operating Procedure):\n");
+            sb.append("> 1. **显式数据传递**：指派专家时，必须复述看板 `_results` 中的核心参数。\n");
+        } else {
+            sb.append("\n### Directive Standards (SOP):\n");
+            sb.append("> 1. **Explicit Data Transfer**: Always restate core parameters from `_results`.\n");
+        }
+
+        if (isZh) {
+            sb.append("\n### 管理与决策指引 (Management & Decision Hints):\n");
+            sb.append("> **决策指引**：对比看板进度。若 `_meta.errors` 存在或关键环节未产出，请继续调度，严禁提前结束。\n");
+            // 新增：强制协作流约束
+            sb.append("> **流程完整性**：确保设计与执行角色（如 `implementer`）均已参与。严禁跳过关键执行环节直接结束。\n");
+            sb.append("> **终结交付**：若认为任务已达成，请输出 `").append(config.getFinishMarker()).append("` 并在此回复中**汇总最终代码或方案**给用户。\n");
+            sb.append("> **注意**：输出标记后系统将立即停止，你将无法再次指派专家，请务必在这一步提供完整的交付内容。\n");
+            sb.append("> **负载建议**：参考 `agent_usage` 避免过度指派。若专家多次失败，请尝试更换专家或调整指令。\n");
+        } else {
+            sb.append("\n### Management & Decision Hints:\n");
+            sb.append("> **Decision Hint**: Check progress. Keep scheduling if errors exist or key steps are missing.\n");
+            // Added: Workflow completeness constraint
+            sb.append("> **Workflow Integrity**: Ensure both design and implementation (e.g., `implementer`) roles have participated. Do not skip execution steps.\n");
+            sb.append("> **Final Delivery**: If satisfied, output `").append(config.getFinishMarker()).append("` and **consolidate the final code/result** in this response for the USER.\n");
+            sb.append("> **Crucial**: Once the marker is output, the workflow ends. You cannot assign agents anymore. Ensure the final delivery is complete.\n");
+            sb.append("> **Load Balance**: Refer to `agent_usage`. If an agent fails repeatedly, switch approach or adjust instructions.\n");
+        }
+
+        // ----------
+
+        if (usage != null) {
+            List<String> overworked = usage.entrySet().stream()
+                    .filter(e -> e.getValue() >= 3) // 针对同一专家的循环阈值
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toList());
+
+            if (!overworked.isEmpty()) {
+                if (isZh) {
+                    sb.append("\n> **![风险预警]**：专家 ").append(overworked)
+                            .append(" 已被重复指派多次且未达成目标。请停止无效循环，要求专家提供更详尽的错误说明，或尝试切换到其他专家。");
+                } else {
+                    sb.append("\n> **![Risk Alert]**: Agents ").append(overworked)
+                            .append(" have been called repeatedly. Stop the loop, request detailed feedback, or try a different approach.");
+                }
+            }
+        }
+    }
+
+    @Override
+    public void injectSupervisorInstruction(Locale locale, StringBuilder sb) {
+        super.injectSupervisorInstruction(locale, sb);
+
+        boolean isZh = Locale.CHINA.getLanguage().equals(locale.getLanguage());
+        if (isZh) {
+            sb.append("\n### 管理决策准则：\n");
+            sb.append("1. **模态适配**：优先指派支持对应模式（图片/文件）的专家。\n");
+            sb.append("2. **错误恢复**：若 `_meta.errors` 存在，必须指派专家处理，直至错误清除。\n");
+            sb.append("3. **负载均衡**：参考 `agent_usage` 避免过度使用单一专家。");
+        } else {
+            sb.append("\n### Management Guidelines:\n");
+            sb.append("1. **Modality Match**: Assign experts based on capabilities.\n");
+            sb.append("2. **Error Recovery**: Handle `_meta.errors` by re-assignment.\n");
+            sb.append("3. **Load Balance**: Use `agent_usage` for efficient distribution.");
+        }
+    }
+}

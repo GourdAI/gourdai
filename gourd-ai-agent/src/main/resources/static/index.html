@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <title>Gourd AI</title>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta rel="apple-touch-icon" href="/img/favicon.png"/>
+    <link rel="shortcut icon" type="image/x-icon" href="/img/favicon.png"/>
+    <link rel="icon" sizes="any" type="image/x-icon" href="/img/favicon.png"/>
+    <link rel="stylesheet" href="/layui/css/layui.css"/>
+    <link rel="stylesheet" href="/css/theme.css"/>
+    <link rel="stylesheet" href="/css/app.css"/>
+    <link rel="stylesheet" href="/css/settings.css"/>
+    <link rel="stylesheet" href="/css/code.css"/>
+    <link rel="stylesheet" href="/highlight/github.min.css" media="(prefers-color-scheme: light)" id="hljs-light-theme"/>
+    <link rel="stylesheet" href="/highlight/github-dark.min.css" media="(prefers-color-scheme: dark)" id="hljs-dark-theme" disabled/>
+    <link rel="stylesheet" href="/codemirror/codemirror.min.css"/>
+    <link rel="stylesheet" href="/codemirror/addon/simplescrollbars.min.css"/>
+    <link rel="stylesheet" href="/codemirror/theme/material-darker.min.css"/>
+    <style>
+        /* 片段注入前的启动遮罩（bootstrap 注入完成后移除），内联以免依赖尚未加载的样式 */
+        #appBootLoading {
+            position: fixed; inset: 0; z-index: 99999;
+            display: flex; align-items: center; justify-content: center;
+            background: #ffffff;
+        }
+        @media (prefers-color-scheme: dark) { #appBootLoading { background: #1e1e1e; } }
+        body[data-theme="dark"] #appBootLoading { background: #1e1e1e; }
+        #appBootLoading .boot-spinner {
+            width: 30px; height: 30px; border-radius: 50%;
+            border: 3px solid rgba(128,128,128,.25); border-top-color: #4f9cf9;
+            animation: bootspin .8s linear infinite;
+        }
+        @keyframes bootspin { to { transform: rotate(360deg); } }
+        #appBootLoading.boot-error .boot-spinner { display: none; }
+        #appBootLoading .boot-error-msg { display: none; color: #ef4444; font: 14px/1.6 sans-serif; text-align: center; padding: 0 24px; }
+        #appBootLoading.boot-error .boot-error-msg { display: block; }
+        /* i18n 就绪前隐藏需翻译的文本，避免中文兜底文本闪烁 */
+        [data-i18n].i18n-hidden { opacity: 0 !important; transition: none !important; }
+        [data-i18n].i18n-hidden::after { content: ''; display: inline-block; width: 0; overflow: hidden; }
+    </style>
+</head>
+<body data-theme="light">
+<script>
+    // 主题预置：在首帧绘制前用 localStorage 的主题覆盖 body 默认值，消除“亮→暗”闪烁。
+    // 必须放在 body 首个节点——此时 body 已存在、遮罩等可见元素尚未解析绘制，内联脚本同步
+    // 执行完再绘制首帧，故不闪。app-ui.js 稍后按同一值再设一次是幂等的。
+    // JS 失败时退回 body 上硬编码的 data-theme="light" 兜底。
+    (function () {
+        try {
+            var t = localStorage.getItem('chat-theme');
+            if (t && t !== 'light') document.body.setAttribute('data-theme', t);
+        } catch (e) {}
+    })();
+</script>
+
+<!-- ============ 共享外壳（sidebar / 移动端菜单 / 拖拽把手 / 主区容器）============ -->
+<!-- 各模式界面（chat / code / settings）由 /js/app-bootstrap.js 从 chat.html、code.html、settings.html 注入 -->
+
+<!-- Sidebar -->
+<div class="sidebar">
+    <div class="sidebar-header">
+        <div class="sidebar-header-top">
+            <div class="sidebar-logo">
+                <img src="/img/favicon.png" alt="Gourd AI" class="sidebar-logo-img"/>
+                <span class="sidebar-logo-text">Gourd AI</span>
+            </div>
+            <div class="sidebar-header-actions">
+            <button class="sidebar-icon-btn" id="sidebarSearchBtn" title="搜索对话" data-i18n-title="app.search_history">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </button>
+            <button class="sidebar-icon-btn" id="modeSwitchBtn" data-i18n-title="app.mode_switch">
+                <svg class="mode-icon-code" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                <svg class="mode-icon-chat" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+            </button>
+            <button class="sidebar-icon-btn filer-view-btn active" data-view="files" data-i18n-title="app.project_view">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            </button>
+            <button class="sidebar-icon-btn filer-view-btn" data-view="gitdiff" data-i18n-title="app.review_view">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>
+                <span class="git-badge" id="gitBadge" style="display:none">0</span>
+            </button>
+            <button class="sidebar-icon-btn sidebar-terminal-btn" id="sidebarTerminalBtn" data-i18n-title="app.terminal_shortcut">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            </button>
+
+            </div>
+        </div>
+        <div class="sidebar-search-bar" id="sidebarSearchBar" style="display:none;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="sidebarSearchInput" data-i18n-placeholder="app.search_history" autocomplete="off"/>
+            <button class="sidebar-search-clear" id="sidebarSearchClear" style="display:none;" title="清除" data-i18n-title="common.clear">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <button class="new-chat-btn" id="newChatBtn">
+            <i class="layui-icon layui-icon-addition"></i> <span class="sidebar-text" data-i18n="app.new_chat">新对话</span>
+        </button>
+    </div>
+    <div class="sidebar-title sidebar-text" data-i18n="app.history_title">历史对话</div>
+    <div class="sidebar-list" id="historyList"></div>
+    <div class="sidebar-footer">
+        <button class="settings-btn" id="settingsBtn" data-i18n-title="settings.title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            <span class="sidebar-text" style="margin-left:6px;font-size:12px;" data-i18n="settings.title">设置</span>
+        </button>
+    </div>
+</div>
+<button class="mobile-menu-btn" id="mobileMenuBtn" data-i18n-title="app.menu">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+</button>
+<div class="mobile-overlay" id="mobileOverlay"></div>
+
+<div class="sidebar-resize-handle" id="sidebarResizeHandle"></div>
+
+<!-- Main（chat.html 的欢迎/对话视图与 code.html 的编辑器/差异视图注入此容器）-->
+<div class="main-area">
+    <div class="titlebar-drag-region"></div>
+</div>
+
+<!-- code.html 的文件树面板、settings.html 的设置浮层注入到 body 级（此处之后） -->
+
+<!-- 启动遮罩：片段注入完成后由 bootstrap 移除 -->
+<div id="appBootLoading">
+    <div class="boot-spinner"></div>
+    <div class="boot-error-msg" data-i18n="app.boot_error">页面加载失败，请刷新重试</div>
+</div>
+
+<!-- ============ 第三方库（不依赖应用 DOM，静态按序加载，与原 web.html 一致）============ -->
+<script src="/layui/layui.js"></script>
+<script>window.$ = layui.$;</script>
+<script src="/js/marked.min.js"></script>
+<script src="/js/qrcode.min.js"></script>
+<script src="/js/mermaid.min.js"></script>
+<script src="/highlight/highlight.min.js"></script>
+
+<!-- CodeMirror 5（离线打包，Code 模式编辑器）-->
+<script src="/codemirror/codemirror.min.js"></script>
+<script src="/codemirror/addon/meta.min.js"></script>
+<script src="/codemirror/addon/matchbrackets.min.js"></script>
+<script src="/codemirror/addon/closebrackets.min.js"></script>
+<script src="/codemirror/addon/active-line.min.js"></script>
+<script src="/codemirror/addon/simplescrollbars.min.js"></script>
+<script src="/codemirror/addon/simple.min.js"></script>
+<script src="/codemirror/mode/xml.min.js"></script>
+<script src="/codemirror/mode/javascript.min.js"></script>
+<script src="/codemirror/mode/css.min.js"></script>
+<script src="/codemirror/mode/htmlmixed.min.js"></script>
+<script src="/codemirror/mode/clike.min.js"></script>
+<script src="/codemirror/mode/python.min.js"></script>
+<script src="/codemirror/mode/go.min.js"></script>
+<script src="/codemirror/mode/rust.min.js"></script>
+<script src="/codemirror/mode/sql.min.js"></script>
+<script src="/codemirror/mode/shell.min.js"></script>
+<script src="/codemirror/mode/yaml.min.js"></script>
+<script src="/codemirror/mode/markdown.min.js"></script>
+<script src="/codemirror/mode/ruby.min.js"></script>
+<script src="/codemirror/mode/php.min.js"></script>
+<script src="/codemirror/mode/dart.min.js"></script>
+<script src="/codemirror/mode/swift.min.js"></script>
+<script src="/codemirror/mode/lua.min.js"></script>
+<script src="/codemirror/mode/properties.min.js"></script>
+<script src="/codemirror/mode/dockerfile.min.js"></script>
+<script src="/codemirror/mode/powershell.min.js"></script>
+<script src="/codemirror/mode/vue.min.js"></script>
+
+<!-- ============ 片段装配 + 应用脚本按序加载 ============ -->
+<script src="/js/app-i18n.js"></script>
+<script src="/js/app-bootstrap.js"></script>
+</body>
+</html>

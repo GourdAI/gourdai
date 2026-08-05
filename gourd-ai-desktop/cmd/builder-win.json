@@ -1,0 +1,46 @@
+{
+  "appId": "org.noear.gourd-ai-desktop",
+  "productName": "Gourd AI",
+  "copyright": "Copyright © 2026 noear.org",
+  "directories": {
+    "output": "out"
+  },
+  "files": [
+    "main/**/*",
+    "loading.html"
+  ],
+  "extraResources": [
+    {
+      "from": "build/extraResources/",
+      "to": "extraResources",
+      "filter": ["**/*", "!.gourdai", "!.gourdai/**"]
+    },
+    {
+      "from": "build/ui/",
+      "to": "ui"
+    },
+    {
+      "from": "build/icons/",
+      "to": "icons"
+    }
+  ],
+  "win": {
+    "icon": "build/icons/icon.ico",
+    "forceCodeSigning": false,
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "installerIcon": "build/icons/icon.ico",
+    "uninstallerIcon": "build/icons/icon.ico",
+    "shortcutName": "Gourd AI",
+    "include": "cmd/installer.nsh"
+  }
+}

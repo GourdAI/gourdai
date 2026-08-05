@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.noear</groupId>
+        <artifactId>gourdai-parent</artifactId>
+        <version>2026.6.21</version>
+        <relativePath>../gourdai-parent/pom.xml</relativePath>
+    </parent>
+
+    <!--
+      gourd-ai-agent：由原 gourd-ai-agent / gourd-ai-harness / gourd-ai-core 三个模块合并而成的单一模块。
+      顶层包 com.gourdai：直接存放应用入口（App、Configurator），下挂三个子包：
+        - com.gourdai.agent   —— 智能体核心抽象（Agent、ReAct、Team、Session 等）
+        - com.gourdai.harness —— 引擎与工具（HarnessEngine、talents.*、command 框架、permission、hitl）
+        - com.gourdai.core    —— 门户与配置（portal.*、channel.*、config.*、command.*、memory）
+      版本随 gourdai（继承 parent 2026.6.21）。第三方依赖版本由 solon-parent 的 dependencyManagement 统一管理。
+    -->
+    <artifactId>gourd-ai-agent</artifactId>
+    <name>${project.artifactId}</name>
+    <packaging>jar</packaging>
+
+    <!--
+      对齐 Jackson 各子模块版本。
+      solon-parent 将 jackson-databind / jackson-core 管理到 2.21.4，但传递依赖
+      （swagger-parser、mcp-json-jackson2 等）会带入旧的 jackson-annotations 2.19.0，
+      而 databind 2.21.4 的 JacksonAnnotationIntrospector 静态初始化需要 JsonSerializeAs
+      注解类（2.20+ 才引入）。版本错配导致 ACP 进程启动即抛 NoClassDefFoundError
+      并以 exit code 1 退出。此处导入 jackson-bom 统一锁定全部 jackson 子模块版本。
+    -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.fasterxml.jackson</groupId>
+                <artifactId>jackson-bom</artifactId>
+                <version>2.21.4</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- ============ agent 层 ============ -->
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-ai</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-flow</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-expression</artifactId>
+        </dependency>
+
+        <!-- ============ harness 层 ============ -->
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-lib</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+            <version>${okhttp.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-ai-core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-ai-sandbox</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-ai-mcp</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-ai-talent-mount</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-serialization-snack4</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>snack4-jsonpath</artifactId>
+        </dependency>
+
+        <!-- Swagger Parser for OpenAPI 2.0 / Swagger 2.0 -->
+        <dependency>
+            <groupId>io.swagger</groupId>
+            <artifactId>swagger-parser</artifactId>
+            <version>${swagger-parser.version}</version>
+        </dependency>
+
+        <!-- Swagger Parser V3 for OpenAPI 3.0 (also supports 2.0 but returns different object model) -->
+        <dependency>
+            <groupId>io.swagger.parser.v3</groupId>
+            <artifactId>swagger-parser</artifactId>
+            <version>${swagger-parser-v3.version}</version>
+        </dependency>
+
+        <!-- From talent-lsp -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>jul-to-slf4j</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.eclipse.lsp4j</groupId>
+            <artifactId>org.eclipse.lsp4j</artifactId>
+            <version>${lsp4j.version}</version>
+        </dependency>
+
+        <!-- From talent-memory -->
+        <dependency>
+            <groupId>com.yomahub</groupId>
+            <artifactId>roguemap-core</artifactId>
+            <version>${roguemap.version}</version>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>com.yomahub</groupId>
+            <artifactId>roguemap-memory</artifactId>
+            <version>${roguemap.version}</version>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-core</artifactId>
+            <version>${lucene.version}</version>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-queryparser</artifactId>
+            <version>${lucene.version}</version>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- From talent-web -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>${jsoup.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.vladsch.flexmark</groupId>
+            <artifactId>flexmark-html2md-converter</artifactId>
+            <version>${flexmark.version}</version>
+        </dependency>
+
+        <!-- 可选：Redis 会话/记忆存储（agent 与 harness 共用，合并后声明一次） -->
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>redisx</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- ============ core 层（应用/门户） ============ -->
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-ai-acp</artifactId>
+            <!--
+              排除 acp 传递引入的 solon-ai-agent jar：agent 已作为源码（com.gourdai.agent.*）直接编入本模块，
+              acp 传递来的上游 solon-ai-agent jar 会引入无用/重复的上游实现，需排除。
+            -->
+            <exclusions>
+                <exclusion>
+                    <groupId>org.noear</groupId>
+                    <artifactId>solon-ai-agent</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-scheduling-simple</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-server-jetty</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-server-jetty-add-websocket</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-web-staticfiles</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-web-sse</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-web-cors</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.fusesource.jansi</groupId>
+            <artifactId>jansi</artifactId>
+            <version>${jansi.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-logging-logback</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.jline</groupId>
+            <artifactId>jline</artifactId>
+            <version>${jline.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.fusesource.jansi</groupId>
+                    <artifactId>jansi</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <!-- WebSocket 客户端（钉钉/飞书 Stream 长连接） -->
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>java-websocket-ns</artifactId>
+            <version>1.1</version>
+        </dependency>
+
+        <!-- ============ 编译期/测试 ============ -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-logging-simple</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.noear</groupId>
+            <artifactId>solon-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.noear</groupId>
+                <artifactId>solon-maven-plugin</artifactId>
+                <version>4.0.2</version>
+                <configuration>
+                    <finalName>gourd-ai-agent</finalName>
+                    <mainClass>com.gourdai.App</mainClass>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>make-release</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <finalName>${project.artifactId}-bin-v${project.version}</finalName>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <descriptors>
+                                <descriptor>src/assembly/release.xml</descriptor>
+                            </descriptors>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

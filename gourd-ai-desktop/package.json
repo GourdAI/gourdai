@@ -1,0 +1,26 @@
+{
+  "name": "gourd-ai-desktop",
+  "version": "1.0.0",
+  "description": "Gourd AI Desktop",
+  "main": "main/index.js",
+  "scripts": {
+    "dev": "node main/dev-launch.js",
+    "start": "electron .",
+    "generate-jre": "node generate-jre.js",
+    "verify": "node verify-setup.js",
+    "prepare-resources": "node cmd/prepare-resources.js",
+    "prebuild:win": "node cmd/prepare-resources.js",
+    "build:win": "electron-builder --config cmd/builder-win.json",
+    "prebuild:mac": "node cmd/prepare-resources.js",
+    "build:mac": "electron-builder --config cmd/builder-mac.json",
+    "prebuild:linux": "node cmd/prepare-resources.js",
+    "build:linux": "electron-builder --config cmd/builder-linux.json"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "dependencies": {
+    "tree-kill": "^1.2.2"
+  }
+}

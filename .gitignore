@@ -1,0 +1,54 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.gourdai
+!gourd-ai-desktop/build/extraResources/.gourdai/
+!gourd-ai-desktop/build/extraResources/.gourdai/settings.json
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+*.log
+*.flattened-pom.xml
+*.md
+!soloncode-cli/docs/*.md
+# 内置子代理定义属于运行时必需资源，绝不能被 *.md 规则吞掉
+!gourd-ai-agent/src/main/resources/META-INF/gourdai/agents/*.md
+
+### NetBeans ###
+nbproject/private/
+nbbuild/
+dist/
+nbdist/
+.nb-gradle/
+soloncode-ee/
+
+### Mac files ###
+*.DS_Store
+.vscode
+.claude
+node_modules/
+CLAUDE.md
+TODO.md
+/soloncode-cli/src/main/resources/config.yml
+work
+
+.gourdai/
+!gourd-ai-desktop/build/extraResources/.gourdai/
+!gourd-ai-desktop/build/extraResources/.gourdai/settings.json
+soloncode-desktop/soloncode-cli/
+soloncode-desktop/src-tauri/target/
+soloncode-desktop/src-tauri/release/
+soloncode-desktop/src-tauri/build/
+soloncode-desktop/src-tauri/resources/
+
+.soloncode/
