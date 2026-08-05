@@ -163,6 +163,15 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: |
           set -e
+          # Secret 未配置时，${{ secrets.XXX }} 会被渲染为空串（而非未定义）。
+          # electron-builder 只要 CSC_LINK 已定义（即使是空串）就会走证书导入流程，
+          # 并把空串当相对路径解析到项目根目录，报 "⨯ <项目目录> not a file"，
+          # 因此打包前先 unset 空值，使行为与「未定义」一致
+          [ -n "$CSC_LINK" ] || unset CSC_LINK
+          [ -n "$CSC_KEY_PASSWORD" ] || unset CSC_KEY_PASSWORD
+          [ -n "$APPLE_TEAM_ID" ] || unset APPLE_TEAM_ID
+          [ -n "$APPLE_ID" ] || unset APPLE_ID
+          [ -n "$APPLE_APP_SPECIFIC_PASSWORD" ] || unset APPLE_APP_SPECIFIC_PASSWORD
           if [ -n "$CSC_LINK" ]; then
             echo "签名模式: Developer ID 正式签名 + 公证"
           else
