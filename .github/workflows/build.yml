@@ -63,7 +63,7 @@ jobs:
           fi
           if [ -n "$VERSION" ]; then
             cd gourd-ai-desktop
-            npm version "$VERSION" --no-git-tag-version
+            npm version "$VERSION" --no-git-tag-version --allow-same-version
             echo "使用版本号: $VERSION"
           else
             echo "未指定版本号，使用 package.json 当前版本"
