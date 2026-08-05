@@ -1,7 +1,12 @@
 {
-  "name": "gourd-ai-desktop",
-  "version": "1.0.0",
+  "name": "Gourd AI",
+  "version": "0.0.1",
   "description": "Gourd AI Desktop",
+  "homepage": "https://www.gourd-ai.cn",
+  "author": {
+    "name": "gourdai",
+    "email": "gourdai@163.com"
+  },
   "main": "main/index.js",
   "scripts": {
     "dev": "node main/dev-launch.js",
