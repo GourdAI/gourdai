@@ -6,7 +6,7 @@
 
 一个真正能干活的开源桌面智能体 —— 给它一个目标，它还你一份结果。
 
-基于 [Solon AI](https://github.com/opensolon/solon-ai) 构建 · 纯 Java · 100% 开源
+基于 [Solon AI](https://github.com/opensolon/solon-ai) 构建 · Java Agent内核 · 100% 开源
 
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 [![Java](https://img.shields.io/badge/Java-8%20~%2026-orange.svg)](#)
