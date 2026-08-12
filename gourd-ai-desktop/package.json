@@ -14,16 +14,15 @@
     "generate-jre": "node generate-jre.js",
     "verify": "node verify-setup.js",
     "prepare-resources": "node cmd/prepare-resources.js",
-    "prebuild:win": "node cmd/prepare-resources.js",
-    "build:win": "electron-builder --config cmd/builder-win.json",
-    "prebuild:mac": "node cmd/prepare-resources.js",
-    "build:mac": "electron-builder --config cmd/builder-mac.json",
-    "prebuild:linux": "node cmd/prepare-resources.js",
-    "build:linux": "electron-builder --config cmd/builder-linux.json"
+    "obfuscate-ui": "node cmd/obfuscate-ui.js",
+    "build:win": "node cmd/build-protected.js win",
+    "build:mac": "node cmd/build-protected.js mac",
+    "build:linux": "node cmd/build-protected.js linux"
   },
   "devDependencies": {
     "electron": "^33.0.0",
-    "electron-builder": "^25.0.0"
+    "electron-builder": "^25.0.0",
+    "javascript-obfuscator": "^5.5.0"
   },
   "dependencies": {
     "tree-kill": "^1.2.2"

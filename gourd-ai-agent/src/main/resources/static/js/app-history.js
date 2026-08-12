@@ -1267,7 +1267,7 @@ function loadModels(sessionId, callback) {
                 modelList = [];
                 var list = data.list || [];
                 for (var i = 0; i < list.length; i++) {
-                    modelList.push({ name: list[i].name || list[i].model, desc: list[i].description, contextLength: list[i].contextLength || 0, standard: list[i].standard || '' });
+                    modelList.push({ name: list[i].name || list[i].model, model: list[i].model || list[i].name, desc: list[i].description, contextLength: list[i].contextLength || 0, standard: list[i].standard || '', provider: list[i].provider || '' });
                 }
                 modelsLoaded = true;
             }
@@ -1308,6 +1308,17 @@ function refreshSessionModel(sessionId) {
     }
 }
 
+// 去掉「供应商-」前缀的展示短名：模型名由供应商同步生成时为 provider + '-' + modelId，
+// 分组标题已展示供应商，选项内不再重复该前缀
+function modelShortName(m) {
+    var p = m.provider || '';
+    if (p && m.name && m.name.indexOf(p + '-') === 0) {
+        var rest = m.name.substring(p.length + 1);
+        if (rest) return rest;
+    }
+    return m.name;
+}
+
 function renderModelUI() {
     var $chatName = $('#chatModelName');
     var $welcomeName = $('#welcomeModelName');
@@ -1315,19 +1326,41 @@ function renderModelUI() {
     var $welcomeDropdown = $('#welcomeModelDropdown');
 
     var currentModel = getSelectedModel();
-    var displayName = currentModel.length > 24 ? currentModel.substring(0, 24) + '...' : currentModel;
+    var currentEntry = null;
+    for (var c = 0; c < modelList.length; c++) {
+        if (modelList[c].name === currentModel) { currentEntry = modelList[c]; break; }
+    }
+    // 工具栏按钮显示去前缀短名，避免「Gourd AI-xxx」过长截断
+    var displaySource = currentEntry ? modelShortName(currentEntry) : currentModel;
+    var displayName = displaySource.length > 24 ? displaySource.substring(0, 24) + '...' : displaySource;
     $chatName.text(displayName || GourdI18n.t('history.default_model'));
     $welcomeName.text(displayName || GourdI18n.t('history.default_model'));
 
+    // 按供应商分组（map 归组，不依赖相邻性：用户改名导致同组 name 不连续时也不会拆组/重复标题）；无 provider 的归入「其他」组
+    var groups = [];
+    var groupIndex = {};
+    for (var g0 = 0; g0 < modelList.length; g0++) {
+        var gk = modelList[g0].provider || '';
+        if (!(gk in groupIndex)) { groupIndex[gk] = groups.length; groups.push({ provider: gk, items: [] }); }
+        groups[groupIndex[gk]].items.push(modelList[g0]);
+    }
     var html = '';
-    for (var i = 0; i < modelList.length; i++) {
-        var m = modelList[i];
-        var cls = m.name === currentModel ? ' active' : '';
-        var ctxLen = m.contextLength ? (m.contextLength >= 1000000 && m.contextLength % 1000000 === 0 ? (m.contextLength / 1000000) + 'm' : (m.contextLength >= 1000 ? (m.contextLength / 1000) + 'k' : m.contextLength)) : '';
-        html += '<div class="model-dropdown-item' + cls + '" data-model="' + escapeHtml(m.name) + '">'
-            + '<span class="model-item-name">' + escapeHtml(m.name) + (ctxLen ? '<span class="model-item-ctx">' + ctxLen + '</span>' : '') + '</span>'
-            + (m.desc ? '<span class="model-item-desc">' + escapeHtml(m.desc) + '</span>' : '')
-            + '</div>';
+    for (var gi = 0; gi < groups.length; gi++) {
+        var grp = groups[gi];
+        html += '<div class="model-dropdown-group">' + escapeHtml(grp.provider || GourdI18n.t('history.model_group_other')) + '</div>';
+        for (var i = 0; i < grp.items.length; i++) {
+            var m = grp.items[i];
+            var cls = m.name === currentModel ? ' active' : '';
+            var ctxLen = m.contextLength ? (m.contextLength >= 1000000 && m.contextLength % 1000000 === 0 ? (m.contextLength / 1000000) + 'm' : (m.contextLength >= 1000 ? (m.contextLength / 1000) + 'k' : m.contextLength)) : '';
+            var shortName = modelShortName(m);
+            // 描述与模型ID相同时属冗余信息（名称行已展示），不再重复渲染第二行
+            var desc = m.desc || '';
+            if (desc && m.model && desc === m.model) desc = '';
+            html += '<div class="model-dropdown-item' + cls + '" data-model="' + escapeHtml(m.name) + '">'
+                + '<span class="model-item-name">' + escapeHtml(shortName) + (ctxLen ? '<span class="model-item-ctx">' + ctxLen + '</span>' : '') + '</span>'
+                + (desc ? '<span class="model-item-desc">' + escapeHtml(desc) + '</span>' : '')
+                + '</div>';
+        }
     }
     $chatDropdown.html(html);
     $welcomeDropdown.html(html);

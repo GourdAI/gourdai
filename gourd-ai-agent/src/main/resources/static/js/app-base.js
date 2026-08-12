@@ -189,9 +189,12 @@ function setBtnSendMode() {
     chatSendBtn.disabled = false;
 }
 
+// Input box height: by default auto-adapts to content (capped at 320px);
+// after the user drags the top drag bar, el._manualH is written and switches to manual fixed height (double-click the drag bar to restore auto).
 function autoResize(el) {
+    if (el._manualH) { el.style.height = el._manualH + 'px'; return; }
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+    el.style.height = Math.min(el.scrollHeight, 320) + 'px';
 }
 
 function escapeHtml(str) {
@@ -228,8 +231,9 @@ function getInputText() {
     return welcomeInput.value.trim();
 }
 function clearInput() {
-    if (inChatMode) { chatInput.value = ''; chatInput.style.height = 'auto'; }
-    else { welcomeInput.value = ''; welcomeInput.style.height = 'auto'; }
+    // Go through autoResize uniformly: if there is no manual height, revert to the default min-height; if there is, preserve the height selected by the user
+    if (inChatMode) { chatInput.value = ''; autoResize(chatInput); }
+    else { welcomeInput.value = ''; autoResize(welcomeInput); }
 }
 
 /* ===== Toast Notification ===== */

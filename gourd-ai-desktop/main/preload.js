@@ -35,6 +35,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 window.addEventListener('DOMContentLoaded', () => {
   // 标记当前运行在 Electron 中，激活 web 端的 Electron 专属样式
   document.body.classList.add('is-electron');
+  // macOS 专属标记：红绿灯窗口按钮在左上角，web 端据此为侧边栏顶部让位
+  if (process.platform === 'darwin') {
+    document.body.classList.add('is-mac');
+  }
 
   // 左侧 sidebar logo 行可拖拽移动窗口，按钮保持可点击
   const style = document.createElement('style');
@@ -44,6 +48,17 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     body.is-electron .sidebar-header-actions,
     body.is-electron .sidebar-header-actions * {
+      -webkit-app-region: no-drag;
+    }
+    /* macOS：让位出来的侧边栏顶部空白区也可拖拽窗口，交互元素保持可点击 */
+    body.is-electron.is-mac .sidebar-header {
+      -webkit-app-region: drag;
+    }
+    body.is-electron.is-mac .sidebar-header-actions,
+    body.is-electron.is-mac .sidebar-header-actions *,
+    body.is-electron.is-mac .new-chat-btn,
+    body.is-electron.is-mac .sidebar-search-bar,
+    body.is-electron.is-mac .sidebar-search-bar * {
       -webkit-app-region: no-drag;
     }
   `;

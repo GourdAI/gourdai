@@ -116,6 +116,20 @@ jobs:
             --output "$OUT_X64" --strip-debug --compress 2 --no-header-files --no-man-pages
           "$JAVA_HOME/bin/jlink" --module-path "$ARM_HOME/jmods" --add-modules "$MODULES" \
             --output "$OUT_ARM" --strip-debug --compress 2 --no-header-files --no-man-pages
+          # 保证可执行位（经压缩/解压或跨架构链接后可能丢失），否则包内 java 无法 spawn
+          chmod +x "$OUT_X64/bin/"* "$OUT_ARM/bin/"*
+
+      # 对应本地 build.sh / build.ps1 的图标同步步骤：托盘等运行时图标来自包内
+      # Resources/icons/，而仓库只维护 resources/icons 一份源，CI 上必须先同步，
+      # 否则 mac 包缺 icons 目录 → 托盘加载空图抛异常、中断后端引导
+      - name: 同步运行时图标 (icons)
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: |
+          set -e
+          mkdir -p gourd-ai-desktop/build/icons
+          cp -f gourd-ai-desktop/resources/icons/icon.ico gourd-ai-desktop/build/icons/icon.ico
+          cp -f gourd-ai-desktop/resources/icons/icon.png gourd-ai-desktop/build/icons/icon.png
 
       # builder-mac.json 引用 build/icons/icon.icns，仓库中只有 png，CI 上用系统工具生成
       - name: 生成 macOS 图标 (icon.icns)

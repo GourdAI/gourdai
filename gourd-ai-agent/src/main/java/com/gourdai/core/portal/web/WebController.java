@@ -21,11 +21,16 @@ import com.gourdai.agent.AgentSession;
 import org.noear.solon.ai.chat.ChatConfig;
 import com.gourdai.harness.HarnessEngine;
 import com.gourdai.harness.talents.cli.TodoTalent;
+import com.gourdai.harness.talents.memory.MemorySearchResult;
+import com.gourdai.harness.talents.memory.MemorySearcher;
+import com.gourdai.harness.talents.memory.MemorySolution;
+import com.gourdai.harness.talents.memory.MemorySolutionProvider;
 import com.gourdai.harness.agent.AgentDefinition;
 import com.gourdai.harness.command.Command;
 import org.noear.solon.ai.talents.mount.SkillDir;
 import org.noear.solon.annotation.*;
 import com.gourdai.core.config.AgentFlags;
+import com.gourdai.core.portal.WorkspaceWatcher;
 import com.gourdai.core.command.builtin.LoopScheduler;
 import com.gourdai.core.command.builtin.LoopStateManager;
 import com.gourdai.core.command.builtin.LoopTask;
@@ -97,6 +102,9 @@ public class WebController {
     /** 项目登记服务：Code 模式的本地项目目录列表 */
     private final ProjectService projectService = new ProjectService();
 
+    /** 工作区文件变化监听器：可为 null（Code 模式项目根动态登记监听） */
+    private final WorkspaceWatcher workspaceWatcher;
+
     /**
      * 构造函数：初始化核心依赖并注册 Web 端 Loop 任务执行器。
      *
@@ -106,10 +114,20 @@ public class WebController {
      * @param sessionLocator 会话目录定位器
      */
     public WebController(HarnessEngine engine, WebGate webGate, LoopScheduler loopScheduler, SessionLocator sessionLocator) {
+        this(engine, webGate, loopScheduler, sessionLocator, null);
+    }
+
+    /**
+     * 构造函数（含文件变化监听器）。
+     *
+     * @param workspaceWatcher 工作区文件变化监听器，可为 null
+     */
+    public WebController(HarnessEngine engine, WebGate webGate, LoopScheduler loopScheduler, SessionLocator sessionLocator, WorkspaceWatcher workspaceWatcher) {
         this.engine = engine;
         this.webGate = webGate;
         this.loopScheduler = loopScheduler;
         this.sessionLocator = sessionLocator;
+        this.workspaceWatcher = workspaceWatcher;
         this.gitService = new GitService(engine.getWorkspace(), engine);
         this.fileService = new FileService(engine.getWorkspace());
 
@@ -381,6 +399,8 @@ public class WebController {
                 item.put("contextLength", config.getContextLength());
                 // 接口类型：前端据此可展示每个模型对应的思考深度参数形态（档位本身是统一的）
                 item.put("standard", config.getStandardOrProvider());
+                // 所属供应商：前端据此对模型下拉做分组展示
+                item.put("provider", config.getProvider());
                 list.add(item);
             }
         }
@@ -1360,6 +1380,76 @@ public class WebController {
         }
     }
 
+    // ==================== 心智记忆查看 ====================
+
+    /**
+     * 列出心智记忆条目（只读，供前端记忆面板展示）。
+     *
+     * <p>数据源与 {@code MemoryTalent} 共用同一个 {@link MemorySolutionProvider}，
+     * 保证页面看到的记忆与 LLM 实际读写的记忆完全一致（含 TTL 过期过滤）。
+     * 记忆条目统一存于 "shared" 用户域（HarnessEngine 中 MemoryTalent 以 sessionIsolation(false) 构建）。</p>
+     *
+     * <p>scope 语义：
+     * <ul>
+     *   <li>workspace：当前工作区记忆。code 会话取 X-Session-Cwd 项目根，chat 会话取全局工作区；</li>
+     *   <li>global：全局共享区记忆（{@link AgentFlags#getHarnessBase()}）。</li>
+     * </ul>
+     * 注意：当“记忆隔离”设置关闭时，{@code MemoryProvider} 会把所有工作区统一重定向到全局区，
+     * 此时两个 Tab 返回同一份数据（符合实际存储语义）。</p>
+     *
+     * @param ctx   请求上下文（workspace 域需携带 X-Session-Cwd 头）
+     * @param scope 记忆域：workspace / global
+     * @return 记忆条目列表（key/content/importance/time）与总数
+     */
+    @Get
+    @Mapping("/web/chat/memory/list")
+    public Result<Map> memoryList(Context ctx,
+                                  @Param(value = "scope", required = false, defaultValue = "workspace") String scope) {
+        MemorySolutionProvider memoryProvider = engine.getMemoryProvider();
+        if (memoryProvider == null) {
+            return Result.failure(500, "Memory provider not configured");
+        }
+
+        boolean global = "global".equals(scope);
+        String cwd;
+        if (global) {
+            cwd = AgentFlags.getHarnessBase();
+        } else {
+            // 与 todos() 同一套工作区解析逻辑：code 会话记忆落在所选项目目录下
+            String sessionCwd = ctx.header("X-Session-Cwd");
+            if (sessionCwd != null && sessionCwd.contains("..")) {
+                return Result.failure(400, "Invalid Session Cwd");
+            }
+            cwd = Assert.isNotEmpty(sessionCwd) ? sessionCwd : engine.getWorkspace();
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        try {
+            MemorySolution solution = memoryProvider.get(cwd);
+            MemorySearcher searcher = solution == null ? null : solution.getSearcher();
+
+            List<Map<String, Object>> items = new ArrayList<>();
+            if (searcher != null) {
+                for (MemorySearchResult r : searcher.listAll("shared", 200)) {
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("key", r.getKey());
+                    item.put("content", r.getContent());
+                    item.put("importance", r.getImportance());
+                    item.put("time", r.getTime());
+                    items.add(item);
+                }
+            }
+
+            data.put("scope", global ? "global" : "workspace");
+            data.put("items", items);
+            data.put("total", items.size());
+            return Result.succeed(data);
+        } catch (Exception e) {
+            LOG.error("Failed to list memories, scope={}: {}", scope, e.getMessage());
+            return Result.failure(500, e.getMessage());
+        }
+    }
+
     // ==================== 文件浏览（委派给 FileService） ====================
 
     /**
@@ -1397,6 +1487,24 @@ public class WebController {
     public Result<Map> fileRead(@Param("path") String path,
                                 @Param(value = "root", required = false) String root) throws Exception {
         return fileService.read(path, root);
+    }
+
+    /**
+     * 登记文件变化监听根接口 —— Code 模式切换项目时调用，
+     * 使 {@link WorkspaceWatcher} 覆盖所选项目目录，外部修改即可实时推送 filer_change。
+     */
+    @Post
+    @Mapping("/web/chat/filer/watch")
+    public Result<Boolean> filerWatch(@Body String body) {
+        String root = null;
+        if (body != null && !body.trim().isEmpty()) {
+            root = ONode.ofJson(body).get("root").getString();
+        }
+        if (root == null || root.trim().isEmpty() || workspaceWatcher == null) {
+            return Result.succeed(false);
+        }
+        workspaceWatcher.addRoot(Paths.get(root.trim()));
+        return Result.succeed(true);
     }
 
     /**

@@ -1354,7 +1354,10 @@ function appendTraceBadge(sess, chunk) {
         thinkingBuffer: '',
         thinkingRafId: null,
         thinkingTimerId: null,
-        thinkingStartTime: null
+        thinkingStartTime: null,
+        inlineThinkingEl: null,
+        inlineThinkingTimerId: null,
+        inlineThinkingStartTime: null
     };
     if (!sess.agentStates) sess.agentStates = {};
     sess.agentStates[agentId] = agentState;
@@ -1382,6 +1385,8 @@ function clearAgentState(sess, st) {
     if (st) {
         if (st.thinkingRafId) { cancelAnimationFrame(st.thinkingRafId); }
         if (st.thinkingTimerId) { clearInterval(st.thinkingTimerId); }
+        if (st.inlineThinkingTimerId) { clearInterval(st.inlineThinkingTimerId); st.inlineThinkingTimerId = null; }
+        if (st.inlineThinkingEl) { $(st.inlineThinkingEl).remove(); st.inlineThinkingEl = null; }
         if (st.bodyRafId) { cancelAnimationFrame(st.bodyRafId); }
         if (sess.agentStates) delete sess.agentStates[st.id];
         if (sess._agentStateLast === st) sess._agentStateLast = null;
@@ -1399,6 +1404,8 @@ function clearAgentState(sess, st) {
             var s = sess.agentStates[k];
             if (s.thinkingRafId) { cancelAnimationFrame(s.thinkingRafId); }
             if (s.thinkingTimerId) { clearInterval(s.thinkingTimerId); }
+            if (s.inlineThinkingTimerId) { clearInterval(s.inlineThinkingTimerId); s.inlineThinkingTimerId = null; }
+            if (s.inlineThinkingEl) { $(s.inlineThinkingEl).remove(); s.inlineThinkingEl = null; }
             if (s.bodyRafId) { cancelAnimationFrame(s.bodyRafId); }
         }
         sess.agentStates = {};
@@ -1612,6 +1619,39 @@ function removeInlineThinking(sess) {
 function purgeInlineThinking(sess) {
     stopThinkingTimer(sess, 'inlineThinkingTimerId', 'inlineThinkingStartTime');
     if (sess.inlineThinkingEl) { $(sess.inlineThinkingEl).remove(); sess.inlineThinkingEl = null; }
+}
+
+// 子智能体卡片级等待指示器（「圆点 + Ns」，挂在卡片头部右侧）：多智能体并行时，
+// 每个卡片在自己的头部独立展示执行中状态，避免全局指示器挂在主气泡底部导致归属不明
+// （卡片外错位显示）。挂在头部而非卡片体：卡片体默认 display:none（简洁模式不展开），
+// 体内指示器在折叠时不可见，等于无反馈；头部恒可见，展开/折叠两种形态都有加载态。
+// 隐藏时直接移除元素（头部无需占位防跳，避免残留空白）。
+function showAgentInlineThinking(sess, st) {
+    if (!st || !st.card) return;
+    var header = $(st.card).children('.agent-card-header')[0];
+    if (!header) return;
+    var el = st.inlineThinkingEl;
+    if (!el || !el.parentNode) {
+        el = $('<div>').addClass('agent-inline-thinking')[0];
+        el.innerHTML = DOTS_HTML + '<span class="thinking-timer-wrap">'
+            + '<span class="thinking-current-timer">0s</span>'
+            + '</span>';
+        st.inlineThinkingEl = el;
+    }
+    if (el.parentNode !== header) header.appendChild(el);
+    var currentTimerSpan = $(el).find('.thinking-current-timer')[0];
+    st.inlineThinkingStartTime = Date.now();
+    if (st.inlineThinkingTimerId) clearInterval(st.inlineThinkingTimerId);
+    st.inlineThinkingTimerId = setInterval(function() {
+        if (!currentTimerSpan || !currentTimerSpan.parentNode) { clearInterval(st.inlineThinkingTimerId); st.inlineThinkingTimerId = null; return; }
+        $(currentTimerSpan).text(Math.floor((Date.now() - st.inlineThinkingStartTime) / 1000) + 's');
+    }, 1000);
+    if (sess.sessionId === activeSessionId && !userScrolledUp && messagesWrap) messagesWrap.scrollTop = messagesWrap.scrollHeight;
+}
+function hideAgentInlineThinking(st) {
+    if (!st) return;
+    if (st.inlineThinkingTimerId) { clearInterval(st.inlineThinkingTimerId); st.inlineThinkingTimerId = null; }
+    if (st.inlineThinkingEl) { $(st.inlineThinkingEl).remove(); st.inlineThinkingEl = null; }
 }
 
 /* ===== HITL ===== */

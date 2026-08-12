@@ -79,6 +79,9 @@ body.code-mode .sidebar-header {
     display: flex; align-items: center; justify-content: center;
     border-bottom: 1px solid var(--border-color);
 }
+/* macOS：红绿灯按钮在左上角（纵向约 14~26px），窄图标栏 header 加高让位，Logo 下移到按钮下方 */
+body.is-electron.is-mac.code-mode .sidebar-header { height: 84px; }
+body.is-electron.is-mac.code-mode .sidebar-header-actions { top: 96px; }
 body.code-mode .sidebar-header-top { flex-direction: column; gap: 0; margin: 0; padding: 0; align-items: center; }
 body.code-mode .sidebar-logo { justify-content: center; gap: 0; }
 body.code-mode .sidebar-logo-img { width: 24px; height: 24px; }
@@ -112,8 +115,9 @@ body.code-mode #modeSwitchBtn { width: 38px; height: 38px; border-radius: 8px; }
 body.code-mode .filer-view-btn {
     width: 38px; height: 38px; border-radius: 8px; margin-top: 2px;
 }
-/* 与上方模式切换按钮之间留一条分隔间距 */
-body.code-mode .filer-view-btn[data-view="files"] { margin-top: 12px; }
+/* 与上方模式切换按钮之间留一条分隔间距（记忆图标承接该间距，文件树图标紧随其后） */
+body.code-mode .sidebar-memory-btn { width: 38px; height: 38px; border-radius: 8px; margin-top: 12px; }
+body.code-mode .filer-view-btn[data-view="files"] { margin-top: 2px; }
 /* 活动栏里选中的视图：accent 竖条 + 高亮，区分于普通 hover */
 body.code-mode .filer-view-btn.active {
     color: var(--accent); background: var(--bg-hover);
@@ -427,6 +431,8 @@ body.code-mode.viewer-open .git-diff-viewer { order: 1; }
 .code-editor-tab-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex-shrink: 0; display: none; }
 .code-editor-tab.dirty .code-editor-tab-dot { display: block; }
 .code-editor-tab.dirty .code-editor-tab-close { display: none; }
+/* 磁盘已变更（有未保存改动且外部修改了文件）：提示点变红，点击标签确认重载 */
+.code-editor-tab.disk-changed .code-editor-tab-dot { display: block; background: var(--error-text); }
 .code-editor-tab-close { border: none; background: none; cursor: pointer; color: var(--text-secondary); font-size: 15px; line-height: 1; padding: 0 3px; border-radius: 3px; flex-shrink: 0; }
 .code-editor-tab-close:hover { background: var(--bg-hover); color: var(--text-primary); }
 
@@ -434,20 +440,34 @@ body.code-mode.viewer-open .git-diff-viewer { order: 1; }
 .code-editor-host .CodeMirror { height: 100%; font-family: var(--font-mono); font-size: 13px; line-height: 1.6; }
 
 /* CodeMirror overlay 滚动条统一：overlay 是 addon 自绘 div（不走原生 ::-webkit-scrollbar），
-   simplescrollbars.css 里硬编码了 #bcd，与 diff / 全局原生滚动条不一致。
-   这里覆盖为引用 theme.css 的 --scrollbar-* 公共变量，两端观感对齐。 */
+   simplescrollbars.css 里硬编码了 #bcd（thumb）/ #eee（轨道），与全局原生滚动条不一致。
+   这里覆盖为引用 theme.css 的 --scrollbar-* 公共变量，两端观感对齐。
+   注意：index.html 中 simplescrollbars.min.css 在本文件之后加载，同特异性下会反覆盖，
+   故 thumb 规则加 !important 兜底（vendor 规则无 !important，可稳定胜出）。 */
 .CodeMirror-overlayscroll-vertical,
-.CodeMirror-overlayscroll-horizontal { z-index: 6; }
+.CodeMirror-overlayscroll-horizontal { z-index: 6; background: transparent; }
 .CodeMirror-overlayscroll-vertical { width: var(--scrollbar-size); }
 .CodeMirror-overlayscroll-horizontal { height: var(--scrollbar-size); }
 .CodeMirror-overlayscroll-vertical div,
 .CodeMirror-overlayscroll-horizontal div {
-    background: var(--scrollbar-thumb);
-    border-radius: var(--scrollbar-radius);
+    background: var(--scrollbar-thumb) !important;
+    border-radius: var(--scrollbar-radius) !important;
 }
 .CodeMirror-overlayscroll-vertical div:hover,
 .CodeMirror-overlayscroll-horizontal div:hover {
-    background: var(--scrollbar-thumb-hover);
+    background: var(--scrollbar-thumb-hover) !important;
+}
+/* 横竖滚动条同时出现时，CodeMirror 核心会在右下角交角处显示 .CodeMirror-scrollbar-filler
+   （codemirror.min.css 硬编码 background:#fff，且核心会内联 display:block 强制显示）。
+   simplescrollbars.css 里 .CodeMirror-overlayscroll 前缀的 display:none 特异性更高、
+   本应隐藏它——但桌面端实测交角仍残留白点，这里用 !important 双保险彻底去掉。 */
+.CodeMirror-scrollbar-filler {
+    display: none !important;
+    background: transparent !important;
+}
+.CodeMirror-gutter-filler {
+    display: none !important;
+    background: transparent !important;
 }
 
 /* 底部状态栏（文件名 / 语言标签 / 保存按钮）按需求隐藏；保存仍可用 Ctrl+S。

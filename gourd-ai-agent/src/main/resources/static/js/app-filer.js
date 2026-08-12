@@ -178,6 +178,31 @@
         });
     }
 
+    // ---- IDEA 风格紧凑目录：单子目录链折叠为单行（a \ b \ c） ----
+    // 后端 buildTree 会把「仅含一个子目录」的链折叠为一个节点（name 以 " \ " 拼接、path 指向链尾）；
+    // 前端再对 depth=1 返回的子层做同样折叠（懒加载场景），任一层出现兄弟节点即断开、恢复逐层展示。
+    function collapseChain(node, $container, indent) {
+        var cur = node;
+        var names = [cur.name];
+        while (cur.type === 'directory' && cur.expanded && cur.children
+            && cur.children.length === 1 && cur.children[0].type === 'directory') {
+            cur = cur.children[0];
+            names.push(cur.name);
+        }
+        if (names.length > 1) {
+            var collapsed = {
+                name: names.join(' \\ '),
+                path: cur.path,
+                type: 'directory',
+                expanded: true,
+                children: cur.children || null
+            };
+            appendNode(collapsed, $container, indent);
+            return;
+        }
+        appendNode(node, $container, indent);
+    }
+
     // ---- 渲染并追加单个节点 ----
     function appendNode(node, $container, indent) {
         var $nodeEl = $('<div>').addClass('filer-node')
@@ -196,10 +221,8 @@
                 .html('<svg width="12" height="12" viewBox="0 0 16 16"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>');
             $row.append($arrow);
         } else {
-            var $spacer = $('<span>').addClass('filer-arrow filer-arrow-spacer')
-                .html('&nbsp;');
-            $row.append($spacer);
-
+            // 文件行不再插入隐形占位符：图标直接占据行首槽位，
+            // 与目录行的箭头同列对齐（槽宽由 CSS 统一为 16px + 5px margin）。
             var $icon = $('<span>').addClass('filer-node-icon filer-icon-file')
                 .html('<svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 1.5h4.75L12.5 5.75V13.5a1 1 0 01-1 1H4a1 1 0 01-1-1V2.5a1 1 0 011-1z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/><path d="M8.75 1.5v4.25H12.5" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>');
             $row.append($icon);
@@ -215,7 +238,9 @@
             var $childrenEl = $('<div>').addClass('filer-node-children')
                 .toggleClass('open', !!node.expanded);
             if (node.expanded && node.children) {
-                renderTree(node.children, $childrenEl, indent + 1);
+                node.children.forEach(function(child) {
+                    collapseChain(child, $childrenEl, indent + 1);
+                });
             }
             $nodeEl.append($childrenEl);
         }
@@ -242,7 +267,9 @@
                             $ne.removeAttr('data-dirty');
                             $.get('/web/chat/filer/tree?path=' + encodeURIComponent(n.path) + '&depth=1' + rootParam(), function(res) {
                                 var subData = (res && res.data) ? res.data : [];
-                                renderTree(subData, $cEl, indent + 1);
+                                subData.forEach(function(child) {
+                                    collapseChain(child, $cEl, indent + 1);
+                                });
                             });
                         }
                     }
@@ -326,7 +353,9 @@
                     expandedPaths[dataPath] = true;
                 }
             });
-            renderTree(subData, $childrenEl, indent + 1);
+            subData.forEach(function(child) {
+                collapseChain(child, $childrenEl, indent + 1);
+            });
             // 恢复子目录展开状态（异步重新拉取数据）
             Object.keys(expandedPaths).forEach(function(expandedPath) {
                 var expSelector = '.filer-node[data-path="' + CSS.escape(expandedPath) + '"]';
@@ -340,7 +369,9 @@
                         $expArrow.addClass('open');
                         $.get('/web/chat/filer/tree?path=' + encodeURIComponent(expandedPath) + '&depth=1' + rootParam(), function(res2) {
                             var subData2 = (res2 && res2.data) ? res2.data : [];
-                            renderTree(subData2, $expChildrenEl, expIndent + 1);
+                            subData2.forEach(function(child) {
+                                collapseChain(child, $expChildrenEl, expIndent + 1);
+                            });
                         });
                     }
                 }
@@ -356,7 +387,7 @@
     function smartRefreshRoot() {
         var expandedPaths = collectExpandedPaths();
 
-        $.get('/web/chat/filer/tree?depth=1', function(res) {
+        $.get('/web/chat/filer/tree?depth=1' + rootParam(), function(res) {
             var newData = (res && res.data) ? res.data : [];
             if (!$treeEl.length) return;
 
@@ -365,7 +396,7 @@
                 if (expandedPaths[node.path] && node.type === 'directory') {
                     node.expanded = true;
                 }
-                appendNode(node, $treeEl, 0);
+                collapseChain(node, $treeEl, 0);
             });
 
             // 对之前已展开的目录，重新拉取子节点
@@ -379,7 +410,9 @@
 
                 $.get('/web/chat/filer/tree?path=' + encodeURIComponent(dirPath) + '&depth=1' + rootParam(), function(res2) {
                     var subData = (res2 && res2.data) ? res2.data : [];
-                    renderTree(subData, $childrenEl, indent + 1);
+                    subData.forEach(function(child) {
+                        collapseChain(child, $childrenEl, indent + 1);
+                    });
                 });
             });
         }).fail(function(jqXHR, textStatus, error) {

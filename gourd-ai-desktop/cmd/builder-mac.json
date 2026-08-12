@@ -18,11 +18,15 @@
     {
       "from": "build/ui/",
       "to": "ui"
+    },
+    {
+      "from": "build/icons/",
+      "to": "icons"
     }
   ],
   "afterPack": "cmd/afterPack.js",
   "mac": {
-    "icon": "build/icons/icon.icns",
+    "icon": "build/icons/icon.png",
     "target": [
       {
         "target": "dmg",

@@ -7,8 +7,16 @@ out/
 
 # 构建时生成的资源（JAR + JRE + UI），不入版本控制
 build/extraResources/gourd-ai-agent.jar
+build/extraResources/gourd-secure-agent.jar
 build/extraResources/jre/
 build/ui/
+
+# 加密构建临时产物（明文 jar 备份 / 编译产物 / main 混淆快照）
+.secure-tmp/
+main-src-bak/
+
+# 本地冒烟测试目录
+smoke/
 
 # OS
 .DS_Store

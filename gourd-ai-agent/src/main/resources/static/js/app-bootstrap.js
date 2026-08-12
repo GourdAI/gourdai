@@ -81,6 +81,7 @@
         '/js/app-filer.js',
         '/js/app-gitdiff.js',
         '/js/app-todos.js',
+    '/js/app-memory.js',
         '/js/app-context.js',
         '/js/app-settings.js',
         '/js/app-settings-general.js',

@@ -45,12 +45,26 @@ public class FileService {
     private final String workspace;
 
     /**
-     * 文件树浏览时排除的目录名称集合。
-     * <p>包含各类构建产物、IDE 配置、版本控制等无需展示的目录，
+     * 文件树浏览时排除的目录/文件名称集合。
+     * <p>包含各类构建产物、IDE 配置、版本控制等无需展示的条目，
      * 如 .git、.idea、node_modules、target、__pycache__ 等。</p>
+     *
+     * <p>注意：不再一刀切隐藏所有点前缀条目（如 .gitignore、.env 等需要可见），
+     * 仅按本清单精确排除；清单与 {@link com.gourdai.core.portal.WorkspaceWatcher} 保持一致。</p>
      */
     private static final Set<String> EXCLUDED_DIRS = new HashSet<>(Arrays.asList(
-            ".git", ".idea", ".gourdai", "node_modules", "target", "__pycache__", ".gradle", ".mvn", "build"
+            // 项目元数据 & IDE
+            ".gourdai", ".claude", ".opencode",
+            ".idea", ".vscode", ".settings",
+            // 版本控制 & 构建工具
+            ".git", ".gradle", ".mvn",
+            // 运行时缓存
+            ".pytest_cache", "__pycache__",
+            ".DS_Store",
+            // 依赖目录
+            "node_modules", "venv", "vendor",
+            // 构建输出
+            "target", "build"
     ));
 
     /**
@@ -81,7 +95,7 @@ public class FileService {
     /**
      * 工作区文件树浏览。
      * <p>以工作区根目录为基准，按指定路径和深度返回目录结构。
-     * 排除以点号开头的隐藏文件和 {@link #EXCLUDED_DIRS} 中的目录。</p>
+     * 点前缀文件（如 .gitignore、.env）正常展示，仅排除 {@link #EXCLUDED_DIRS} 中的条目。</p>
      *
      * @param path  相对路径，基于根目录；为空时从根目录开始
      * @param depth 展开深度，默认为 1（仅展开第一层）
@@ -112,7 +126,7 @@ public class FileService {
     /**
      * 工作区文件搜索。
      * <p>递归扫描整个根目录，返回路径中包含关键词的文件列表。
-     * 排除规则与文件树接口一致：隐藏文件和 EXCLUDED_DIRS 中的目录。</p>
+     * 排除规则与文件树接口一致：仅排除 EXCLUDED_DIRS 中的条目。</p>
      *
      * @param keyword 搜索关键词，匹配文件路径（大小写不敏感）
      * @param root    可选的项目根目录（Code 模式）
@@ -263,7 +277,7 @@ public class FileService {
     /**
      * 递归构建文件树结构。
      * <p>对指定目录进行扫描，目录排在前面、文件排在后面，均按名称字典序排列。
-     * 跳过以点号开头的隐藏文件和 {@link #EXCLUDED_DIRS} 中定义的目录。
+     * 仅跳过 {@link #EXCLUDED_DIRS} 中定义的条目（点前缀文件正常展示）。
      * 当达到最大深度时，目录节点不再展开（children 为 null）。</p>
      *
      * @param dir          当前扫描的目录路径
@@ -284,19 +298,42 @@ public class FileService {
 
         List<Map> result = new ArrayList<>();
         for (File f : files) {
-            if (f.getName().startsWith(".") || EXCLUDED_DIRS.contains(f.getName())) continue;
+            if (EXCLUDED_DIRS.contains(f.getName())) continue;
 
             Map<String, Object> item = new LinkedHashMap<>();
-            item.put("name", f.getName());
-            item.put("path", workspacePath.relativize(f.toPath().toAbsolutePath().normalize()).toString().replace('\\', '/'));
             item.put("type", f.isDirectory() ? "directory" : "file");
 
-            if (f.isDirectory() && currentDepth < maxDepth) {
-                item.put("expanded", true);
-                item.put("children", buildTree(f.toPath(), workspacePath, maxDepth, currentDepth + 1));
-            } else if (f.isDirectory()) {
-                item.put("expanded", false);
-                item.put("children", null);
+            if (f.isDirectory()) {
+                // IDEA 风格紧凑目录：当目录「仅含一个子目录且无文件」时，沿单子链向下折叠到链尾，
+                // 合并为一个节点展示（name 以 " \ " 拼接、path 指向链尾真实目录）；任一层出现兄弟节点即停止，保持层级展示。
+                // 链探测与 depth 限制无关：即使节点处于折叠态（depth 用尽），名称也展示完整压缩路径。
+                java.nio.file.Path chainPath = f.toPath();
+                StringBuilder chainName = new StringBuilder(f.getName());
+                File[] grandChildren = chainPath.toFile().listFiles();
+                while (grandChildren != null) {
+                    File onlyDir = null;
+                    boolean collapsible = true;
+                    for (File g : grandChildren) {
+                        if (EXCLUDED_DIRS.contains(g.getName())) continue;
+                        if (onlyDir == null && g.isDirectory()) { onlyDir = g; } else { collapsible = false; break; }
+                    }
+                    if (!collapsible || onlyDir == null) break;
+                    chainPath = onlyDir.toPath();
+                    chainName.append(" \\ ").append(onlyDir.getName());
+                    grandChildren = chainPath.toFile().listFiles();
+                }
+                item.put("name", chainName.toString());
+                item.put("path", workspacePath.relativize(chainPath.toAbsolutePath().normalize()).toString().replace('\\', '/'));
+                if (currentDepth < maxDepth) {
+                    item.put("expanded", true);
+                    item.put("children", buildTree(chainPath, workspacePath, maxDepth, currentDepth + 1));
+                } else {
+                    item.put("expanded", false);
+                    item.put("children", null);
+                }
+            } else {
+                item.put("name", f.getName());
+                item.put("path", workspacePath.relativize(f.toPath().toAbsolutePath().normalize()).toString().replace('\\', '/'));
             }
             result.add(item);
         }
@@ -318,7 +355,7 @@ public class FileService {
         if (files == null) return;
 
         for (File f : files) {
-            if (f.getName().startsWith(".") || (f.isDirectory() && EXCLUDED_DIRS.contains(f.getName()))) continue;
+            if (EXCLUDED_DIRS.contains(f.getName())) continue;
 
             String relativePath = workspacePath.relativize(f.toPath().toAbsolutePath().normalize()).toString().replace('\\', '/');
 

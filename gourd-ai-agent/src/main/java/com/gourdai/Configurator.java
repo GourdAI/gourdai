@@ -9,6 +9,7 @@ import org.noear.solon.Solon;
 import com.gourdai.agent.AgentSession;
 import com.gourdai.agent.AgentSessionProvider;
 import com.gourdai.agent.session.FileAgentSession;
+import com.gourdai.agent.session.LruSessionCache;
 import org.noear.solon.ai.chat.CacheControl;
 import com.gourdai.harness.HarnessEngine;
 import com.gourdai.harness.HarnessExtension;
@@ -47,7 +48,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  *
@@ -75,10 +75,16 @@ public class Configurator {
     /** 会话目录定位器：统一解析 chat（全局）/ code（项目）会话的落盘位置 */
     private SessionLocator sessionLocator;
 
+    /** 工作区文件变化监听器：Code 模式切换项目时动态追加监听根 */
+    private WorkspaceWatcher workspaceWatcher;
+
     @Bean
     public HarnessEngine agentRuntime(AgentSettings settings) throws Exception {
         String workspace = AgentFlags.getUserDir();
-        Map<String, AgentSession> sessionMap = new ConcurrentHashMap<>();
+        // LRU 会话缓存：容量上限 100，超限按最近访问时间淘汰最老的非活跃会话；
+        // 淘汰仅摘除内存引用（磁盘文件保留），下次访问自动从磁盘重载，
+        // 对话历史与压缩摘要不受影响；在途（busy）或挂起（HITL）会话不淘汰
+        LruSessionCache sessionCache = new LruSessionCache();
 
         // 会话目录定位器：chat（web-）落安装目录 .gourdai/sessions/（全局、固定不变），
         // code（code-）落所选项目 <root>/.gourdai/sessions/
@@ -89,13 +95,13 @@ public class Configurator {
         AgentSessionProvider sessionProvider = new AgentSessionProvider() {
             @Override
             public AgentSession getSession(String sessionId) {
-                return sessionMap.computeIfAbsent(sessionId, key ->
+                return sessionCache.getOrLoad(sessionId, key ->
                         new FileAgentSession(key, locator.resolveDir(key).toString()));
             }
 
             @Override
             public void removeSession(String sessionId) {
-                AgentSession removed = sessionMap.remove(sessionId);
+                AgentSession removed = sessionCache.remove(sessionId);
                 if (removed instanceof FileAgentSession) {
                     // 清理内存缓存（并删除已落盘的 messages/snapshot 文件），
                     // 切断后续持久化重建目录的可能
@@ -373,8 +379,18 @@ public class Configurator {
         //code 模式本地终端网关
         WebSocketRouter.getInstance().of("/web/terminal", new TerminalGate(agentRuntime.getWorkspace()));
 
+        // 启动工作区文件变化监听（先于 WebController 创建，供其登记 Code 项目监听根）
+        try {
+            Path workspacePath = Paths.get(agentRuntime.getWorkspace()).toAbsolutePath().normalize();
+            this.workspaceWatcher = new WorkspaceWatcher(workspacePath);
+            workspaceWatcher.addBroadcastHandler(webGate::broadcastRaw);
+            workspaceWatcher.start();
+        } catch (Exception e) {
+            // watcher 启动失败不影响主流程
+        }
+
         //web
-        BeanWrap webController = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, webGate, loopScheduler, sessionLocator));
+        BeanWrap webController = Solon.context().wrapAndPut(WebController.class, new WebController(agentRuntime, webGate, loopScheduler, sessionLocator, workspaceWatcher));
         Solon.app().router().add(webController);
 
         WebSettingsController settingsController = new WebSettingsController(agentRuntime, settings);
@@ -397,16 +413,6 @@ public class Configurator {
 
         // 启动微信通道
         RunUtil.async((Runnable) webChannel.get());
-
-        // 启动工作区文件变化监听
-        try {
-            Path workspacePath = Paths.get(agentRuntime.getWorkspace()).toAbsolutePath().normalize();
-            WorkspaceWatcher workspaceWatcher = new WorkspaceWatcher(workspacePath);
-            workspaceWatcher.addBroadcastHandler(webGate::broadcastRaw);
-            workspaceWatcher.start();
-        } catch (Exception e) {
-            // watcher 启动失败不影响主流程
-        }
 
         if (cliShell == null) {
             return;

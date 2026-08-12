@@ -13,6 +13,8 @@ body.is-electron .titlebar-drag-region { display: block; height: 36px; -webkit-a
 /* ===== Sidebar ===== */
 .sidebar { width: var(--sidebar-width); background: var(--bg-sidebar); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; flex-shrink: 0; height: 100vh; transition: width 0.25s ease, background 0.3s; overflow: hidden; }
 .sidebar-header { padding: 12px 10px 10px; flex-shrink: 0; }
+/* macOS：红绿灯窗口按钮位于左上角，侧边栏顶部整体下移让位，避免遮挡 Logo 与操作按钮（code 模式由 code.css 单独处理） */
+body.is-electron.is-mac:not(.code-mode) .sidebar-header { padding-top: 40px; }
 .sidebar-header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding: 0 2px; }
 .sidebar-logo { display: flex; align-items: center; gap: 8px; overflow: hidden; }
 .sidebar-logo-img { width: 26px; height: 26px; border-radius: 6px; flex-shrink: 0; }
@@ -211,7 +213,7 @@ body.is-electron .titlebar-drag-region { display: block; height: 36px; -webkit-a
 .welcome-sub { color: var(--text-secondary); font-size: 15px; margin-bottom: 36px; }
 .welcome-input-box { width: 100%; max-width: 680px; background: var(--bg-input-box); border: 1px solid var(--border-input); border-radius: 12px; box-shadow: var(--shadow-lg); display: flex; flex-direction: column; transition: all 0.25s; }
 .welcome-input-box:focus-within { border-color: var(--accent); box-shadow: var(--shadow-lg), 0 0 0 4px rgba(79,110,247,0.08); }
-.welcome-input-box textarea { border: none; outline: none; resize: none; background: transparent; padding: 14px 16px 6px; font-family: var(--font-sans); font-size: 15px; color: var(--text-primary); min-height: 50px; max-height: 140px; line-height: 1.6; }
+.welcome-input-box textarea { border: none; outline: none; resize: none; background: transparent; padding: 14px 16px 6px; font-family: var(--font-sans); font-size: 15px; color: var(--text-primary); min-height: 50px; max-height: 320px; line-height: 1.6; }
 .welcome-input-box textarea::placeholder { color: var(--text-secondary); }
 .welcome-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; gap: 6px; }
 .welcome-send-btn { width: 36px; height: 36px; border-radius: 50%; border: none; background: var(--accent); color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 17px; transition: all 0.2s; }
@@ -402,6 +404,9 @@ body.is-electron .titlebar-drag-region { display: block; height: 36px; -webkit-a
 /* Thinking */
 .inline-thinking { display: flex; align-items: center; gap: 8px; padding: 8px 0; color: var(--text-secondary); font-size: 13px; will-change: visibility; }
 .inline-thinking.hidden-reserve { visibility: hidden; }
+/* 子智能体卡片头部的等待指示器：多智能体并行时各自在卡片头部展示执行中状态。
+   头部恒可见（卡片体默认折叠），margin-left:auto 靠右、flex-shrink:0 不被挤压（描述文本自行省略）。 */
+.agent-inline-thinking { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-shrink: 0; color: var(--text-secondary); font-size: 12px; }
 .thinking-timer { font-variant-numeric: tabular-nums; color: var(--text-secondary); opacity: 0.7; font-size: 12px; margin-left: 2px; }
 .thinking-timer-wrap { font-variant-numeric: tabular-nums; color: var(--text-secondary); opacity: 0.7; font-size: 12px; margin-left: 2px; }
 .thinking-current-timer { color: var(--text-secondary); opacity: 0.9; }
@@ -436,7 +441,15 @@ body.is-electron .titlebar-drag-region { display: block; height: 36px; -webkit-a
 .input-wrap { padding: 10px 24px 18px; flex-shrink: 0; }
 .input-box { max-width: 820px; margin: 0 auto; background: var(--bg-input-box); border: 1px solid var(--border-input); border-radius: 12px; box-shadow: var(--shadow); display: flex; flex-direction: column; transition: all 0.25s; }
 .input-box:focus-within { border-color: var(--accent); box-shadow: var(--shadow), 0 0 0 3px rgba(79,110,247,0.06); }
-.input-box textarea { border: none; outline: none; resize: none; background: transparent; padding: 12px 14px 4px; font-family: var(--font-sans); font-size: 14px; color: var(--text-primary); min-height: 40px; max-height: 140px; line-height: 1.6; }
+.input-box textarea { border: none; outline: none; resize: none; background: transparent; padding: 12px 14px 4px; font-family: var(--font-sans); font-size: 14px; color: var(--text-primary); min-height: 40px; max-height: 320px; line-height: 1.6; }
+/* ===== Input box height drag handle (top edge of the input box, drag to adjust, double-click to restore) =====
+   absolute hanging at the inner top edge of the box (both containers already have position:relative), zero flow space occupied: default appearance perfectly matches the pre-handle-introduction state (min height = current height).
+   The 8px hot zone exactly covers the box's top border + the textarea/attachments' top padding whitespace, so it doesn't interfere with text clicks or the attachments delete button. Max height 320 matches the JS INPUT_RESIZE_MAX and the textarea max-height. */
+.input-resize-handle { position: absolute; top: 0; left: 14px; right: 14px; height: 8px; cursor: ns-resize; z-index: 5; border-radius: 4px; }
+.input-resize-handle::before { content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 36px; height: 3px; border-radius: 2px; background: var(--border-color); opacity: 0; transition: opacity 0.15s; }
+.input-resize-handle:hover::before, .input-resize-handle.dragging::before { opacity: 1; }
+/* During dragging, disable the container's transition:all to prevent the outer frame from lagging 250ms behind the textarea's height */
+.input-box.resizing, .welcome-input-box.resizing { transition: none; }
 .input-box textarea::placeholder { color: var(--text-secondary); }
 .input-toolbar { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; gap: 6px; }
 .send-btn { width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--accent); color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: all 0.2s; flex-shrink: 0; }
@@ -461,6 +474,8 @@ body.is-electron .titlebar-drag-region { display: block; height: 36px; -webkit-a
 /* 仅保留淡入，不做位移：面板基态带 translateX(-50%) 居中，若动画关键帧写 transform，
    会覆盖居中位移，导致面板从右侧滑入并在动画结束时跳位（任务/队列悬浮面板） */
 @keyframes drop-up { from { opacity: 0; } to { opacity: 1; } }
+.model-dropdown-group { padding: 8px 12px 3px; font-size: 11px; font-weight: 600; color: var(--text-secondary); letter-spacing: 0.3px; user-select: none; cursor: default; }
+.model-dropdown-group:not(:first-child) { border-top: 1px solid var(--border-color); margin-top: 4px; padding-top: 9px; }
 .model-dropdown-item { padding: 9px 12px; cursor: pointer; font-size: 13px; color: var(--text-primary); display: flex; flex-direction: column; gap: 2px; transition: background 0.15s; }
 .model-dropdown-item:hover { background: var(--bg-hover); }
 .model-dropdown-item.active { background: var(--accent-light); color: var(--accent); }
@@ -563,6 +578,36 @@ body.is-electron .titlebar-drag-region { display: block; height: 36px; -webkit-a
 .todo-float-panel .todo-panel { height: auto; max-height: 340px; min-height: 0; }
 .todo-float-panel .todo-list { max-height: 260px; overflow-y: auto; }
 .todo-float-panel .todo-empty { height: auto; }
+
+/* ===== Memory panel（心智记忆查看，全局浮层） ===== */
+.memory-panel { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); width: 600px; max-width: calc(100vw - 32px); max-height: calc(100vh - 110px); background: var(--bg-input-box); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: var(--shadow-lg); z-index: 1200; display: none; flex-direction: column; overflow: hidden; }
+.memory-panel.show { display: flex; }
+.memory-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 0 12px; }
+.memory-panel-tabs { display: flex; gap: 4px; background: var(--bg-secondary); border-radius: 8px; padding: 3px; }
+.memory-tab { border: none; background: transparent; color: var(--text-secondary); font-size: 13px; padding: 5px 14px; border-radius: 6px; cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+.memory-tab:hover { color: var(--text-primary); }
+.memory-tab.active { background: var(--bg-input-box); color: var(--text-primary); box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+.memory-panel-actions { display: flex; gap: 4px; }
+.memory-icon-btn { width: 26px; height: 26px; border: none; border-radius: 6px; background: transparent; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+.memory-icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.memory-panel-meta { padding: 6px 14px 0 14px; font-size: 12px; color: var(--text-tertiary); }
+.memory-panel-body { overflow-y: auto; padding: 10px 12px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.memory-empty { padding: 32px 12px; text-align: center; color: var(--text-tertiary); font-size: 13px; }
+.memory-error { color: #e5484d; }
+.memory-item { border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 12px; background: var(--bg-primary); }
+.memory-item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; min-width: 0; }
+.memory-item-key { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.memory-item-imp { flex-shrink: 0; font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border-color); color: var(--text-secondary); background: var(--bg-secondary); }
+.memory-item-imp.imp-critical { color: #c2410c; border-color: rgba(194,65,12,.35); background: rgba(194,65,12,.08); }
+.memory-item-imp.imp-high { color: #b45309; border-color: rgba(180,83,9,.3); background: rgba(180,83,9,.08); }
+.memory-item-time { flex-shrink: 0; font-size: 11px; color: var(--text-tertiary); }
+.memory-item-content { font-size: 13px; line-height: 1.6; color: var(--text-secondary); white-space: pre-wrap; word-break: break-word; }
+[data-theme="dark"] .memory-item-imp.imp-critical { color: #fb923c; }
+[data-theme="dark"] .memory-item-imp.imp-high { color: #fbbf24; }
+/* chat 模式：仅显示文字按钮入口；code 模式隐藏文字入口（改用活动栏图标） */
+.memory-view-btn { margin-bottom: 8px; }
+body.code-mode .memory-view-btn { display: none !important; }
+body:not(.code-mode) .sidebar-memory-btn { display: none !important; }
 
 
 /* Voice Input */
@@ -973,15 +1018,18 @@ body.is-electron .titlebar-drag-region { display: block; height: 36px; -webkit-a
     text-overflow: ellipsis;
 }
 
+/* 行首槽位：目录箭头与文件图标共用同一列宽（16px + 5px margin），
+   保证同层级的文件图标/名称与目录箭头/名称纵向对齐。 */
 .filer-arrow {
-    margin-right: 2px;
+    margin-right: 5px;
     transition: transform 0.15s;
     color: var(--text-secondary);
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 12px;
+    width: 16px;
     height: 16px;
+    flex-shrink: 0;
 }
 .filer-arrow.open { transform: rotate(90deg); }
 

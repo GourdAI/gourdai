@@ -24,7 +24,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
-const { getResourcesDir } = require('./backend');
+const { getResourcesDir, getRuntimeHomeDir, migrateNestedHarnessDir } = require('./backend');
 
 // 启动器里埋的标记：卸载助手据此判断「这是桌面端写的」，避免误删 CLI 安装模式的启动器
 const SENTINEL = 'gourd-ai-desktop-provisioned';
@@ -48,11 +48,13 @@ function getUserHome() {
 }
 
 /**
- * 启动器/PATH 落盘根：统一为<b>安装目录</b>（extraResources），与后端 Java 侧
- * ({@code user.dir} 下的 .gourdai) 一致，不再写用户主目录 ~/.gourdai。
+ * 启动器/PATH 落盘根：可写运行时<b>基目录</b>（backend.getRuntimeHomeDir，不含 .gourdai，
+ * 与后端 -Dgourdai.home 语义一致，Java 侧自行拼接 .gourdai 子目录）。
+ * Windows/Linux 为安装目录（extraResources）；
+ * macOS 打包版为包外用户目录（.app 签名包内不可写）。
  */
 function getHarnessBase() {
-  return getResourcesDir();
+  return getRuntimeHomeDir();
 }
 
 function getBinDir() {
@@ -98,6 +100,8 @@ function getBundledJavaMajor() {
 
 /**
  * 组装 JVM 参数（编码统一 UTF-8；21+ 追加 native-access）。
+ * 注意：不含任何可能带空格的项；-Dgourdai.home 因安装路径常含空格，
+ * 由各启动器按自身引号规则单独承载。
  * @param {number|null} major
  * @returns {string[]}
  */
@@ -295,9 +299,20 @@ function writeScript(filePath, content, executable) {
 function ensurePathWindows() {
   // 安装目录下的 .gourdai\bin（与后端一致）；用字面量注入 PowerShell，规避转义
   const binDir = getBinDir();
+  // 旧版 bug 期间误写入 PATH 的嵌套 bin（.gourdai\.gourdai\bin）一并摘除
+  const staleBinDir = path.join(getHarnessBase(), HARNESS_HOME, HARNESS_HOME, 'bin');
   const psScript = [
     '$d = ' + JSON.stringify(binDir),
+    '$stale = ' + JSON.stringify(staleBinDir),
     '$p = [Environment]::GetEnvironmentVariable("Path","User")',
+    '# 清理历史残留：嵌套 bin 目录（已废弃）从 PATH 中剔除',
+    'if ($p) {',
+    '    $clean = (($p -split ";" | Where-Object { $_ -and ($_.TrimEnd("\\") -ine $stale.TrimEnd("\\")) }) -join ";")',
+    '    if ($clean -ne $p) {',
+    '        [Environment]::SetEnvironmentVariable("Path", $clean, "User")',
+    '        $p = $clean',
+    '    }',
+    '}',
     'if ([string]::IsNullOrEmpty($p)) {',
     '    [Environment]::SetEnvironmentVariable("Path", $d, "User")',
     '} elseif (($p -split ";" | ForEach-Object { $_.TrimEnd("\\") }) -notcontains $d.TrimEnd("\\")) {',
@@ -324,6 +339,8 @@ function ensurePathWindows() {
 function ensurePathUnix() {
   const home = getUserHome();
   const binDir = getBinDir();
+  // 旧版 bug 期间误写入 rc 的嵌套 bin（.gourdai/.gourdai/bin）PATH 行，读到即清理
+  const staleBinDir = path.join(getHarnessBase(), HARNESS_HOME, HARNESS_HOME, 'bin');
   const marker = '# Gourd AI Desktop CLI';
   const line = 'export PATH="$PATH:' + binDir + '"';
   const shell = path.basename(process.env.SHELL || 'bash');
@@ -346,6 +363,11 @@ function ensurePathUnix() {
       let existing = '';
       if (fs.existsSync(file)) {
         existing = fs.readFileSync(file, 'utf8');
+        // 清理旧版误写入的嵌套 bin PATH 行（幂等）
+        if (existing.includes(staleBinDir)) {
+          existing = existing.split('\n').filter((l) => !l.includes(staleBinDir)).join('\n');
+          fs.writeFileSync(file, existing, 'utf8');
+        }
         if (existing.includes(binDir)) continue; // 已配置
       } else {
         fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -373,6 +395,10 @@ async function provisionCli() {
       return false;
     }
 
+    // 与 startBackend 中的调用幂等互补：provisionCli 与 bootstrap 并发执行，
+    // 必须在写 bin 目录前确保嵌套全局区已上移，否则旧嵌套 bin 可能反向覆盖新启动器
+    migrateNestedHarnessDir();
+
     const javaPath = getBundledJava();
     const jarPath = getBundledJar();
     if (!javaPath || !jarPath) {
@@ -385,8 +411,8 @@ async function provisionCli() {
     fs.mkdirSync(binDir, { recursive: true });
 
     const javaOpts = buildJavaOpts(getBundledJavaMajor());
-    // 全局配置区根（安装/资源目录），注入 -Dgourdai.home 让 ACP 子进程（cwd=工作区）也能定位全局配置
-    const homeDir = getResourcesDir();
+    // 全局配置区基目录（与后端 -Dgourdai.home 一致，不含 .gourdai），注入让 ACP 子进程（cwd=工作区）也能定位全局配置
+    const homeDir = getRuntimeHomeDir();
 
     // 三种启动器一律重写（自愈：安装目录变化后自动指向新路径）
     writeScript(path.join(binDir, 'gourdai.bat'), batContent(javaPath, jarPath, javaOpts, homeDir), false);
@@ -430,6 +456,7 @@ module.exports = {
     uninstallPs1Content,
     uninstallShContent,
     isAppImage,
+    ensurePathUnix,
     SENTINEL,
   },
 };

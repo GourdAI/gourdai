@@ -443,6 +443,8 @@
         renderProjectDropdown();
         // 重新加载文件树
         if (typeof window.loadTree === 'function') window.loadTree();
+        // 登记后端文件监听根：项目目录的外部修改才能实时推送 filer_change
+        notifyWatchRoot(path);
         // 关闭所有已打开文件（切项目后旧文件失效）
         closeAllFiles();
         // 刷新 Git 审查（按所选项目仓库）
@@ -484,8 +486,15 @@
                     projects = resp.data || [];
                     renderProjectDropdown();
                     renderWelcomeRecent();
-                    // 自动选中新加的（列表首个）
-                    if (projects.length) selectProject(projects[0].path);
+                    // 新加的项目：与其它项目入口一致，询问「本窗口打开 / 新窗口打开」
+                    if (projects.length) {
+                        var addedPath = '';
+                        for (var j = 0; j < projects.length; j++) {
+                            if (projects[j].path === path) { addedPath = path; break; }
+                        }
+                        if (!addedPath) addedPath = projects[0].path;
+                        if (addedPath !== window.currentProjectRoot) askHowToOpenProject(addedPath);
+                    }
                     if (typeof showToast === 'function') showToast(GourdI18n.t('code.project_added'), 'success');
                 } else {
                     if (typeof showToast === 'function') showToast((resp && resp.description) || GourdI18n.t('code.add_failed_no_dir'), 'error');
@@ -805,7 +814,8 @@
             var st = docs[f.path];
             var active = (f.path === activeFilePath) ? ' active' : '';
             var dirty = (st && st.dirty) ? ' dirty' : '';
-            html += '<div class="code-editor-tab' + active + dirty + '" data-path="' + escAttr(f.path) + '" title="' + escAttr(f.path) + '">'
+            var diskChanged = (st && st.diskChanged && st.dirty) ? ' disk-changed' : '';
+            html += '<div class="code-editor-tab' + active + dirty + diskChanged + '" data-path="' + escAttr(f.path) + '" title="' + escAttr(f.path) + '">'
                 + '<span class="code-editor-tab-name">' + escHtml(f.name) + '</span>'
                 + '<span class="code-editor-tab-dot"></span>'
                 + '<button class="code-editor-tab-close" data-path="' + escAttr(f.path) + '">&times;</button>'
@@ -913,6 +923,10 @@
         }).done(function (resp) {
             if (resp && resp.code === 200) {
                 st.clean = st.doc.changeGeneration();
+                // 保存即以当前内容为准，清除「磁盘已变更」标记（否则下次编辑时红点会错误重现）
+                st.diskChanged = false;
+                var tab2 = tabbar ? tabbar.querySelector('.code-editor-tab[data-path="' + cssEsc(path) + '"]') : null;
+                if (tab2) tab2.classList.remove('disk-changed');
                 markDirty(path, false);
                 if (typeof showToast === 'function') showToast(GourdI18n.t('code.file_saved', baseName(path)), 'success');
             } else {
@@ -926,6 +940,103 @@
     }
 
     if (saveBtn) saveBtn.addEventListener('click', saveActive);
+
+    // ---------- 外部修改同步：监听 filer_change，编辑器内容按需刷新 ----------
+    // 后端 WorkspaceWatcher 监听启动工作区 + Code 当前项目根，变更经 WebSocket 广播 filer_change。
+    // clean 文件静默重载磁盘内容（保留光标/滚动）；dirty 文件不覆盖用户改动，
+    // 标签显示「磁盘已变更」提示点，点击标签时确认后重载。
+    function notifyWatchRoot(root) {
+        if (!root) return;
+        $.ajax({
+            url: '/web/chat/filer/watch', method: 'POST', contentType: 'application/json',
+            data: JSON.stringify({ root: root })
+        });
+    }
+
+    function onCodeFilerChange(chunk) {
+        if (!chunk || !chunk.changes || chunk.changes.length === 0) return;
+        chunk.changes.forEach(function (rel) {
+            var abs = changeRelToOpenPath(rel);
+            if (abs) handleDiskChanged(abs);
+        });
+    }
+
+    // 后端 filer_change 的 changes 是「相对其所属监听根」的路径。已打开文件必然位于当前项目根下，
+    // 且后端对嵌套根取最长前缀相对化，故用「项目根 + rel」精确匹配即可，不做文件名兜底（避免同名文件误触发）。
+    function changeRelToOpenPath(rel) {
+        var root = window.currentProjectRoot;
+        if (!root || !rel) return null;
+        var cand = root + '/' + rel;
+        for (var i = 0; i < openFiles.length; i++) {
+            if (openFiles[i].path === cand) return cand;
+        }
+        return null;
+    }
+
+    function handleDiskChanged(path) {
+        var st = docs[path];
+        if (!st) return;
+        if (st.dirty) {
+            // 有未保存改动：不覆盖，标记「磁盘已变更」，点击标签时确认重载
+            if (!st.diskChanged) {
+                st.diskChanged = true;
+                var tab = tabbar ? tabbar.querySelector('.code-editor-tab[data-path="' + cssEsc(path) + '"]') : null;
+                if (tab) tab.classList.add('disk-changed');
+            }
+            return;
+        }
+        reloadFileFromDisk(path);
+    }
+
+    // 静默重载磁盘内容：保留光标与滚动位置，重置 clean 基线
+    function reloadFileFromDisk(path) {
+        var st = docs[path];
+        if (!st) return;
+        $.get('/web/chat/filer/read?path=' + encodeURIComponent(path) + rootQuery(), function (resp) {
+            if (!resp || resp.code !== 200 || !docs[path]) return;
+            var cur = docs[path];
+            var cursor = null, scroll = null;
+            if (cm && activeFilePath === path) {
+                cursor = cm.getCursor();
+                scroll = cm.getScrollInfo();
+            }
+            cur.doc.setValue(resp.data.content || '');
+            cur.clean = cur.doc.changeGeneration();
+            cur.diskChanged = false;
+            markDirty(path, false);
+            var tab = tabbar ? tabbar.querySelector('.code-editor-tab[data-path="' + cssEsc(path) + '"]') : null;
+            if (tab) tab.classList.remove('disk-changed');
+            if (cursor) {
+                var maxLine = cur.doc.lineCount() - 1;
+                if (cursor.line > maxLine) cursor = { line: maxLine, ch: 0 };
+                cm.setCursor(cursor);
+            }
+            if (scroll) cm.scrollTo(scroll.left, scroll.top);
+        });
+    }
+
+    // 标签点击：disk-changed 文件先确认是否放弃本地未保存改动、重载磁盘内容（捕获阶段先于激活逻辑）
+    if (tabbar) {
+        tabbar.addEventListener('click', function (e) {
+            if (e.target.closest('.code-editor-tab-close')) return;
+            var tab = e.target.closest('.code-editor-tab');
+            if (!tab) return;
+            var p = tab.getAttribute('data-path');
+            var st = docs[p];
+            if (st && st.diskChanged && st.dirty) {
+                if (window.confirm(GourdI18n.t('code.disk_changed_confirm', baseName(p)))) {
+                    reloadFileFromDisk(p);
+                }
+            }
+        }, true);
+    }
+
+    // 挂接 filer_change 事件链（app-gitdiff 可能已包装 window.onFilerChange，保留原调用）
+    var _origOnFilerChange = window.onFilerChange;
+    window.onFilerChange = function (chunk) {
+        onCodeFilerChange(chunk);
+        if (typeof _origOnFilerChange === 'function') _origOnFilerChange(chunk);
+    };
 
     // ---------- helpers ----------
     function rootQuery() {

@@ -2177,12 +2177,14 @@ public class WebSettingsController {
     }
 
     /**
-     * 技能市场代理接口 — 获取热门技能或搜索技能（支持分页）。
+     * 技能市场代理接口 — 获取热门技能或搜索技能（cursor 游标分页）。
      * <p>所有外部 API 调用均由后端 Market 适配器完成，前端不直接访问外部服务。</p>
+     * <p>返回数据为 {@code {items:[...], nextCursor:"..."}}，下次请求携带 nextCursor 加载下一页；
+     * nextCursor 为空表示没有更多数据。</p>
      *
      * @param action     "trending" 获取热门 | "search" 搜索
      * @param query      搜索关键词（action=search 时使用）
-     * @param page       页码（从 1 开始，默认 1）
+     * @param cursor     上一页返回的游标（首次加载不传）
      * @param limit      每页返回数量限制（默认 20）
      * @param marketName 市场名字（可选，默认使用 Skillhub）
      */
@@ -2190,18 +2192,17 @@ public class WebSettingsController {
     @Mapping("/web/settings/skills/proxy")
     public Result skillsProxy(Context ctx, @Param(value = "action", defaultValue = "trending") String action,
                               @Param(value = "q", defaultValue = "") String query,
-                              @Param(value = "page", defaultValue = "1") int page,
+                              @Param(value = "cursor", defaultValue = "") String cursor,
                               @Param(value = "limit", defaultValue = "20") int limit,
                               @Param(value = "marketName", defaultValue = "") String marketName) {
-        if (page < 1) page = 1;
         if (limit < 1) limit = 20;
         if (limit > 100) limit = 100;
 
         Market market = marketManager.getMarketByName(marketName);
         if ("search".equals(action) && query != null && !query.isEmpty()) {
-            return market.search(query, page, limit);
+            return market.search(query, cursor, limit);
         } else {
-            return market.trending(page, limit);
+            return market.trending(cursor, limit);
         }
     }
 
@@ -2244,6 +2245,43 @@ public class WebSettingsController {
         }
 
         return result;
+    }
+
+    /**
+     * 获取已安装技能列表 — 汇总所有挂载池中的技能（按名称去重，保留首次出现）。
+     * <p>供技能市场「已安装」视图展示，字段与 /web/chat/hints 中的技能项保持一致。</p>
+     */
+    @Get
+    @Mapping("/web/settings/skills/installed")
+    public Result skillsInstalled(Context ctx) {
+        List<Map<String, String>> skills = new ArrayList<>();
+        Set<String> added = new HashSet<>();
+
+        for (SkillDir skill : engine.getSkills()) {
+            if (!added.add(skill.getName())) {
+                continue;
+            }
+
+            String desc = skill.getDescription();
+            if (desc != null) {
+                // 取第一行，并限制最大长度
+                int newlineIdx = desc.indexOf('\n');
+                if (newlineIdx > 0) {
+                    desc = desc.substring(0, newlineIdx);
+                }
+                if (desc.length() > 120) {
+                    desc = desc.substring(0, 120) + "...";
+                }
+            }
+
+            Map<String, String> item = new LinkedHashMap<>();
+            item.put("name", skill.getName());
+            item.put("description", desc != null ? desc : "");
+            item.put("mountAlias", skill.getMountAlias() != null ? skill.getMountAlias() : "");
+            skills.add(item);
+        }
+
+        return Result.succeed(skills);
     }
 
     // ==================== 设置：挂载池管理 ====================
@@ -2839,13 +2877,17 @@ public class WebSettingsController {
         // acpModel 对应的接口类型，供前端确定思考档位选项集
         data.put("acpModelStandard", getModelStandard(settings.getGeneral().getAcpModel()));
 
-        List<String> modelNames = new ArrayList<>();
+        // models 由纯字符串数组升级为 {name, provider} 对象数组，供前端按供应商分组展示下拉
+        List<Map<String, Object>> modelItems = new ArrayList<>();
         for (ModelDo config : settings.getModels().values()) {
             if (config.isVisibled() && config.isEnabled()) {
-                modelNames.add(config.getNameOrModel());
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("name", config.getNameOrModel());
+                item.put("provider", config.getProvider());
+                modelItems.add(item);
             }
         }
-        data.put("models", modelNames);
+        data.put("models", modelItems);
 
         return Result.succeed(data);
     }

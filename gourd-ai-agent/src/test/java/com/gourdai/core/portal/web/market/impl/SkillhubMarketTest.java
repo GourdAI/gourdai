@@ -3,10 +3,12 @@ package com.gourdai.core.portal.web.market.impl;
 import org.junit.jupiter.api.*;
 import com.gourdai.core.portal.web.market.MarketDetail;
 import com.gourdai.core.portal.web.market.MarketItem;
+import com.gourdai.core.portal.web.market.MarketPageResult;
 import org.noear.solon.core.handle.Result;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
@@ -15,7 +17,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * SkillhubMarket 集成测试 — 真实调用 api.skillhub.cn，禁止 mock。
  *
- * <p>覆盖 name/description、trending、search、detail、install 五大方法的正常与边界场景。</p>
+ * <p>覆盖 name/description、trending、search、detail、install 五大方法的正常与边界场景。
+ * 2026-08 cursor 游标分页改造后，trending/search 返回 {@link MarketPageResult}。</p>
  *
  * @author oisin
  */
@@ -26,15 +29,24 @@ public class SkillhubMarketTest {
     private static Path tempSkillsDir;
     private static String cachedSlug; // 从 trending 缓存一个真实 slug
 
+    /** 从分页结果中提取 items（null 安全） */
+    private static List<MarketItem> items(Result<MarketPageResult> result) {
+        if (result == null || result.getData() == null || result.getData().getItems() == null) {
+            return Collections.emptyList();
+        }
+        return result.getData().getItems();
+    }
+
     @BeforeAll
     static void setUp() throws Exception {
         market = new SkillhubMarket();
         tempSkillsDir = Files.createTempDirectory("skillhub-test-");
 
         // 预热：获取一个真实 slug 供 detail/install 使用
-        Result<List<MarketItem>> trending = market.trending(1, 5);
-        if (trending.getCode() == 200 && trending.getData() != null && !trending.getData().isEmpty()) {
-            cachedSlug = trending.getData().get(0).getSlug();
+        Result<MarketPageResult> trending = market.trending(null, 5);
+        List<MarketItem> trendingItems = items(trending);
+        if (trending.getCode() == 200 && !trendingItems.isEmpty()) {
+            cachedSlug = trendingItems.get(0).getSlug();
             System.out.println("缓存的测试 slug: " + cachedSlug);
         }
     }
@@ -80,25 +92,26 @@ public class SkillhubMarketTest {
         @Order(1)
         @DisplayName("limit=5 应返回不超过 5 条结果")
         void testTrendingLimit5() {
-            Result<List<MarketItem>> result = market.trending(1, 5);
+            Result<MarketPageResult> result = market.trending(null, 5);
 
             assertEquals(200, result.getCode(), "trending 应成功，code=200");
             assertNotNull(result.getData(), "data 不应为 null");
-            assertTrue(result.getData().size() <= 5, "返回数量不应超过 limit");
-            assertFalse(result.getData().isEmpty(), "热门列表不应为空");
+            List<MarketItem> itemsList = items(result);
+            assertTrue(itemsList.size() <= 5, "返回数量不应超过 limit");
+            assertFalse(itemsList.isEmpty(), "热门列表不应为空");
         }
 
         @Test
         @Order(2)
         @DisplayName("limit=10 返回的每个 MarketItem 核心字段应非空")
         void testTrendingItemFields() {
-            Result<List<MarketItem>> result = market.trending(1, 10);
+            Result<MarketPageResult> result = market.trending(null, 10);
 
             assertEquals(200, result.getCode());
-            List<MarketItem> items = result.getData();
-            assertFalse(items.isEmpty());
+            List<MarketItem> itemsList = items(result);
+            assertFalse(itemsList.isEmpty());
 
-            for (MarketItem item : items) {
+            for (MarketItem item : itemsList) {
                 assertNotNull(item.getSlug(), "slug 不应为 null");
                 assertFalse(item.getSlug().isEmpty(), "slug 不应为空字符串");
                 assertNotNull(item.getDisplayName(), "displayName 不应为 null");
@@ -112,21 +125,31 @@ public class SkillhubMarketTest {
         @Order(3)
         @DisplayName("limit=1 应返回恰好 1 条结果")
         void testTrendingLimit1() {
-            Result<List<MarketItem>> result = market.trending(1, 1);
+            Result<MarketPageResult> result = market.trending(null, 1);
 
             assertEquals(200, result.getCode());
-            assertEquals(1, result.getData().size());
+            assertEquals(1, items(result).size());
         }
 
         @Test
         @Order(4)
         @DisplayName("limit=0 应正常返回（不报错）")
         void testTrendingLimit0() {
-            Result<List<MarketItem>> result = market.trending(1, 0);
+            Result<MarketPageResult> result = market.trending(null, 0);
 
             // API 可能忽略 limit=0 返回默认列表，也可能返回空列表，两种都算通过
             assertEquals(200, result.getCode(), "limit=0 不应报错");
             assertNotNull(result.getData(), "data 不应为 null");
+        }
+
+        @Test
+        @Order(5)
+        @DisplayName("非法 cursor 应回退到第一页（不报错）")
+        void testTrendingInvalidCursor() {
+            Result<MarketPageResult> result = market.trending("not-a-number", 5);
+
+            assertEquals(200, result.getCode(), "非法 cursor 应回退首页而非报错");
+            assertNotNull(result.getData());
         }
     }
 
@@ -141,13 +164,14 @@ public class SkillhubMarketTest {
         @Order(1)
         @DisplayName("搜索 'weather' 应返回包含 weather 相关技能的结果")
         void testSearchWeather() {
-            Result<List<MarketItem>> result = market.search("weather", 1, 10);
+            Result<MarketPageResult> result = market.search("weather", null, 10);
 
             assertEquals(200, result.getCode(), "搜索 weather 应成功");
             assertNotNull(result.getData());
-            assertFalse(result.getData().isEmpty(), "搜索 weather 应有结果");
+            List<MarketItem> itemsList = items(result);
+            assertFalse(itemsList.isEmpty(), "搜索 weather 应有结果");
 
-            boolean hasWeatherRelated = result.getData().stream()
+            boolean hasWeatherRelated = itemsList.stream()
                     .anyMatch(item ->
                             (item.getSlug() != null && item.getSlug().toLowerCase().contains("weather")) ||
                             (item.getDescription() != null && item.getDescription().toLowerCase().contains("weather")) ||
@@ -160,18 +184,18 @@ public class SkillhubMarketTest {
         @Order(2)
         @DisplayName("搜索空关键词应等同于 trending")
         void testSearchEmptyQuery() {
-            Result<List<MarketItem>> searchResult = market.search("", 1, 5);
+            Result<MarketPageResult> searchResult = market.search("", null, 5);
 
             assertEquals(200, searchResult.getCode());
             assertNotNull(searchResult.getData());
-            assertFalse(searchResult.getData().isEmpty());
+            assertFalse(items(searchResult).isEmpty());
         }
 
         @Test
         @Order(3)
         @DisplayName("搜索 null 关键词应等同于 trending")
         void testSearchNullQuery() {
-            Result<List<MarketItem>> result = market.search(null, 1, 5);
+            Result<MarketPageResult> result = market.search(null, null, 5);
 
             assertEquals(200, result.getCode());
             assertNotNull(result.getData());
@@ -181,7 +205,7 @@ public class SkillhubMarketTest {
         @Order(4)
         @DisplayName("搜索不存在的关键词应返回空列表而非报错")
         void testSearchNonexistent() {
-            Result<List<MarketItem>> result = market.search("zzzz_nonexistent_skill_xyz_12345", 1, 10);
+            Result<MarketPageResult> result = market.search("zzzz_nonexistent_skill_xyz_12345", null, 10);
 
             assertEquals(200, result.getCode(), "搜索不存在关键词不应报错");
             assertNotNull(result.getData());
@@ -191,7 +215,7 @@ public class SkillhubMarketTest {
         @Order(5)
         @DisplayName("搜索中文关键词应正常工作")
         void testSearchChinese() {
-            Result<List<MarketItem>> result = market.search("天气", 1, 10);
+            Result<MarketPageResult> result = market.search("天气", null, 10);
 
             assertEquals(200, result.getCode(), "搜索中文不应报错");
             assertNotNull(result.getData());

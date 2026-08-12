@@ -4,6 +4,7 @@ import org.noear.snack4.ONode;
 import com.gourdai.core.portal.web.market.Market;
 import com.gourdai.core.portal.web.market.MarketDetail;
 import com.gourdai.core.portal.web.market.MarketItem;
+import com.gourdai.core.portal.web.market.MarketPageResult;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.http.HttpResponse;
@@ -44,9 +45,14 @@ public class ClawhubMarket implements Market {
     // ==================== 列表与搜索 ====================
 
     @Override
-    public Result<List<MarketItem>> trending(int page, int limit) {
+    public Result<MarketPageResult> trending(String cursor, int limit) {
         try {
-            String url = BASE_URL + "/api/v1/skills?limit=" + limit + "&page=" + page + "&sort=trending";
+            // 注意：clawhub.ai 的 /api/v1/skills 忽略 page/offset 参数，仅支持 cursor 游标翻页；
+            // 且 sort=trending 下响应不返回 nextCursor（无法翻页），故不传 sort（默认最近更新排序）。
+            String url = BASE_URL + "/api/v1/skills?limit=" + limit;
+            if (!Assert.isEmpty(cursor)) {
+                url += "&cursor=" + java.net.URLEncoder.encode(cursor, "UTF-8");
+            }
             String body = httpGet(url);
             ONode root = ONode.ofJson(body);
 
@@ -55,7 +61,8 @@ public class ClawhubMarket implements Market {
             }
 
             List<MarketItem> items = parseItems(root);
-            return Result.succeed(items);
+            String nextCursor = getStringValue(root, "nextCursor");
+            return Result.succeed(new MarketPageResult(items, nextCursor));
         } catch (Exception e) {
             LOG.warn("ClawhubMarket.trending error: {}", e.getMessage());
             return Result.failure("获取热门技能失败: " + e.getMessage());
@@ -63,13 +70,16 @@ public class ClawhubMarket implements Market {
     }
 
     @Override
-    public Result<List<MarketItem>> search(String query, int page, int limit) {
+    public Result<MarketPageResult> search(String query, String cursor, int limit) {
         if (Assert.isEmpty(query)) {
-            return trending(page, limit);
+            return trending(cursor, limit);
         }
 
         try {
-            String url = BASE_URL + "/api/v1/search?q=" + java.net.URLEncoder.encode(query, "UTF-8") + "&limit=" + limit + "&page=" + page;
+            String url = BASE_URL + "/api/v1/search?q=" + java.net.URLEncoder.encode(query, "UTF-8") + "&limit=" + limit;
+            if (!Assert.isEmpty(cursor)) {
+                url += "&cursor=" + java.net.URLEncoder.encode(cursor, "UTF-8");
+            }
             String body = httpGet(url);
             ONode root = ONode.ofJson(body);
 
@@ -77,12 +87,16 @@ public class ClawhubMarket implements Market {
                 return Result.failure(root.get("message").getString());
             }
 
+            List<MarketItem> items;
             ONode resultsNode = root.get("results");
             if (resultsNode != null && resultsNode.isArray()) {
-                return Result.succeed(parseNodeArray(resultsNode));
+                items = parseNodeArray(resultsNode);
             } else {
-                return Result.succeed(parseItems(root));
+                items = parseItems(root);
             }
+            // clawhub 搜索接口目前不返回游标：nextCursor 为 null，搜索结果仅一页
+            String nextCursor = getStringValue(root, "nextCursor");
+            return Result.succeed(new MarketPageResult(items, nextCursor));
         } catch (Exception e) {
             LOG.warn("ClawhubMarket.search error: {}", e.getMessage());
             return Result.failure("搜索技能失败: " + e.getMessage());

@@ -7,6 +7,7 @@ import org.jsoup.select.Elements;
 import com.gourdai.core.portal.web.market.Market;
 import com.gourdai.core.portal.web.market.MarketDetail;
 import com.gourdai.core.portal.web.market.MarketItem;
+import com.gourdai.core.portal.web.market.MarketPageResult;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.http.HttpUtils;
@@ -48,10 +49,11 @@ public class SkillsShMarket implements Market {
     // ==================== 列表与搜索 ====================
 
     @Override
-    public Result<List<MarketItem>> trending(int page, int limit) {
+    public Result<MarketPageResult> trending(String cursor, int limit) {
         try {
             String html = httpGet(BASE_URL + "/");
             List<MarketItem> allItems = parseHtmlItems(html, 500);
+            int page = parsePageFromCursor(cursor);
             return paginateResult(allItems, page, limit);
         } catch (Exception e) {
             LOG.warn("SkillsShMarket.trending error: {}", e.getMessage());
@@ -60,9 +62,9 @@ public class SkillsShMarket implements Market {
     }
 
     @Override
-    public Result<List<MarketItem>> search(String query, int page, int limit) {
+    public Result<MarketPageResult> search(String query, String cursor, int limit) {
         if (Assert.isEmpty(query)) {
-            return trending(page, limit);
+            return trending(cursor, limit);
         }
 
         try {
@@ -86,6 +88,7 @@ public class SkillsShMarket implements Market {
                 }
             }
 
+            int page = parsePageFromCursor(cursor);
             return paginateResult(items, page, limit);
         } catch (Exception e) {
             LOG.warn("SkillsShMarket.search error: {}", e.getMessage());
@@ -229,16 +232,35 @@ public class SkillsShMarket implements Market {
     }
 
     /**
-     * 客户端分页偏移 — 从完整列表中截取当前页数据。
+     * 将统一接口的 cursor 解析为本地分页页码。
+     * <p>Skills.sh 无服务端游标，cursor 直接使用页码字符串。</p>
+     */
+    private int parsePageFromCursor(String cursor) {
+        if (Assert.isEmpty(cursor)) {
+            return 1;
+        }
+        try {
+            int page = Integer.parseInt(cursor.trim());
+            return page > 0 ? page : 1;
+        } catch (NumberFormatException e) {
+            return 1;
+        }
+    }
+
+    /**
+     * 客户端分页偏移 — 从完整列表中截取当前页数据，并以页码生成下一页游标。
      * Skills.sh 无服务端分页 API，需爬取全部后在本地按页偏移。
      */
-    private Result<List<MarketItem>> paginateResult(List<MarketItem> allItems, int page, int limit) {
+    private Result<MarketPageResult> paginateResult(List<MarketItem> allItems, int page, int limit) {
         int fromIndex = (page - 1) * limit;
         int toIndex = Math.min(fromIndex + limit, allItems.size());
         if (fromIndex >= allItems.size()) {
-            return Result.succeed(Collections.emptyList());
+            return Result.succeed(new MarketPageResult(Collections.emptyList(), null));
         }
-        return Result.succeed(allItems.subList(fromIndex, toIndex));
+        List<MarketItem> pageItems = allItems.subList(fromIndex, toIndex);
+        boolean hasMore = toIndex < allItems.size();
+        String nextCursor = hasMore ? String.valueOf(page + 1) : null;
+        return Result.succeed(new MarketPageResult(pageItems, nextCursor));
     }
 
     /**

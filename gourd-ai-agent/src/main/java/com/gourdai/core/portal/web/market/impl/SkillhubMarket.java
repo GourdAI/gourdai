@@ -4,6 +4,7 @@ import org.noear.snack4.ONode;
 import com.gourdai.core.portal.web.market.Market;
 import com.gourdai.core.portal.web.market.MarketDetail;
 import com.gourdai.core.portal.web.market.MarketItem;
+import com.gourdai.core.portal.web.market.MarketPageResult;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.http.HttpResponse;
@@ -47,8 +48,9 @@ public class SkillhubMarket implements Market {
     // ==================== 列表与搜索 ====================
 
     @Override
-    public Result<List<MarketItem>> trending(int page, int limit) {
+    public Result<MarketPageResult> trending(String cursor, int limit) {
         try {
+            int page = parsePageFromCursor(cursor);
             String url = BASE_URL + "/api/v1/search?q=&limit=" + limit + "&page=" + page;
             String body = httpGet(url);
             ONode root = ONode.ofJson(body);
@@ -58,7 +60,10 @@ public class SkillhubMarket implements Market {
             }
 
             List<MarketItem> items = parseResults(root);
-            return Result.succeed(items);
+            // skillhub.cn 的 search API 会忽略 page 参数、恒返回首页数据（上游限制）；
+            // 这里按返回条数推断是否还有下一页，重复内容由前端去重兜底。
+            String nextCursor = items.size() >= limit ? String.valueOf(page + 1) : null;
+            return Result.succeed(new MarketPageResult(items, nextCursor));
         } catch (Exception e) {
             LOG.warn("SkillhubMarket.trending error: {}", e.getMessage());
             return Result.failure("获取热门技能失败: " + e.getMessage());
@@ -66,12 +71,13 @@ public class SkillhubMarket implements Market {
     }
 
     @Override
-    public Result<List<MarketItem>> search(String query, int page, int limit) {
+    public Result<MarketPageResult> search(String query, String cursor, int limit) {
         if (Assert.isEmpty(query)) {
-            return trending(page, limit);
+            return trending(cursor, limit);
         }
 
         try {
+            int page = parsePageFromCursor(cursor);
             String url = BASE_URL + "/api/v1/search?q=" + URLEncoder.encode(query, "UTF-8")
                     + "&limit=" + limit + "&page=" + page;
             String body = httpGet(url);
@@ -82,7 +88,8 @@ public class SkillhubMarket implements Market {
             }
 
             List<MarketItem> items = parseResults(root);
-            return Result.succeed(items);
+            String nextCursor = items.size() >= limit ? String.valueOf(page + 1) : null;
+            return Result.succeed(new MarketPageResult(items, nextCursor));
         } catch (Exception e) {
             LOG.warn("SkillhubMarket.search error: {}", e.getMessage());
             return Result.failure("搜索技能失败: " + e.getMessage());
@@ -228,6 +235,22 @@ public class SkillhubMarket implements Market {
     }
 
     // ==================== 内部工具方法 ====================
+
+    /**
+     * 将统一接口的 cursor 解析为 skillhub 页码。
+     * <p>skillhub.cn 无游标机制，cursor 直接使用页码字符串（由上一次响应生成）。</p>
+     */
+    private int parsePageFromCursor(String cursor) {
+        if (Assert.isEmpty(cursor)) {
+            return 1;
+        }
+        try {
+            int page = Integer.parseInt(cursor.trim());
+            return page > 0 ? page : 1;
+        } catch (NumberFormatException e) {
+            return 1;
+        }
+    }
 
     private String httpGet(String url) throws Exception {
         return HttpUtils.http(url)

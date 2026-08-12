@@ -523,6 +523,49 @@ function switchToWelcomeMode() {
 $(welcomeInput).on('input', function() { autoResize(this); });
 $(chatInput).on('input', function() { autoResize(this); });
 
+/* ===== Input box height drag adjustment (top drag bar: min = current default height, max = 320px, double-click to restore) ===== */
+var INPUT_RESIZE_MAX = 320;
+function initInputResizeHandle(handle, textarea) {
+    if (!handle || !textarea) return;
+    var dragging = false, startY = 0, startH = 0;
+    // The container has transition:all, and during dragging the outer frame lags 250ms behind the textarea's height, causing visual desync;
+    // during dragging, temporarily disable the container's transition via .resizing (restored on mouseup).
+    var box = textarea.closest('.input-box, .welcome-input-box');
+    handle.addEventListener('mousedown', function (e) {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        dragging = true;
+        startY = e.clientY;
+        startH = textarea.offsetHeight;
+        handle.classList.add('dragging');
+        if (box) box.classList.add('resizing');
+        document.body.style.cursor = 'ns-resize';
+        document.body.style.userSelect = 'none';
+    });
+    document.addEventListener('mousemove', function (e) {
+        if (!dragging) return;
+        // Dragging upward (clientY decreases) increases the height
+        var minH = parseFloat(getComputedStyle(textarea).minHeight) || textarea.offsetHeight;
+        var h = Math.max(minH, Math.min(INPUT_RESIZE_MAX, startH + (startY - e.clientY)));
+        textarea._manualH = h;
+        textarea.style.height = h + 'px';
+    });
+    document.addEventListener('mouseup', function () {
+        if (!dragging) return;
+        dragging = false;
+        handle.classList.remove('dragging');
+        if (box) box.classList.remove('resizing');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+    });
+    handle.addEventListener('dblclick', function () {
+        textarea._manualH = 0;
+        autoResize(textarea);
+    });
+}
+initInputResizeHandle(document.querySelector('.welcome-input-box .input-resize-handle'), welcomeInput);
+initInputResizeHandle(document.querySelector('.input-box .input-resize-handle'), chatInput);
+
 /* ===== Voice Input (Web Speech API) - 按住说话（类似微信） ===== */
 var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 var recognition = null;
@@ -538,6 +581,9 @@ var voiceRafPending = false; // 限制 DOM 更新频率
 
 function initVoice() {
     if (!SpeechRecognition) return; // 浏览器不支持
+    // 桌面端（Electron）降级：Web Speech API 依赖 Chrome/Edge 内置的 Google 语音服务，
+    // Electron（开源 Chromium）没有该服务端点，start() 必然失败。故桌面端不显示语音按钮。
+    if (window.__GOURD_IPC__ && window.__GOURD_IPC__.isDesktop) return;
     recognition = new SpeechRecognition();
     recognition.lang = 'zh-CN';
     recognition.continuous = true; // 按住期间持续识别
@@ -587,7 +633,7 @@ function initVoice() {
         } else if (event.error === 'network') {
             showToast(GourdI18n.t('ui.voice_network_error'), 'error');
         } else {
-            showToast(GourdI18n.t('ui.voice_error', event.error), 'error');
+            showToast(GourdI18n.t('ui.voice_error', [event.error]), 'error');
         }
     };
 
@@ -634,7 +680,7 @@ function startVoiceRecording(inputEl) {
             voiceRecording = false;
             var btn = (inputEl === welcomeInput) ? welcomeVoiceBtn : chatVoiceBtn;
             btn.removeClass('recording');
-            showToast(GourdI18n.t('ui.voice_start_failed', e.message), 'error');
+            showToast(GourdI18n.t('ui.voice_start_failed', [e.message]), 'error');
         }
     }, 100);
 

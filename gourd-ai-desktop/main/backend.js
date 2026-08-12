@@ -12,7 +12,7 @@
 const path = require('path');
 const net = require('net');
 const http = require('http');
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const tkill = require('tree-kill');
 const { app } = require('electron');
 
@@ -30,6 +30,61 @@ function getResourcesDir() {
     return path.join(process.resourcesPath, 'extraResources');
   }
   return path.join(__dirname, '..', 'build', 'extraResources');
+}
+
+/**
+ * 运行时数据<b>基目录</b>：即 Java 侧 -Dgourdai.home 的取值语义——
+ * <b>不含</b> `.gourdai` 子目录（AgentFlags.getHarnessBase() 拿到后自己再拼
+ * harnessHome=".gourdai/"，Node 侧绝不能预先拼，否则全局区会嵌套成 .gourdai/.gourdai，
+ * 表现为重装后"配置被清空"——2026-08-08 复发事故的根因）。
+ *
+ * macOS 的 .app 是签名密封包（Gatekeeper 还可能将其转移至只读挂载运行），
+ * 往包内写数据会 EROFS/破坏签名，导致后端启动失败、所有 jar 接口报错。
+ * 故 macOS 打包版统一落到用户目录（基目录 ~/Library/Application Support/Gourd AI，
+ * 全局区即其下 .gourdai/），其余平台为安装目录（extraResources）。
+ */
+function getRuntimeHomeDir() {
+  if (process.platform === 'darwin' && app.isPackaged) {
+    return path.join(app.getPath('appData'), 'Gourd AI');
+  }
+  return getResourcesDir();
+}
+
+/**
+ * 一次性迁移：清理旧版误产生的嵌套全局区 `<基目录>/.gourdai/.gourdai`。
+ *
+ * 背景：2026-08 期间 getRuntimeHomeDir 曾把 .gourdai 提前拼进 -Dgourdai.home/cwd，
+ * Java 侧再拼一层 → 运行时把配置/会话写进了嵌套目录。修正语义后需把嵌套层内容
+ * 上移合并回真正的 `<基目录>/.gourdai`，避免用户数据"看起来丢了"。
+ *
+ * 策略：逐项移动；同名条目以<b>嵌套层（更新）为准</b>覆盖外层旧值；全部成功后删除
+ * 嵌套空目录。任何异常只告警、绝不阻断启动。
+ */
+function migrateNestedHarnessDir() {
+  try {
+    const fs = require('fs');
+    const outer = path.join(getRuntimeHomeDir(), '.gourdai');
+    const nested = path.join(outer, '.gourdai');
+    if (!fs.existsSync(nested)) return;
+    console.warn('[gourd-ai-desktop] 检测到嵌套全局区，执行一次性迁移: ' + nested + ' → ' + outer);
+    fs.mkdirSync(outer, { recursive: true });
+    for (const name of fs.readdirSync(nested)) {
+      const src = path.join(nested, name);
+      const dst = path.join(outer, name);
+      // 嵌套层数据更新（正是 bug 期间持续写入的），同名时先清掉外层旧值再上移
+      if (fs.existsSync(dst)) {
+        fs.rmSync(dst, { recursive: true, force: true });
+      }
+      fs.renameSync(src, dst);
+    }
+    try { fs.rmdirSync(nested); } catch (e) {
+      // rename 后仍残留（如空子目录占用）时用递归删除兜底
+      fs.rmSync(nested, { recursive: true, force: true });
+    }
+    console.log('[gourd-ai-desktop] 嵌套全局区迁移完成');
+  } catch (e) {
+    console.warn('[gourd-ai-desktop] 嵌套全局区迁移失败（不影响启动）:', e && e.message);
+  }
 }
 
 /**
@@ -65,9 +120,15 @@ function findJava() {
   const resDir = getResourcesDir();
   const bundledJava = javaInHome(path.join(resDir, 'jre'));
   if (bundledJava) {
-    return bundledJava;
+    // macOS 产出 x64/arm64 双架构包，而 jlink 只生成构建机架构的 JRE：
+    // 架构不符时 spawn 会报 EBADEXEC。这里快速验证可执行性，不可运行则回退系统 Java。
+    if (process.platform !== 'darwin' || canExecuteJava(bundledJava)) {
+      return bundledJava;
+    }
+    console.warn('[gourd-ai-desktop] 内置 JRE 无法在当前机器运行（架构不匹配？），回退系统 Java…');
+  } else {
+    console.warn('[gourd-ai-desktop] 内置 JRE 不可用（缺 bin/java），尝试系统 Java…');
   }
-  console.warn('[gourd-ai-desktop] 内置 JRE 不可用（缺 bin/java），尝试系统 Java…');
 
   // 2. JAVA_EXEC 环境变量
   if (process.env.JAVA_EXEC && fs.existsSync(process.env.JAVA_EXEC)) {
@@ -130,6 +191,18 @@ function findJava() {
   }
 
   return null;
+}
+
+/**
+ * 快速验证 java 可执行文件能否在当前机器运行（macOS 架构不匹配时 exec 会抛 EBADEXEC）。
+ */
+function canExecuteJava(javaPath) {
+  try {
+    execFileSync(javaPath, ['-version'], { timeout: 3000, stdio: 'ignore' });
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 /**
@@ -209,6 +282,9 @@ async function startBackend(port) {
     return { pid: childPid, port };
   }
 
+  // 修正历史嵌套全局区（须在 Java 子进程启动前完成，避免新旧目录并发读写）
+  migrateNestedHarnessDir();
+
   const java = findJava();
   const jar = findJar();
 
@@ -229,14 +305,17 @@ async function startBackend(port) {
   const args = [
     '-Dfile.encoding=UTF-8',
     '-Dsolon.boot.openBrowser=false',  // 禁止自动打开浏览器
-    '-Dgourdai.home=' + getResourcesDir(),  // 全局配置区根（与 ACP 子进程一致，保证读同一份全局配置）
+    '-Dgourdai.home=' + getRuntimeHomeDir(),  // 全局配置区根（与 ACP 子进程一致，保证读同一份全局配置）
     '-jar', jar,
     'web', String(port),  // web 模式：完整注册 WebController + /web/gate + WebSocket
   ];
 
-  // 日志文件：<安装目录>/.gourdai/logs/gourd-ai-desktop-server.log
+  // 日志文件：<基目录>/.gourdai/logs/gourd-ai-desktop-server.log（mac 上基目录为包外用户目录，避免写签名包）
   const logPath = getServerLogPath();
   const fs = require('fs');
+  // 确保子进程工作目录存在（macOS 打包版基目录在用户目录，首次启动时可能尚不存在；
+  // spawn 的 cwd 不存在会直接 ENOENT 失败）
+  fs.mkdirSync(getRuntimeHomeDir(), { recursive: true });
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
   // 使用 fs.openSync 获取文件描述符，可直接传给 stdio
   const logFd = fs.openSync(logPath, 'a');
@@ -253,7 +332,7 @@ async function startBackend(port) {
     stdio,
     detached: false,
     windowsHide: true,
-    cwd: getResourcesDir(),
+    cwd: getRuntimeHomeDir(),
     env: cleanEnv,
   });
 
@@ -273,6 +352,20 @@ async function startBackend(port) {
     console.error(`[gourd-ai-desktop] 后端进程错误: ${err.message}`);
     child = null;
     childPid = 0;
+  });
+
+  // spawn 错误（EACCES/EBADEXEC/ENOENT 等）快速失败：不等 60 秒健康检查超时，
+  // 把真实原因（如 JRE 架构不符、权限丢失）直接抛给引导层展示。300ms 内无错误视为启动成功。
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      child.removeListener('error', onSpawnError);
+      resolve();
+    }, 300);
+    function onSpawnError(err) {
+      clearTimeout(timer);
+      reject(new Error(`后端进程启动失败 (${java}): ${err.message}`));
+    }
+    child.once('error', onSpawnError);
   });
 
   return { pid: childPid, port };
@@ -324,11 +417,11 @@ function stopBackend() {
 
 /**
  * 服务端日志路径
- * <p>与后端 Java 侧一致：统一落<b>安装目录</b>（extraResources）下的 .gourdai/logs，
- * 不再写用户主目录 ~/.gourdai。</p>
+ * <p>与后端 Java 侧一致：统一落<b>全局区</b>（基目录 + .gourdai）下的 logs，
+ * 不再写用户主目录 ~/.gourdai（macOS 打包版基目录为包外用户目录）。</p>
  */
 function getServerLogPath() {
-  return path.join(getResourcesDir(), '.gourdai', 'logs', 'gourd-ai-desktop-server.log');
+  return path.join(getRuntimeHomeDir(), '.gourdai', 'logs', 'gourd-ai-desktop-server.log');
 }
 
 module.exports = {
@@ -338,4 +431,6 @@ module.exports = {
   stopBackend,
   getServerLogPath,
   getResourcesDir,
+  getRuntimeHomeDir,
+  migrateNestedHarnessDir,
 };

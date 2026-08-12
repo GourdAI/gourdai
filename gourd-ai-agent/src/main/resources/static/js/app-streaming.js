@@ -229,6 +229,7 @@ function onWebChunk(sess, chunk) {
                 // 归属路由：chunk.args.agentName 指向活跃智能体卡片时进卡片内，否则归主对话
                 var reasonOwner = resolveAgentState(sess, chunk.args);
                 if (reasonOwner) {
+                    hideAgentInlineThinking(reasonOwner);
                     appendAgentReasonChunk(sess, chunk.text, reasonOwner);
                 } else {
                     appendReasonChunk(sess, chunk.text);
@@ -239,6 +240,7 @@ function onWebChunk(sess, chunk) {
                 // 归属智能体开始输出正文时，只结束其自己的思考块（并行其他智能体的思考块不受影响）
                 if (textOwner) finishAgentThinkingBlock(sess, textOwner);
                 if (textOwner) {
+                    hideAgentInlineThinking(textOwner);
                     // 子代理正文（task 单任务增量 / multitask 各任务结果）：渲染进智能体卡片
                     appendAgentBodyContent(sess, chunk.text, textOwner);
                 } else {
@@ -247,19 +249,20 @@ function onWebChunk(sess, chunk) {
                 break;
             case 'action_end': finishThinkingBlock(sess); clearRetryChunk(sess);
                 var endOwnerState = resolveAgentState(sess, chunk.args);
-                if (endOwnerState) finishAgentThinkingBlock(sess, endOwnerState);
+                if (endOwnerState) { finishAgentThinkingBlock(sess, endOwnerState); hideAgentInlineThinking(endOwnerState); }
                 appendActionEndChunk(sess, chunk.toolName, chunk.text, chunk.args, chunk.toolTitle, chunk.actionId, chunk.truncated ? { truncated: true, seq: chunk.seq, fullLength: chunk.fullLength } : null, endOwnerState ? endOwnerState.bodyEl : null);
                 if (window._todoChunkHandlers) window._todoChunkHandlers.forEach(function(h){h(chunk);});
                 break;
             case 'action_start': finishThinkingBlock(sess); clearRetryChunk(sess);
                 var startOwnerState = resolveAgentState(sess, chunk.args);
-                if (startOwnerState) finishAgentThinkingBlock(sess, startOwnerState);
+                if (startOwnerState) { finishAgentThinkingBlock(sess, startOwnerState); hideAgentInlineThinking(startOwnerState); }
                 appendActionStartChunk(sess, chunk.toolName, chunk.args, chunk.toolTitle, chunk.actionId, startOwnerState ? startOwnerState.bodyEl : null);
                 break;
             case 'agent':  finishThinkingBlock(sess); finishPendingTool(sess); clearRetryChunk(sess);
                 var agentOwner = resolveAgentState(sess, chunk.args);
                 if (agentOwner) finishAgentThinkingBlock(sess, agentOwner);
                 if (agentOwner || sess._agentStateLast) {
+                    hideAgentInlineThinking(agentOwner || sess._agentStateLast);
                     appendAgentBodyContent(sess, chunk.text, agentOwner);
                 } else {
                     appendContentChunk(sess, chunk.text, false);
@@ -285,7 +288,19 @@ function onWebChunk(sess, chunk) {
             case 'context_size': if (typeof updateContextIndicator === 'function' && sess.sessionId === activeSessionId) updateContextIndicator(chunk); break;
         }
         sess.silenceTimer = setTimeout(function() {
-            if (sess.isStreaming && !sess.thinkingBlockEl) showInlineThinking(sess);
+            if (!sess.isStreaming || sess.thinkingBlockEl) return;
+            // 存在活跃子智能体卡片时：等待指示器下沉到各卡片体内（按卡片各自展示执行中），
+            // 不在主气泡底部显示全局指示器——多智能体并行时全局指示器归属不明（跑到卡片外）
+            if (sess.agentStates) {
+                var activeAgentIds = Object.keys(sess.agentStates);
+                if (activeAgentIds.length > 0) {
+                    for (var ai = 0; ai < activeAgentIds.length; ai++) {
+                        showAgentInlineThinking(sess, sess.agentStates[activeAgentIds[ai]]);
+                    }
+                    return;
+                }
+            }
+            showInlineThinking(sess);
         }, 1000);
         // 回放态：纯历史重建，不应触发「思考中」等待指示器（它依赖真实的流间隙）
         if (sess._replaying && sess.silenceTimer) { clearTimeout(sess.silenceTimer); sess.silenceTimer = null; }

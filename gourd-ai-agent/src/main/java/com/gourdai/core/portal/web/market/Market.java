@@ -26,16 +26,18 @@ public interface Market {
     }
 
     /**
-     * 获取热门技能列表
-     * @param page 页码（从 1 开始）
+     * 获取热门技能列表（cursor 游标分页）
+     * @param cursor 上一页返回的游标；首次加载传 null/空
+     * @param limit  每页条数
      */
-    Result<List<MarketItem>> trending(int page, int limit);
+    Result<MarketPageResult> trending(String cursor, int limit);
 
     /**
-     * 搜索技能
-     * @param page 页码（从 1 开始）
+     * 搜索技能（cursor 游标分页）
+     * @param cursor 上一页返回的游标；首次加载传 null/空
+     * @param limit  每页条数
      */
-    Result<List<MarketItem>> search(String query, int page, int limit);
+    Result<MarketPageResult> search(String query, String cursor, int limit);
 
     /**
      * 获取技能详情

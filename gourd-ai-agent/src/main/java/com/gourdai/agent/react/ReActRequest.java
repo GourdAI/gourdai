@@ -68,7 +68,10 @@ public class ReActRequest implements AgentRequest<ReActRequest, ReActResponse> {
         if (optionsAdjustor == null) {
             optionsAdjustor = adjustor;
         } else {
-            optionsAdjustor.andThen(adjustor);
+            // 链式多次 options() 时必须把组合结果写回，否则第二次及之后的调整（如
+            // ACP/桌面端在 engine.prompt() 预置选项之后再覆盖 chatModel/思考深度）会被静默丢弃，
+            // 表现为模型与思考配置不生效、回落到 Agent 默认模型。
+            optionsAdjustor = optionsAdjustor.andThen(adjustor);
         }
 
         return this;

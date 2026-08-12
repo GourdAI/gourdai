@@ -98,10 +98,27 @@
         initThinkingSelect();
     }
 
+    // 去掉「供应商-」前缀的展示短名（分组标题已展示供应商，选项内不再重复）
+    function modelShortName(name, provider) {
+        if (provider && name && name.indexOf(provider + '-') === 0) {
+            var rest = name.substring(provider.length + 1);
+            if (rest) return rest;
+        }
+        return name;
+    }
+
     function buildModelBody(info) {
-        var models = info.models || [];
+        var rawModels = info.models || [];
         var current = info.acpModel || '';
         var defModel = info.defaultModel || '';
+
+        // 归一化：models 兼容旧后端的字符串数组与新后端的 {name, provider} 对象数组
+        var models = [];
+        for (var n = 0; n < rawModels.length; n++) {
+            var raw = rawModels[n];
+            if (typeof raw === 'string') models.push({ name: raw, provider: '' });
+            else models.push({ name: raw.name || '', provider: raw.provider || '' });
+        }
 
         // 默认项：跟随全局默认模型（acpModel 留空即回落 defaultModel）
         var followLabel = defModel
@@ -109,9 +126,23 @@
             : t('settings.acp.model_follow_default_empty');
 
         var modelOpts = '<option value=""' + (current ? '' : ' selected') + '>' + escapeHtml(followLabel) + '</option>';
+
+        // 按供应商分组（layui select 原生支持 optgroup，渲染为分组标题）；无 provider 归入「其他」
+        var groups = [];
+        var groupIndex = {};
         for (var i = 0; i < models.length; i++) {
-            var name = models[i];
-            modelOpts += '<option value="' + escapeHtml(name) + '"' + (name === current ? ' selected' : '') + '>' + escapeHtml(name) + '</option>';
+            var g = models[i].provider || '';
+            if (!(g in groupIndex)) { groupIndex[g] = groups.length; groups.push({ provider: g, items: [] }); }
+            groups[groupIndex[g]].items.push(models[i]);
+        }
+        for (var gi = 0; gi < groups.length; gi++) {
+            var grp = groups[gi];
+            modelOpts += '<optgroup label="' + escapeHtml(grp.provider || t('history.model_group_other')) + '">';
+            for (var j = 0; j < grp.items.length; j++) {
+                var m = grp.items[j];
+                modelOpts += '<option value="' + escapeHtml(m.name) + '"' + (m.name === current ? ' selected' : '') + '>' + escapeHtml(modelShortName(m.name, grp.provider)) + '</option>';
+            }
+            modelOpts += '</optgroup>';
         }
 
         // 思考深度选项
