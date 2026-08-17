@@ -113,6 +113,7 @@
         // 每次打开设置面板，默认定位到通用设置 tab
         $tabs.removeClass('active');
         $tabContents.removeClass('active');
+        $tabs.filter('[data-tab="general"]').addClass('active');
         $('#settingsTabGeneral').addClass('active');
         resetCurrentTabView('general');
         $overlay.css('display', 'flex');
@@ -134,7 +135,8 @@
     }
 
     $settingsBtn.on('click', openSettings);
-    $overlay.on('click', function (e) { if (e.target === $overlay[0]) closeSettings(); });
+    $('#settingsCloseBtn').on('click', closeSettings);
+    // 不再支持点击浮层外部关闭：面板内修改未保存时误触会丢失全部填写内容，只能通过右上角关闭按钮或 ESC 关闭
     $(document).on('keydown', function (e) { if (e.key === 'Escape' && $overlay.is(':visible')) closeSettings(); });
 
     $(document).on('click', '.settings-scope-btn', function () {
@@ -187,6 +189,9 @@
         } else if (targetTab === 'acp') {
             $('#settingsTabAcp').addClass('active');
             if (mod('_settingsAcp')) mod('_settingsAcp').load();
+        } else if (targetTab === 'about') {
+            $('#settingsTabAbout').addClass('active');
+            if (mod('_settingsAbout')) mod('_settingsAbout').load();
         }
     });
 
@@ -205,5 +210,6 @@
         else if (targetTab === 'loop') { if (mod('_settingsLoop')) mod('_settingsLoop').load(); }
         else if (targetTab === 'channel') { if (window._channelModule) window._channelModule.load(); }
         else if (targetTab === 'acp') { if (mod('_settingsAcp')) mod('_settingsAcp').load(); }
+        else if (targetTab === 'about') { if (mod('_settingsAbout')) mod('_settingsAbout').load(); }
     }
 })();

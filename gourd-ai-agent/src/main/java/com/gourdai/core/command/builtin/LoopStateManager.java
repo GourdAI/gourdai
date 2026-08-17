@@ -28,11 +28,11 @@ import java.nio.file.*;
 import java.time.Instant;
 
 /**
- * Loop 状态管理器 — 负责 .gourdai/loops/&lt;loopId&gt;/ 目录的创建、读写、清理。
+ * Loop 状态管理器 — 负责 .gwork/loops/&lt;loopId&gt;/ 目录的创建、读写、清理。
  *
  * <p>状态目录结构：
  * <pre>
- * .gourdai/loops/&lt;loopId&gt;/
+ * .gwork/loops/&lt;loopId&gt;/
  * └── history.json         # 结构化执行历史
  * </pre>
  *
@@ -44,7 +44,7 @@ public class LoopStateManager {
 
     private static final String HISTORY_FILE = "history.json";
     /**
-     * 获取 loop 状态目录的根路径（.gourdai/loops/）
+     * 获取 loop 状态目录的根路径（.gwork/loops/）
      */
     public static Path getLoopBaseDir(String workspace) {
         return Paths.get(workspace, AgentFlags.getHarnessLoops());

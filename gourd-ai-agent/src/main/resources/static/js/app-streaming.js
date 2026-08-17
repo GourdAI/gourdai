@@ -117,7 +117,6 @@ function sendMessage() {
 
     sess.isStreaming = true;
     isStreaming = true;
-    sess.messageStartTime = Date.now();
     setBtnStopMode();
     resetStreamState(sess);
     showThinking(sess);
@@ -155,7 +154,6 @@ function sendCommandSilent(cmdText, onBeforeSend) {
 
     sess.isStreaming = true;
     isStreaming = true;
-    sess.messageStartTime = Date.now();
     setBtnStopMode();
     resetStreamState(sess);
     showThinking(sess);
@@ -180,7 +178,6 @@ function sendWithFormDataGrouped(sess, text, filesToSend) {
 
     // 标记流式状态，WebSocket onmessage 会处理数据
     sess.isStreaming = true;
-    if (!sess.messageStartTime) sess.messageStartTime = Date.now();
     if (sess.sessionId === activeSessionId) {
         isStreaming = true;
         setBtnStopMode();
@@ -196,8 +193,15 @@ function sendWithFormDataGrouped(sess, text, filesToSend) {
         contentType: false,
         headers: (typeof getSessionCwd === 'function' && getSessionCwd())
             ? { 'X-Session-Cwd': getSessionCwd() } : {}
-    }).done(function() {
-        // HTTP 响应只有 {"status":"ok"}，实际数据通过 WebSocket 推送
+    }).done(function(resp) {
+        // 正常响应为 {"code":200}；若服务端判定会话繁忙（上一条任务未结束的重复触发），
+        // 返回 data="busy"：前端暂存本条消息，待当前任务的 done 到达后自动补发，
+        // 避免并行两个 ReAct 循环的 chunk 交错导致思考/正文错位
+        var st = resp;
+        if (typeof st === 'string') { try { st = JSON.parse(st); } catch (e) { st = null; } }
+        if (st && st.data === 'busy') {
+            handleSendBusy(sess, text);
+        }
     }).fail(function(err) {
         console.error('Send error:', err);
         var errMsg = GourdI18n.t('streaming.send_failed');
@@ -206,6 +210,22 @@ function sendWithFormDataGrouped(sess, text, filesToSend) {
         }
         finishStream(sess);
     });
+}
+
+/* ===== 服务端繁忙（busy）处理 =====
+   服务端对“会话已有任务在执行”的重复触发会跳过并返回 busy。
+   前端此处收尾本地流状态，并暂存本条消息（非斜杠命令），
+   待当前任务的 done 块到达后自动补发（不重复渲染用户气泡），确保消息不丢失。 */
+function handleSendBusy(sess, text) {
+    console.warn('[WebGate] server busy, message deferred for session:', sess.sessionId);
+    var t = (text && text.trim()) ? text.trim() : '';
+    if (t && t.charAt(0) !== '/') {
+        sess._pendingResend = t;
+    }
+    if (typeof showToast === 'function') {
+        showToast(GourdI18n.t('streaming.busy_deferred'), 'warning');
+    }
+    finishStream(sess);
 }
 
 /* ===== WebChunk Handling (Session-Aware) ===== */
@@ -229,7 +249,6 @@ function onWebChunk(sess, chunk) {
                 // 归属路由：chunk.args.agentName 指向活跃智能体卡片时进卡片内，否则归主对话
                 var reasonOwner = resolveAgentState(sess, chunk.args);
                 if (reasonOwner) {
-                    hideAgentInlineThinking(reasonOwner);
                     appendAgentReasonChunk(sess, chunk.text, reasonOwner);
                 } else {
                     appendReasonChunk(sess, chunk.text);
@@ -240,7 +259,6 @@ function onWebChunk(sess, chunk) {
                 // 归属智能体开始输出正文时，只结束其自己的思考块（并行其他智能体的思考块不受影响）
                 if (textOwner) finishAgentThinkingBlock(sess, textOwner);
                 if (textOwner) {
-                    hideAgentInlineThinking(textOwner);
                     // 子代理正文（task 单任务增量 / multitask 各任务结果）：渲染进智能体卡片
                     appendAgentBodyContent(sess, chunk.text, textOwner);
                 } else {
@@ -249,20 +267,19 @@ function onWebChunk(sess, chunk) {
                 break;
             case 'action_end': finishThinkingBlock(sess); clearRetryChunk(sess);
                 var endOwnerState = resolveAgentState(sess, chunk.args);
-                if (endOwnerState) { finishAgentThinkingBlock(sess, endOwnerState); hideAgentInlineThinking(endOwnerState); }
+                if (endOwnerState) { finishAgentThinkingBlock(sess, endOwnerState); }
                 appendActionEndChunk(sess, chunk.toolName, chunk.text, chunk.args, chunk.toolTitle, chunk.actionId, chunk.truncated ? { truncated: true, seq: chunk.seq, fullLength: chunk.fullLength } : null, endOwnerState ? endOwnerState.bodyEl : null);
                 if (window._todoChunkHandlers) window._todoChunkHandlers.forEach(function(h){h(chunk);});
                 break;
             case 'action_start': finishThinkingBlock(sess); clearRetryChunk(sess);
                 var startOwnerState = resolveAgentState(sess, chunk.args);
-                if (startOwnerState) { finishAgentThinkingBlock(sess, startOwnerState); hideAgentInlineThinking(startOwnerState); }
+                if (startOwnerState) { finishAgentThinkingBlock(sess, startOwnerState); }
                 appendActionStartChunk(sess, chunk.toolName, chunk.args, chunk.toolTitle, chunk.actionId, startOwnerState ? startOwnerState.bodyEl : null);
                 break;
             case 'agent':  finishThinkingBlock(sess); finishPendingTool(sess); clearRetryChunk(sess);
                 var agentOwner = resolveAgentState(sess, chunk.args);
                 if (agentOwner) finishAgentThinkingBlock(sess, agentOwner);
                 if (agentOwner || sess._agentStateLast) {
-                    hideAgentInlineThinking(agentOwner || sess._agentStateLast);
                     appendAgentBodyContent(sess, chunk.text, agentOwner);
                 } else {
                     appendContentChunk(sess, chunk.text, false);
@@ -289,17 +306,9 @@ function onWebChunk(sess, chunk) {
         }
         sess.silenceTimer = setTimeout(function() {
             if (!sess.isStreaming || sess.thinkingBlockEl) return;
-            // 存在活跃子智能体卡片时：等待指示器下沉到各卡片体内（按卡片各自展示执行中），
+            // 存在活跃子智能体卡片时：运行中状态由卡片头部状态标识闪烁表示，
             // 不在主气泡底部显示全局指示器——多智能体并行时全局指示器归属不明（跑到卡片外）
-            if (sess.agentStates) {
-                var activeAgentIds = Object.keys(sess.agentStates);
-                if (activeAgentIds.length > 0) {
-                    for (var ai = 0; ai < activeAgentIds.length; ai++) {
-                        showAgentInlineThinking(sess, sess.agentStates[activeAgentIds[ai]]);
-                    }
-                    return;
-                }
-            }
+            if (sess.agentStates && Object.keys(sess.agentStates).length > 0) return;
             showInlineThinking(sess);
         }, 1000);
         // 回放态：纯历史重建，不应触发「思考中」等待指示器（它依赖真实的流间隙）
@@ -316,15 +325,13 @@ function finishStream(sess) {
     if (typeof clearRetryChunk === 'function') clearRetryChunk(sess);
 
     // --- 新增：强刷逻辑，必须在 resetStreamState 之前执行 ---
-    // 1. 取消还没跑的动画帧
-    if (sess.contentRafId) { cancelAnimationFrame(sess.contentRafId); sess.contentRafId = null; }
-    if (sess.reasonRafId) { cancelAnimationFrame(sess.reasonRafId); sess.reasonRafId = null; }
+    // 1. 增量渲染器的 finish() 内部会取消还没跑的动画帧
 
     // 2. 立即把 Buffer 内容渲染出来（此时是最终态，执行完整高亮/mermaid）
     if (sess.reasonBuffer) {
         var el = ensureAssistantBubble(sess);
         el.setAttribute('data-md-raw', sess.reasonBuffer);
-        $(el).html(renderMd(sess.reasonBuffer));
+        getStreamMd(el).finish();
         if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
         // 流结束时再做一次性高亮，避免流式中逐帧高亮引起的跳动
         if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(el);
@@ -334,7 +341,7 @@ function finishStream(sess) {
     // 如果有思考中的内容，也刷一下
     if (sess.thinkingBlockEl && sess.thinkingBuffer) {
         if (sess.thinkingBodyMdEl) {
-            $(sess.thinkingBodyMdEl).html(renderMd(sess.thinkingBuffer));
+            getStreamMd(sess.thinkingBodyMdEl).finish();
             if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(sess.thinkingBodyMdEl);
             if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(sess.thinkingBodyMdEl);
             if (typeof processMermaidBlocks === 'function') processMermaidBlocks(sess.thinkingBodyMdEl);
@@ -387,11 +394,6 @@ function finishStream(sess) {
         if (doneRow) $(doneRow).find('.msg-actions').show();
     }
 
-    // 清除客户端计时（已由 trace 类型的服务端耗时替代）
-    if (sess.messageStartTime) {
-        sess.messageStartTime = null;
-    }
-
     // resetStreamState 会清空 buffer，所以必须在上面强刷完后再调
     resetStreamState(sess);
 
@@ -426,6 +428,8 @@ function finishStream(sess) {
 var webGateSocket = null;
 var webGateReconnectAttempts = 0;
 var webGateHeartbeatTimer = null;
+// 最近一条已处理 gate 帧的指纹（重复推送连串去重兜底用）
+var lastGateFp = null;
 var WEBGATE_MAX_RECONNECT = 10;
 
 // 用户主动发起会话时确保连接就绪：若连接已断且退避已停止，则重置计数并立即重连。
@@ -458,9 +462,21 @@ function connectWebGate() {
     //   此刻 socket 处于 CONNECTING 而非 OPEN，必须一并拦住，否则会建出两个连接。）
     if (webGateSocket &&
         (webGateSocket.readyState === WebSocket.OPEN || webGateSocket.readyState === WebSocket.CONNECTING)) return;
+    // 退役 CLOSING/CLOSED 的旧连接：先摘掉全部回调再 close，杜绝新旧连接并存期间
+    // 旧连接继续收帧造成重复推送、或旧 onclose 误终结新连接的流。
+    if (webGateSocket) {
+        try {
+            webGateSocket.onopen = null;
+            webGateSocket.onmessage = null;
+            webGateSocket.onclose = null;
+            webGateSocket.onerror = null;
+            webGateSocket.close();
+        } catch (e) { /* 退役异常忽略 */ }
+        webGateSocket = null;
+    }
     try {
         // 同源 WebSocket：
-        // - 浏览器模式（gourdai web 0）：直连 jar 自身。
+        // - 浏览器模式（gwork web 0）：直连 jar 自身。
         // - 桌面端（Electron）：页面来自本地 UI 服务器 http://localhost:{uiPort}，
         //   该服务器把 /web/gate 反向代理到后端 jar，故同样用同源地址即可。
         var protocol = (window.location.protocol === 'https:') ? 'wss:' : 'ws:';
@@ -483,10 +499,20 @@ function connectWebGate() {
     };
 
     webGateSocket.onmessage = function(event) {
+        // 被退役旧连接的残帧直接丢弃（新旧连接并存的重复推送残留通路）
+        if (event.target && webGateSocket && event.target !== webGateSocket) return;
         var raw = event.data;
         if (raw === 'pong') return; // 心跳回复
         try {
             var chunk = JSON.parse(raw);
+
+            // 重复推送兜底去重：多连接并存时同一事件可能相邻送达两次（payload 完全一致），
+            // 连续重复帧丢弃；仅带 createdAt 的业务帧参与，心跳/系统帧原样放行。
+            if (chunk && chunk.createdAt) {
+                var fp = (chunk.type || '') + '\u0001' + (chunk.sessionId || '') + '\u0001' + chunk.createdAt + '\u0001' + raw;
+                if (fp === lastGateFp) return;
+                lastGateFp = fp;
+            }
 
             // 正常处理 WebSocket 消息
 
@@ -500,6 +526,17 @@ function connectWebGate() {
                 // 保存 done 消息的时间戳，用于 finishStream 显示
                 if (chunk.createdAt) sess._lastCreatedAt = chunk.createdAt;
                 finishStream(sess);
+                // busy 暂存的消息：当前任务已结束，延迟补发（不重复渲染用户气泡）。
+                // 延迟 300ms 避开 finishStream 内部的队列处理时序；若期间用户已手动发送则跳过。
+                if (sess._pendingResend) {
+                    var pr = sess._pendingResend;
+                    sess._pendingResend = null;
+                    setTimeout(function() {
+                        var s2 = sessionMap[sid];
+                        if (!s2 || s2.isStreaming) return;
+                        sendWithFormDataGrouped(s2, pr, []);
+                    }, 300);
+                }
                 return;
             }
 
@@ -538,7 +575,6 @@ function connectWebGate() {
             var sess2 = getOrCreateSession(sid);
             if (!sess2.isStreaming) {
                 sess2.isStreaming = true;
-                if (!sess2.messageStartTime) sess2.messageStartTime = Date.now();
                 if (sess2.sessionId === activeSessionId) {
                     isStreaming = true;
                     setBtnStopMode();
@@ -596,11 +632,10 @@ function scheduleWebGateReconnect() {
     }, delay);
 }
 
-// 页面可见性控制心跳
+// 心跳常驻：隐藏/被遮挡时停心跳会让长任务期间的 WS 被空闲断开，
+// 回前台后陷入"界面不动、结尾补画"的半死状态；15s 一次 ping 开销可忽略。
 $(document).on('visibilitychange', function() {
-    if (document.hidden) {
-        stopWebGateHeartbeat();
-    } else {
+    if (!document.hidden) {
         startWebGateHeartbeat();
     }
 });

@@ -76,7 +76,7 @@ import java.util.*;
 import java.util.List;
 
 /**
- * Web 设置控制器 —— Gourd AI Web UI 的设置管理 HTTP 入口。
+ * Web 设置控制器 —— GWork Web UI 的设置管理 HTTP 入口。
  *
  * <p>职责：管理 LLM 模型配置（增删改查、导入导出）、MCP 服务器配置（增删改查、连接检测）和 OpenApi 服务器配置。</p>
  *
@@ -2831,12 +2831,12 @@ public class WebSettingsController {
      * 获取编码工具接入（ACP）所需的环境信息。
      *
      * <p>ACP 采用官方标准的 stdio 传输：编辑器（Zed/VSCode/IDEA 等）作为客户端，
-     * 自行将 {@code gourdai acp} 作为子进程拉起并通过标准输入输出通信，无需监听端口。
+     * 自行将 {@code gwork acp} 作为子进程拉起并通过标准输入输出通信，无需监听端口。
      * 因此后端不需要、也无法“开启”一个常驻 ACP 服务，本接口仅为前端提供生成编辑器配置片段所
-     * 需的事实：操作系统、用户主目录、{@code gourdai} 启动器绝对路径及其就绪状态。</p>
+     * 需的事实：操作系统、用户主目录、{@code gwork} 启动器绝对路径及其就绪状态。</p>
      *
-     * <p>启动器由桌面端 {@code cli-provision.js} 写入安装目录的 {@code .gourdai/bin}：
-     * Windows 为 {@code gourdai.bat}，macOS/Linux 为无扩展名的 {@code gourdai}。</p>
+     * <p>启动器由桌面端 {@code cli-provision.js} 写入安装目录的 {@code .gwork/bin}：
+     * Windows 为 {@code gwork.bat}，macOS/Linux 为无扩展名的 {@code gwork}。</p>
      */
     @Get
     @Mapping("/web/settings/acp/info")
@@ -2849,10 +2849,18 @@ public class WebSettingsController {
 
         String userHome = AgentFlags.getUserHome();
         String harnessBase = AgentFlags.getHarnessBase();
-        // 启动器绝对路径：Windows 用 gourdai.bat，其它平台用无扩展名 gourdai（与 cli-provision.js 一致）
-        // 与后端/桌面端统一：启动器落安装目录 <base>/.gourdai/bin，不再读用户主目录
-        String launcherName = isWindows ? "gourdai.bat" : "gourdai";
-        Path launcherPath = Paths.get(harnessBase, ".gourdai", "bin", launcherName);
+        // 启动器绝对路径：Windows 用 gwork.bat，其它平台用无扩展名 gwork（与 cli-provision.js 一致）
+        // 与后端/桌面端统一：启动器落安装目录 <base>/.gwork/bin，不再读用户主目录
+        String launcherName = isWindows ? "gwork.bat" : "gwork";
+        Path launcherPath = Paths.get(harnessBase, AgentFlags.getHarnessHome(), "bin", launcherName);
+        if (!Files.exists(launcherPath)) {
+            // 过渡兼容：桌面端尚未升级（仍写 .gourdai/bin/gourdai）时回退旧启动器，确保 ACP 可用
+            String legacyName = isWindows ? "gourdai.bat" : "gourdai";
+            Path legacyPath = Paths.get(harnessBase, ".gourdai", "bin", legacyName);
+            if (Files.exists(legacyPath)) {
+                launcherPath = legacyPath;
+            }
+        }
         boolean ready = Files.exists(launcherPath);
 
         data.put("os", os);
@@ -2876,6 +2884,8 @@ public class WebSettingsController {
         data.put("acpThinkingDepth", settings.getGeneral().getAcpThinkingDepth());
         // acpModel 对应的接口类型，供前端确定思考档位选项集
         data.put("acpModelStandard", getModelStandard(settings.getGeneral().getAcpModel()));
+        // 默认模型对应的接口类型（acpModel 置空=跟随默认时，思考档位选项集按其展示）
+        data.put("defaultModelStandard", getModelStandard(settings.getDefaultModel()));
 
         // models 由纯字符串数组升级为 {name, provider} 对象数组，供前端按供应商分组展示下拉
         List<Map<String, Object>> modelItems = new ArrayList<>();
@@ -2884,6 +2894,8 @@ public class WebSettingsController {
                 Map<String, Object> item = new LinkedHashMap<>();
                 item.put("name", config.getNameOrModel());
                 item.put("provider", config.getProvider());
+                // 接口类型随列表下发：切换模型后前端无需重拉页面即可更新关联的思考档位选项集
+                item.put("standard", config.getStandardOrProvider());
                 modelItems.add(item);
             }
         }

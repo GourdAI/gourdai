@@ -60,7 +60,7 @@ public class GeneralGroupDo implements Serializable {
     //------------
 
     //http 用户代理
-    private String userAgent; // "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GourdAI/1.0 like claude-code; +https://www.gourd-ai.cn/)";
+    private String userAgent; // "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; GWork/1.0 like claude-code; +https://www.gourd-ai.cn/)";
 
     //最大回合
     private Integer maxTurns; // 20

@@ -127,7 +127,7 @@ public class LoopScheduler {
 
 
     /**
-     * @param worktreeDir worktree 目录名（如 ".gourdai/loop-worktrees"），null 时使用默认值
+     * @param worktreeDir worktree 目录名（如 ".gwork/loop-worktrees"），null 时使用默认值
      */
     public LoopScheduler(HarnessEngine engine, String worktreeDir) {
         this.engine = engine;

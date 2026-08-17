@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Gourd AI CLI Installer
+# GWork CLI Installer
 # Usage: curl -fsSL https://www.gourd-ai.cn/setup.sh | bash
 #
 
@@ -38,7 +38,7 @@ trap cleanup EXIT
 # Create temp directory
 mkdir -p "$TEMP_DIR"
 
-info "Downloading Gourd AI CLI ${VERSION}..."
+info "Downloading GWork CLI ${VERSION}..."
 
 # Download package
 if command -v curl &> /dev/null; then

@@ -93,7 +93,7 @@ public class TerminalTalent extends AbsTalent {
     private boolean bashAsyncEnabled = false;
 
     private final Set<String> ignoreDirs = new HashSet<>(Arrays.asList(
-            ".gourdai", ".claude", ".opencode",
+            ".gwork", ".gourdai", ".claude", ".opencode",
             ".idea", ".vscode", ".settings",
             ".git", ".gradle",".mvn",
             ".pytest_cache", "__pycache__",
@@ -841,6 +841,12 @@ public class TerminalTalent extends AbsTalent {
         Path workPath = getWorkPath(__cwd);
         Path target = support.resolveSafePath(workPath, path, false, sandboxEnabled, sandboxAllowUserHome);
 
+        // 不存在路径快速失败：避免模型猜测的目录进入深层管线（walkFileTree 异常路径在各层被吞后
+        // 可能表现为观测丢失），直接回提示引导模型修正路径
+        if (!Files.exists(target)) {
+            return "路径不存在: " + path + "（解析为 " + support.formatDisplayPath(workPath, path, target, target, sandboxEnabled) + "）。请先用 ls/glob 确认目录结构。";
+        }
+
         // 预编译正则，若语法无效则回退到 contains 匹配
         final Pattern finalPattern;
         Pattern compiled = null;
@@ -923,6 +929,11 @@ public class TerminalTalent extends AbsTalent {
                        String __cwd) throws IOException {
         Path workPath = getWorkPath(__cwd);
         Path target = support.resolveSafePath(workPath, path, false, sandboxEnabled, sandboxAllowUserHome);
+
+        // 不存在路径快速失败（与 grep 同因）：直接回提示引导模型修正路径
+        if (!Files.exists(target)) {
+            return "路径不存在: " + path + "（解析为 " + support.formatDisplayPath(workPath, path, target, target, sandboxEnabled) + "）。请先用 ls/glob 确认目录结构。";
+        }
 
         String fixedPattern = pattern.replace("\\", "/");
         final PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + fixedPattern);

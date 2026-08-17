@@ -30,7 +30,7 @@ public class ClawhubMarket implements Market {
     private static final Logger LOG = LoggerFactory.getLogger(ClawhubMarket.class);
 
     private static final String BASE_URL = "https://clawhub.ai";
-    private static final String USER_AGENT = "GourdAI/1.0";
+    private static final String USER_AGENT = "GWork/1.0";
 
     @Override
     public String name() {

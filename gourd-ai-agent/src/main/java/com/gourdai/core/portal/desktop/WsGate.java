@@ -24,6 +24,7 @@ import com.gourdai.agent.react.task.ActionChunk;
 import com.gourdai.agent.react.task.ObservationChunk;
 import com.gourdai.agent.react.task.ReasonChunk;
 import com.gourdai.agent.react.task.ThoughtChunk;
+import com.gourdai.agent.util.AgentUtil;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.ChatMessage;
@@ -465,7 +466,7 @@ public class WsGate extends SimpleWebSocketListener {
         if (chunk.getArgs() != null) node.set("args", chunk.getArgs());
 
         if ("todowrite".equals(chunk.getToolName())) {
-            String todos = (String) chunk.getArgs().get("todos");
+            String todos = AgentUtil.asStringArg(chunk.getArgs(), "todos");
             if (Assert.isNotEmpty(todos)) {
                 node.set("text", todos);
             }
@@ -658,13 +659,13 @@ public class WsGate extends SimpleWebSocketListener {
     }
 
     /**
-     * 将 chatModel 配置持久化到 YAML 文件（~/.gourdai/chat-model.yml）
+     * 将 chatModel 配置持久化到 YAML 文件（~/.gwork/chat-model.yml）
      */
     private void saveConfigToFile(String apiUrl, String apiKey, String model) {
         //todo: 这块要根据 AppSetttings 类重新进行设计。noear,2026.6
 //        try {
 //            String home = System.getProperty("user.home");
-//            Path configDir = Paths.get(home, ".gourdai");
+//            Path configDir = Paths.get(home, ".gwork");
 //            Files.createDirectories(configDir);
 //
 //            Path configFile = configDir.resolve("chat-model.yml");

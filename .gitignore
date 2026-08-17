@@ -30,7 +30,6 @@ nbbuild/
 dist/
 nbdist/
 .nb-gradle/
-soloncode-ee/
 
 ### Mac files ###
 *.DS_Store
@@ -45,10 +44,6 @@ work
 .gourdai/
 !gourd-ai-desktop/build/extraResources/.gourdai/
 !gourd-ai-desktop/build/extraResources/.gourdai/settings.json
-soloncode-desktop/soloncode-cli/
-soloncode-desktop/src-tauri/target/
-soloncode-desktop/src-tauri/release/
-soloncode-desktop/src-tauri/build/
-soloncode-desktop/src-tauri/resources/
 
-.soloncode/
+.gwork/
+downloads/

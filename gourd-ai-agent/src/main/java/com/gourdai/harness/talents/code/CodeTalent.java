@@ -226,7 +226,7 @@ public class CodeTalent extends AbsTalent {
             }
             if (updated) Files.write(targetPath, finalContent.getBytes(StandardCharsets.UTF_8));
 
-            ensureInGitignore(rootPath, ".gourdai/");
+            ensureInGitignore(rootPath, ".gwork/");
 
             StringBuilder resultMsg = new StringBuilder();
             resultMsg.append(updated ? "已更新" : "已验证").append("项目工程规范");
@@ -323,7 +323,7 @@ public class CodeTalent extends AbsTalent {
     private boolean isIgnored(Path path) {
         String pathName = path.getFileName().toString();
 
-        // 1. 基础全局忽略（隐藏目录如 .git, .idea, .gourdai 等）
+        // 1. 基础全局忽略（隐藏目录如 .git, .idea, .gwork, .gourdai 等）
         if (pathName.startsWith(".")) {
             return true;
         }

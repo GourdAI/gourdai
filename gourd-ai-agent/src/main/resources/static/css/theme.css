@@ -13,7 +13,7 @@
     --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
 
     /* Scrollbar —— 全局唯一的滚动条视觉规范。
-       原生滚动条（*::-webkit-scrollbar）与 CodeMirror overlay 滚动条
+       原生滚动条（*::-webkit-scrollbar）与 Monaco 自绘滚动条
        （code.css 覆盖）共用此组变量，保证 code 编辑器 / diff / 其它区域观感一致。
        thumb 高度半透明蓝灰，透光不压内容（模拟毛玻璃），细窄+大圆角。
        明暗主题下均协调，无需分主题赋值。 */
@@ -176,11 +176,11 @@
 }
 
 /* ===== Global Scrollbar =====
-   全站统一使用一套 webkit 自定义滚动条（圆角 / 细窄 / 半透明毛玻璃）。
-   刻意不使用标准 scrollbar-width / scrollbar-color：其一无法实现圆角与
-   精确透明度，其二 Chromium 121+ 下它会使同元素上的 ::-webkit-scrollbar-*
-   规则整体失效（正是桌面端 Electron 与 CodeMirror overlay 观感不一致的根因）。
-   CodeMirror overlay 滚动条在 code.css 里引用同组 --scrollbar-* 变量对齐。 */
+    全站统一使用一套 webkit 自定义滚动条（圆角 / 细窄 / 半透明毛玻璃）。
+    刻意不使用标准 scrollbar-width / scrollbar-color：其一无法实现圆角与
+    精确透明度，其二 Chromium 121+ 下它会使同元素上的 ::-webkit-scrollbar-*
+    规则整体失效（正是桌面端 Electron 原生滚动条观感不一致的根因）。
+    Monaco 自绘滚动条（内部 DOM，不走 webkit 滚动条）在 code.css 里引用同组 --scrollbar-* 变量对齐。 */
 *::-webkit-scrollbar {
     width: var(--scrollbar-size);
     height: var(--scrollbar-size);

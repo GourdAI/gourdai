@@ -30,6 +30,8 @@ import static java.nio.file.StandardWatchEventKinds.*;
  *   <li>自动排除 .git、node_modules、target 等无关目录（点前缀文件正常监听）</li>
  *   <li>新增目录时自动注册监听，覆盖子树</li>
  *   <li>使用守护线程，随主进程退出</li>
+ *   <li>事件轮询线程与注册调度线程相互独立，动态 addRoot 的注册任务不会被事件轮询阻塞</li>
+ *   <li>OVERFLOW 事件（context 为 null）直接跳过，不会杀死轮询线程</li>
  * </ul>
  */
 public class WorkspaceWatcher {
@@ -38,7 +40,7 @@ public class WorkspaceWatcher {
     /** 需要排除的目录名（不监听、不同步）；与 FileService 的排除清单保持一致 */
     private static final Set<String> EXCLUDED_DIRS = new HashSet<>(Arrays.asList(
             // 项目元数据 & IDE
-            ".gourdai", ".claude", ".opencode",
+                ".gwork", ".gourdai", ".claude", ".opencode",
             ".idea", ".vscode", ".settings",
             // 版本控制 & 构建工具
             ".git", ".gradle", ".mvn",
@@ -53,7 +55,9 @@ public class WorkspaceWatcher {
 
     /** 监听根路径集合（启动工作区 + 动态登记的 Code 项目根） */
     private final Set<Path> roots = ConcurrentHashMap.newKeySet();
-    /** start() 是否已完成目录树登记（之后 addRoot 需即时注册） */
+    /** 已真正注册进 WatchService 的根目录树（防重复注册；注册失败会回退移除以允许重试） */
+    private final Set<Path> registered = ConcurrentHashMap.newKeySet();
+    /** start() 是否已完成初始化（WatchService/线程就绪；之后 addRoot 即时提交注册任务） */
     private volatile boolean started = false;
     /** start() 初始化是否失败（WatchService 不可用时 addRoot 仅登记不提交任务） */
     private volatile boolean initFailed = false;
@@ -77,26 +81,41 @@ public class WorkspaceWatcher {
     /**
      * 动态添加监听根（如 Code 模式当前选择的项目目录）。
      *
-     * <p>可在 {@link #start()} 前后任意时刻调用：未启动时仅登记；
-     * 已启动则异步注册新根的目录树到 WatchService。</p>
+     * <p>可在 {@link #start()} 前后任意时刻调用：启动前仅登记到 roots，
+     * 由 {@link #start()} 补注册；启动后立即提交目录树注册任务。
+     * 对已注册的根重复调用自动忽略（幂等）。</p>
      *
      * @param root 新的监听根目录，null 忽略
      */
     public void addRoot(Path root) {
         if (root == null) return;
         Path normalized = root.toAbsolutePath().normalize();
-        if (!roots.add(normalized)) return;
-        // WatchService 不可用（未启动或初始化失败）：仅登记到 roots，避免提交空转任务
-        if (scheduler == null || initFailed) return;
-        if (started) {
+        roots.add(normalized);
+        // 已注册，或 WatchService 尚未就绪（未启动/初始化失败）：跳过。
+        // 注意：不能因 roots.add 返回 false 就直接 return——启动前登记过的根
+        // 可能从未真正注册进 WatchService，必须允许再次走到注册逻辑。
+        if (registered.contains(normalized) || scheduler == null || !started || initFailed) return;
+        submitRegister(normalized);
+    }
+
+    /**
+     * 提交目录树注册任务：在独立的注册调度线程上串行执行。
+     * 通过 registered 集合防重；注册失败时回退标记，允许下次 addRoot 重试。
+     */
+    private void submitRegister(Path root) {
+        try {
             scheduler.submit(() -> {
+                if (!registered.add(root)) return;
                 try {
-                    registerTree(normalized);
-                    LOG.info("[WorkspaceWatcher] added root: {}", normalized);
+                    registerTree(root);
+                    LOG.info("[WorkspaceWatcher] added root: {}", root);
                 } catch (Exception e) {
+                    registered.remove(root);
                     LOG.error("[WorkspaceWatcher] add root failed: {}", e.getMessage(), e);
                 }
             });
+        } catch (RejectedExecutionException e) {
+            LOG.warn("[WorkspaceWatcher] watcher stopped, skip registering root: {}", root);
         }
     }
 
@@ -111,38 +130,38 @@ public class WorkspaceWatcher {
     }
 
     /**
-     * 启动文件监听：初始化 WatchService、异步注册工作区目录树、开启轮询线程
+     * 启动文件监听：初始化 WatchService、开启独立轮询线程、异步注册目录树
+     *
+     * <p>线程模型：事件轮询（{@link #pollEvents}，永久阻塞循环）运行在独立守护线程上，
+     * scheduler 专职执行目录树注册任务。严禁把 pollEvents 提交进 scheduler——
+     * 否则会永久独占单线程调度器，addRoot 的注册任务被饿死，新增根永远无法被真正监听。</p>
      *
      * <p>目录树注册（{@link #registerTree}）可能在大工作区下耗时较长，
-     * 因此放在独立守护线程中执行，避免阻塞主线程。</p>
+     * 全部在注册调度线程上异步串行执行，不阻塞主线程。</p>
      */
     public void start() {
         try {
             watchService = FileSystems.getDefault().newWatchService();
             scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "workspace-watcher");
+                Thread t = new Thread(r, "workspace-watcher-register");
                 t.setDaemon(true);
                 return t;
             });
 
-            // 异步执行目录树注册，避免阻塞主线程（特别是工作区为用户主目录等大目录时）
-            Thread initThread = new Thread(() -> {
-                try {
-                    for (Path root : roots) {
-                        registerTree(root);
-                    }
-                    started = true;
-                    scheduler.submit(WorkspaceWatcher.this::pollEvents);
-                    LOG.info("[WorkspaceWatcher] started for: {}", roots);
-                } catch (Exception e) {
-                    initFailed = true;
-                    LOG.error("[WorkspaceWatcher] start failed: {}", e.getMessage(), e);
-                }
-            }, "workspace-watcher-init");
-            initThread.setDaemon(true);
-            initThread.start();
+            // 独立轮询线程：pollEvents 内含 watchService.take() 永久阻塞循环，必须独占线程
+            Thread pollThread = new Thread(this::pollEvents, "workspace-watcher-poll");
+            pollThread.setDaemon(true);
+            pollThread.start();
 
+            started = true;
+            // 初始根全部进注册队列串行注册；启动过程中经 addRoot 动态登记的根
+            // （当时 started 尚为 false 未能自行提交）也在此被统一补注册，消除启动竞态
+            for (Path root : roots) {
+                submitRegister(root);
+            }
+            LOG.info("[WorkspaceWatcher] started for: {}", roots);
         } catch (Exception e) {
+            initFailed = true;
             LOG.error("[WorkspaceWatcher] start failed: {}", e.getMessage(), e);
         }
     }
@@ -182,36 +201,55 @@ public class WorkspaceWatcher {
 
     /**
      * 轮询 WatchService 事件，捕获文件变更并触发防抖推送
+     *
+     * <p>运行在独立轮询线程上：OVERFLOW 事件（{@code context()==null}）直接跳过，
+     * 单个事件处理异常仅告警，不会中断整个轮询循环；
+     * stop() 关闭 WatchService 时经 {@link ClosedWatchServiceException} 正常退出。</p>
      */
     private void pollEvents() {
-        try {
-            while (!Thread.currentThread().isInterrupted()) {
-                WatchKey key = watchService.take();
+        while (!Thread.currentThread().isInterrupted()) {
+            WatchKey key;
+            try {
+                key = watchService.take();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            } catch (ClosedWatchServiceException e) {
+                return; // watchService 已被 stop() 关闭，正常退出
+            }
+
+            try {
                 Path dir = (Path) key.watchable();
-
                 for (WatchEvent<?> event : key.pollEvents()) {
-                    Path fullPath = dir.resolve((Path) event.context());
+                    // OVERFLOW 事件的 context() 为 null，直接跳过，避免 NPE 杀死轮询线程
+                    if (event.kind() == OVERFLOW) continue;
+                    Object context = event.context();
+                    if (!(context instanceof Path)) continue;
+                    try {
+                        Path fullPath = dir.resolve((Path) context);
 
-                    if (shouldIgnore(fullPath)) continue;
+                        if (shouldIgnore(fullPath)) continue;
 
-                    String relativePath = relativizeAny(fullPath).toString().replace('\\', '/');
-                    changedPaths.add(relativePath);
+                        String relativePath = relativizeAny(fullPath).toString().replace('\\', '/');
+                        changedPaths.add(relativePath);
 
-                    if (event.kind() == ENTRY_CREATE && fullPath.toFile().isDirectory()) {
-                        try {
-                            fullPath.register(watchService, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY);
-                        } catch (Exception ignored) {
+                        if (event.kind() == ENTRY_CREATE && fullPath.toFile().isDirectory()) {
+                            try {
+                                fullPath.register(watchService, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY);
+                            } catch (Exception ignored) {
+                            }
                         }
+                    } catch (Exception e) {
+                        LOG.warn("[WorkspaceWatcher] event handling error: {}", e.getMessage());
                     }
                 }
-
-                key.reset();
-                flushChanges();
+            } finally {
+                try {
+                    key.reset();
+                } catch (Exception ignored) {
+                }
             }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        } catch (Exception e) {
-            LOG.error("[WorkspaceWatcher] poll error: {}", e.getMessage());
+            flushChanges();
         }
     }
 

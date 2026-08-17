@@ -32,7 +32,7 @@ import java.util.Map;
 /**
  * 项目登记服务 —— 管理 Code 模式下用户选择/记忆的本地项目目录列表。
  *
- * <p>列表持久化到安装目录 {@code <安装目录>/.gourdai/projects.json}，跨工作区共享，
+ * <p>列表持久化到安装目录 {@code <安装目录>/.gwork/projects.json}，跨工作区共享，
  * 结构为 {@code [{ "name": "...", "path": "..." }]}（按最近使用排序，最近的在前）。</p>
  *
  * <p>校验规则：路径必须是本机上真实存在的目录；不允许包含 {@code ..}（防止相对越界歧义）。
@@ -44,7 +44,7 @@ public class ProjectService {
     private static final String FILE_NAME = "projects.json";
     private static final int MAX_PROJECTS = 50;
 
-    /** projects.json 的绝对路径：<安装目录>/.gourdai/projects.json */
+    /** projects.json 的绝对路径：<安装目录>/.gwork/projects.json */
     private Path storeFile() {
         return Paths.get(AgentFlags.getHarnessBase(), AgentFlags.getHarnessHome(), FILE_NAME).toAbsolutePath().normalize();
     }

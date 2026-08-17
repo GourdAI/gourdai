@@ -1,5 +1,5 @@
 /* ===== app-code.js ===== */
-/* Code 模式控制器：模式切换 + CodeMirror 编辑器（多标签/保存）+ 项目选择器
+/* Code 模式控制器：模式切换 + Monaco 编辑器（多标签/保存）+ 项目选择器
    依赖：app-base.js（appMode/currentProjectRoot/newSessionId/getSessionCwd）、
         app-filer.js（window.loadTree/clearFilerTree）、app-history.js（loadSessionHistory 等）
    本文件最后加载，可安全覆盖 window.openFileViewer 等。 */
@@ -24,10 +24,6 @@
     var welcomeNewBtn = document.getElementById('codeWelcomeNewBtn');
     var tabbar = document.getElementById('codeEditorTabbar');
     var editorHost = document.getElementById('codeEditorHost');
-    var statusPath = document.getElementById('codeEditorStatusPath');
-    var statusLang = document.getElementById('codeEditorStatusLang');
-    var dirtyEl = document.getElementById('codeEditorDirty');
-    var saveBtn = document.getElementById('codeEditorSaveBtn');
 
     // ---------- 状态 ----------
     var LS_MODE = 'gourdai-app-mode';
@@ -35,10 +31,11 @@
     var projects = [];            // [{name, path}]
     var projectsLoaded = false;     // 项目列表是否已加载过（供新窗口启动判断能否立即 selectProject）
     var homeDir = '';             // 用户主目录（/web/chat/meta 提供，用于新建项目预填父目录）
-    var openFiles = [];           // [{path, name, doc, cm-independent state}]
+    var openFiles = [];           // [{path, name}]
     var activeFilePath = null;
-    var cm = null;                // CodeMirror 实例（单实例，切换 doc）
-    var docs = {};                // path -> {doc, clean(generation), lang}
+    var editor = null;            // Monaco 编辑器实例（单实例，切换 model）
+    var docs = {};                // path -> {model, cleanVer, lang, large, dirty, diskChanged, viewState}
+    var LARGE_FILE_LIMIT = 1500000; // 超过约 1.5M 字符的文件降级为纯文本 + 关闭补全，避免卡顿
 
     // 一次性拉取用户主目录，作为“新建项目”对话框的默认父目录
     // （桌面端等后端就绪再拉，避免冷启动占用连接；浏览器端立即执行）
@@ -49,55 +46,79 @@
         });
     });
 
-    // ---------- CodeMirror 初始化 ----------
+    // ---------- Monaco 编辑器初始化 ----------
     function ensureEditor() {
-        if (cm) return cm;
-        if (typeof CodeMirror === 'undefined') return null;
-        cm = CodeMirror(editorHost, {
-            value: '',
-            lineNumbers: true,
-            lineWrapping: false,
-            matchBrackets: true,
-            autoCloseBrackets: true,
-            styleActiveLine: true,
-            scrollbarStyle: 'overlay',
-            indentUnit: 4,
+        if (editor) return editor;
+        var monaco = window.__monacoGet && window.__monacoGet();
+        if (!monaco) return null;   // 尚未加载完成（调用方先经 __monacoLoad 回调进入）
+        editor = monaco.editor.create(editorHost, {
+            model: null,
+            theme: window.__monacoThemeName(),
+            fontSize: 13,
+            fontFamily: window.__monacoFontFamily,
+            lineHeight: 1.6,
+            lineNumbers: 'on',
+            wordWrap: 'off',
+            // 折叠
+            folding: true,
+            showFoldingControls: 'always',
+            // 括号匹配/自动闭合/自动缩进（替代原 matchbrackets/closebrackets addon）
+            matchBrackets: 'always',
+            autoClosingBrackets: 'always',
+            autoClosingQuotes: 'always',
+            autoSurround: 'languageDefined',
+            autoIndent: 'full',
+            formatOnPaste: true,
+            bracketPairColorization: { enabled: true },
             tabSize: 4,
-            theme: currentCmTheme()
+            insertSpaces: true,
+            detectIndentation: false,
+            renderWhitespace: 'selection',
+            renderLineHighlight: 'line',
+            minimap: { enabled: true, maxColumn: 80 },
+            scrollBeyondLastLine: false,
+            smoothScrolling: true,
+            cursorBlinking: 'blink',
+            cursorSmoothCaretAnimation: 'off',
+            // 布局自适应（容器 resize 自动重排）
+            automaticLayout: true,
+            // 滚动条尺寸与全局规范一致（theme.css --scrollbar-size: 6px），颜色/圆角由 code.css 统一覆盖
+            scrollbar: { useShadows: false, verticalScrollbarSize: 6, horizontalScrollbarSize: 6 },
+            wordBasedSuggestions: 'currentDocument',
+            quickSuggestions: { other: true, comments: false, strings: false },
+            suggest: { showKeywords: true },
+            // 大文件性能优化
+            largeFileOptimizations: true,
+            padding: { top: 6, bottom: 6 }
         });
-        cm.setSize('100%', '100%');
-        cm.on('change', function () {
-            if (!activeFilePath) return;
-            var st = docs[activeFilePath];
-            if (!st) return;
-            var isClean = cm.isClean(st.clean);
-            markDirty(activeFilePath, !isClean);
+        // 保存快捷键（Ctrl/Cmd+S）
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function () { saveActive(); });
+        // 内容变更：按 model 版本号判断 dirty（多标签下 model 独立，切换不串台）
+        editor.onDidChangeModel(function () {
+            var m = editor.getModel();
+            if (!m) return;
+            m.onDidChangeContent(function () {
+                if (!activeFilePath) return;
+                var st = docs[activeFilePath];
+                if (!st || st.model !== m) return;
+                markDirty(activeFilePath, m.getAlternativeVersionId() !== st.cleanVer);
+            });
         });
-        // Ctrl/Cmd+S 保存
-        cm.setOption('extraKeys', {
-            'Ctrl-S': function () { saveActive(); },
-            'Cmd-S': function () { saveActive(); }
-        });
-        return cm;
+        return editor;
     }
 
-    function currentCmTheme() {
-        var theme = document.body.getAttribute('data-theme');
-        return theme === 'dark' ? 'material-darker' : 'default';
-    }
     // 主题切换时同步编辑器主题（监听 body data-theme 变化）
     if (window.MutationObserver) {
         new MutationObserver(function () {
-            if (cm) cm.setOption('theme', currentCmTheme());
+            var monaco = window.__monacoGet && window.__monacoGet();
+            if (monaco) monaco.editor.setTheme(window.__monacoThemeName());
         }).observe(document.body, { attributes: true, attributeFilter: ['data-theme'] });
     }
 
-    function guessCmMode(fileName) {
-        if (typeof CodeMirror !== 'undefined' && CodeMirror.findModeByFileName) {
-            var info = CodeMirror.findModeByFileName(fileName);
-            if (info) return { mode: info.mode, mime: info.mime, label: info.name };
-        }
-        return { mode: null, mime: 'text/plain', label: '' };
+    // 文件类型 → Monaco 语言 id（映射表与查询逻辑在 js/app-monaco.js 的 window.__monacoGuessLang，全局共用）
+    function guessMonacoLanguage(fileName) {
+        if (typeof window.__monacoGuessLang === 'function') return window.__monacoGuessLang(fileName);
+        return { langId: 'plaintext', label: '' };
     }
 
     // ---------- 模式切换 ----------
@@ -152,7 +173,7 @@
                 // 无项目：清空树与编辑器，提示选择
                 window.currentProjectRoot = '';
                 if (typeof window.clearFilerTree === 'function') window.clearFilerTree();
-                refreshEditorEmpty();
+            refreshCenterPane();
                 if (projName) projName.textContent = GourdI18n.t('code.select_project');
             }
             // 写回上次活动会话 id，供 loadSessionHistory 响应后的 restoreActiveSession 命中并恢复
@@ -726,8 +747,6 @@
         if (noProject) renderWelcomeRecent();
     }
     window.refreshCenterPane = refreshCenterPane;
-    // 兼容旧调用点：统一走三态切换
-    function refreshEditorEmpty() { refreshCenterPane(); }
 
     // 欢迎面板的「最近项目」列表
     function renderWelcomeRecent() {
@@ -768,42 +787,60 @@
             if (window._origOpenFileViewer) return window._origOpenFileViewer(path, name);
             return;
         }
-        ensureEditor();
-        if (!cm) { if (typeof showToast === 'function') showToast(GourdI18n.t('code.editor_not_loaded'), 'error'); return; }
+        // Monaco 为 AMD 异步加载：待就绪后再创建编辑器/模型
+        window.__monacoLoad(function () {
+            ensureEditor();
+            if (!editor) { if (typeof showToast === 'function') showToast(GourdI18n.t('code.editor_not_loaded'), 'error'); return; }
 
-        // 已打开则直接激活
-        if (docs[path]) { activateFile(path); return; }
+            // 已打开则直接激活
+            if (docs[path]) { activateFile(path); return; }
 
-        var url = '/web/chat/filer/read?path=' + encodeURIComponent(path) + rootQuery();
-        $.get(url, function (resp) {
-            if (!resp || resp.code !== 200) {
-                if (typeof showToast === 'function') showToast((resp && resp.description) || GourdI18n.t('code.cannot_read_file'), 'error');
-                return;
-            }
-            var d = resp.data || {};
-            var info = guessCmMode(d.name || name || path);
-            var doc = CodeMirror.Doc(d.content || '', info.mime);
-            docs[path] = { doc: doc, clean: doc.changeGeneration(), lang: info.label || '', mime: info.mime };
-            openFiles.push({ path: path, name: d.name || name || baseName(path) });
-            renderTabs();
-            activateFile(path);
-        }).fail(function () {
-            if (typeof showToast === 'function') showToast(GourdI18n.t('code.read_failed'), 'error');
+            var url = '/web/chat/filer/read?path=' + encodeURIComponent(path) + rootQuery();
+            $.get(url, function (resp) {
+                if (!resp || resp.code !== 200) {
+                    if (typeof showToast === 'function') showToast((resp && resp.description) || GourdI18n.t('code.cannot_read_file'), 'error');
+                    return;
+                }
+                var d = resp.data || {};
+                var fileName = d.name || name || path;
+                var info = guessMonacoLanguage(fileName);
+                var content = d.content || '';
+                // 大文件降级：超阈值跳过语法着色与补全（Monaco 视口渲染本身不会像旧编辑器那样全量 DOM 卡顿）
+                var large = content.length > LARGE_FILE_LIMIT;
+                var model = monaco.editor.createModel(content, large ? 'plaintext' : info.langId);
+                docs[path] = { model: model, cleanVer: model.getAlternativeVersionId(), large: large, dirty: false, diskChanged: false, viewState: null };
+                openFiles.push({ path: path, name: fileName });
+                renderTabs();
+                activateFile(path);
+            }).fail(function () {
+                if (typeof showToast === 'function') showToast(GourdI18n.t('code.read_failed'), 'error');
+            });
         });
     }
 
     function activateFile(path) {
         var st = docs[path];
-        if (!st || !cm) return;
+        if (!st || !editor) return;
+        // 切走前保存当前 model 的视图状态（光标/滚动），下次切回恢复
+        if (activeFilePath && activeFilePath !== path && docs[activeFilePath]) {
+            docs[activeFilePath].viewState = editor.saveViewState();
+        }
         activeFilePath = path;
-        cm.swapDoc(st.doc);
-        cm.setOption('mode', st.mime);
-        if (statusPath) statusPath.textContent = path;
-        if (statusLang) statusLang.textContent = st.lang || '';
-        markDirty(path, !cm.isClean(st.clean));
+        // 仅当 model 变化时才切换（同一 model 重复 setModel 会重复挂变更监听）
+        if (editor.getModel() !== st.model) {
+            editor.setModel(st.model);
+            if (st.viewState) { editor.restoreViewState(st.viewState); st.viewState = null; }
+            else { editor.setPosition({ lineNumber: 1, column: 1 }); editor.setScrollTop(0); }
+        }
+        // 按文件大小切换能力（大文件关闭词补全等重运算）
+        editor.updateOptions({
+            wordBasedSuggestions: st.large ? 'off' : 'currentDocument',
+            quickSuggestions: st.large ? { other: false, comments: false, strings: false } : { other: true, comments: false, strings: false }
+        });
+        markDirty(path, st.model.getAlternativeVersionId() !== st.cleanVer);
         renderTabs();
-        refreshEditorEmpty();
-        setTimeout(function () { if (cm) cm.refresh(); cm.focus(); }, 0);
+        refreshCenterPane();
+        editor.focus();
     }
 
     function renderTabs() {
@@ -860,11 +897,6 @@
         // 更新标签点
         var tab = tabbar ? tabbar.querySelector('.code-editor-tab[data-path="' + cssEsc(path) + '"]') : null;
         if (tab) tab.classList.toggle('dirty', dirty);
-        // 更新状态栏（仅当前文件）
-        if (path === activeFilePath) {
-            if (dirtyEl) dirtyEl.style.display = dirty ? '' : 'none';
-            if (saveBtn) saveBtn.disabled = !dirty;
-        }
     }
 
     function closeFile(path) {
@@ -872,24 +904,29 @@
         if (st && st.dirty) {
             if (!window.confirm(GourdI18n.t('code.unsaved_confirm', baseName(path)))) return;
         }
+        // 释放 model（大文件标签必须释放，避免内存泄漏）
+        if (st && st.model) st.model.dispose();
         delete docs[path];
         openFiles = openFiles.filter(function (f) { return f.path !== path; });
         if (activeFilePath === path) {
             activeFilePath = null;
             if (openFiles.length) activateFile(openFiles[openFiles.length - 1].path);
-            else { if (cm) cm.swapDoc(CodeMirror.Doc('', 'text/plain')); refreshEditorEmpty(); renderTabs(); }
+            else { if (editor) editor.setModel(null); refreshCenterPane(); renderTabs(); }
         } else {
             renderTabs();
         }
     }
 
     function closeAllFiles() {
+        for (var p in docs) {
+            if (docs[p] && docs[p].model) docs[p].model.dispose();
+        }
         openFiles = [];
         docs = {};
         activeFilePath = null;
-        if (cm) cm.swapDoc(CodeMirror.Doc('', 'text/plain'));
+        if (editor) editor.setModel(null);
         renderTabs();
-        refreshEditorEmpty();
+        refreshCenterPane();
     }
 
     // 是否存在未保存（dirty）的打开文件。用于切项目/跨项目切会话前提示，避免静默丢弃改动。
@@ -909,37 +946,36 @@
     }
     window.confirmDiscardUnsavedIfAny = confirmDiscardUnsavedIfAny;
 
+    var _saving = false;   // 保存防重入（原状态栏按钮防重入的替代）
     function saveActive() {
-        if (!activeFilePath) return;
+        if (!activeFilePath || _saving) return;
         var st = docs[activeFilePath];
         if (!st) return;
         if (!st.dirty) return;
-        var content = st.doc.getValue();
+        var content = st.model.getValue();
         var path = activeFilePath;
-        if (saveBtn) { saveBtn.disabled = true; }
+        _saving = true;
         $.ajax({
             url: '/web/chat/filer/write', method: 'POST', contentType: 'application/json',
             data: JSON.stringify({ path: path, content: content, root: window.currentProjectRoot || '' })
         }).done(function (resp) {
+            _saving = false;
             if (resp && resp.code === 200) {
-                st.clean = st.doc.changeGeneration();
+                st.cleanVer = st.model.getAlternativeVersionId();
                 // 保存即以当前内容为准，清除「磁盘已变更」标记（否则下次编辑时红点会错误重现）
                 st.diskChanged = false;
                 var tab2 = tabbar ? tabbar.querySelector('.code-editor-tab[data-path="' + cssEsc(path) + '"]') : null;
                 if (tab2) tab2.classList.remove('disk-changed');
                 markDirty(path, false);
-                if (typeof showToast === 'function') showToast(GourdI18n.t('code.file_saved', baseName(path)), 'success');
+                // 保存成功不弹提示：静默完成即可（失败仍会报错）
             } else {
-                if (saveBtn) saveBtn.disabled = false;
                 if (typeof showToast === 'function') showToast((resp && resp.description) || GourdI18n.t('code.save_failed'), 'error');
             }
         }).fail(function () {
-            if (saveBtn) saveBtn.disabled = false;
+            _saving = false;
             if (typeof showToast === 'function') showToast(GourdI18n.t('code.save_failed'), 'error');
         });
     }
-
-    if (saveBtn) saveBtn.addEventListener('click', saveActive);
 
     // ---------- 外部修改同步：监听 filer_change，编辑器内容按需刷新 ----------
     // 后端 WorkspaceWatcher 监听启动工作区 + Code 当前项目根，变更经 WebSocket 广播 filer_change。
@@ -995,23 +1031,23 @@
         $.get('/web/chat/filer/read?path=' + encodeURIComponent(path) + rootQuery(), function (resp) {
             if (!resp || resp.code !== 200 || !docs[path]) return;
             var cur = docs[path];
-            var cursor = null, scroll = null;
-            if (cm && activeFilePath === path) {
-                cursor = cm.getCursor();
-                scroll = cm.getScrollInfo();
+            var cursor = null, scrollTop = null;
+            if (editor && activeFilePath === path) {
+                cursor = editor.getPosition();
+                scrollTop = editor.getScrollTop();
             }
-            cur.doc.setValue(resp.data.content || '');
-            cur.clean = cur.doc.changeGeneration();
+            cur.model.setValue(resp.data.content || '');
+            cur.cleanVer = cur.model.getAlternativeVersionId();
             cur.diskChanged = false;
             markDirty(path, false);
             var tab = tabbar ? tabbar.querySelector('.code-editor-tab[data-path="' + cssEsc(path) + '"]') : null;
             if (tab) tab.classList.remove('disk-changed');
-            if (cursor) {
-                var maxLine = cur.doc.lineCount() - 1;
-                if (cursor.line > maxLine) cursor = { line: maxLine, ch: 0 };
-                cm.setCursor(cursor);
+            if (cursor && editor && activeFilePath === path) {
+                var maxLine = cur.model.getLineCount();
+                if (cursor.lineNumber > maxLine) cursor = { lineNumber: maxLine, column: 1 };
+                editor.setPosition(cursor);
             }
-            if (scroll) cm.scrollTo(scroll.left, scroll.top);
+            if (scrollTop !== null && editor && activeFilePath === path) editor.setScrollTop(scrollTop);
         });
     }
 
@@ -1119,8 +1155,8 @@
     var CHAT_MIN_WIDTH = 320;
     var CHAT_MAX_WIDTH = 900;
 
-    // 布局变化后刷新 CodeMirror（否则行号/光标定位错乱）
-    function refreshEditor() { if (cm) setTimeout(function () { cm.refresh(); }, 0); }
+    // 布局变化后刷新 Monaco 布局（automaticLayout 已自动跟随，这里保留手动触达口）
+    function refreshEditor() { if (editor) setTimeout(function () { editor.layout(); }, 0); }
     window.refreshCodeEditor = refreshEditor;
 
     function setChatWidth(px) {
@@ -1188,6 +1224,5 @@
     window.enterCodeMode = enterCodeMode;
     window.exitCodeMode = exitCodeMode;
     window.toggleAppMode = toggleMode;
-    window.codeSaveActive = saveActive;
     window.startFreshCodeSession = startFreshSession;
 })();

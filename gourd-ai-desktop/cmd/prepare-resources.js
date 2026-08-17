@@ -23,17 +23,19 @@ function fail(msg) {
   process.exit(1);
 }
 
-// ── 清理运行时污染：.gourdai 绝不能进安装包 ────────────────────────────────────
+// ── 清理运行时污染：.gwork（及品牌升级前的 .gourdai）绝不能进安装包 ────────────────────
 // 背景：开发模式下后端 Java 进程的 cwd 被设为 build/extraResources/（见 main/backend.js
 // 的 getResourcesDir + 子进程 cwd），而 Java 侧配置按 user.dir 落盘，于是开发期产生的
-// .gourdai/settings.json（模型、通用配置、会话、记忆等）会残留在此目录。extraResources
+// .gwork/settings.json（模型、通用配置、会话、记忆等）会残留在此目录。extraResources
 // 会把整个 build/extraResources/ 打进包，导致这份模板配置随包分发；重装时它进入卸载
 // 清单被清除/覆盖 → 用户积累的模型配置、通用配置全部丢失。故打包前必须删除，确保
-// .gourdai 只作为「运行时目录」存在（不入包的运行时文件重装反而会被保留）。
-const POLLUTION = path.join(EXTRA, '.gourdai');
-if (fs.existsSync(POLLUTION)) {
-  fs.rmSync(POLLUTION, { recursive: true, force: true });
-  console.log('[prepare-resources] 已移除打包污染目录: ' + POLLUTION);
+// .gwork 只作为「运行时目录」存在（不入包的运行时文件重装反而会被保留）。
+const POLLUTION_DIRS = [path.join(EXTRA, '.gwork'), path.join(EXTRA, '.gourdai')];
+for (const dir of POLLUTION_DIRS) {
+  if (fs.existsSync(dir)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+    console.log('[prepare-resources] 已移除打包污染目录: ' + dir);
+  }
 }
 
 if (!fs.existsSync(path.join(UI_SOURCE, 'index.html'))) {
@@ -51,6 +53,20 @@ if (!fs.existsSync(path.join(UI_DEST, 'index.html'))) {
 
 const count = fs.readdirSync(UI_DEST).length;
 console.log('[prepare-resources] 前端已就位: ' + UI_DEST + ' (' + count + ' 项)');
+
+// ── 品牌图标同步：resources/icons → build/icons ────────────────────────
+// builder-*.json 的 win.icon / mac.icon / linux.icon 与包内捆绑的 icons/ 均取自 build/icons/。
+// 图标源统一存放在 resources/icons/（品牌图标唯一来源），每次打包前在此同步，
+// 防止打包时用到旧图标（如品牌升级后 build/ 里的残留）。
+const ICONS_SOURCE = path.join(__dirname, '..', 'resources', 'icons');
+const ICONS_DEST = path.join(__dirname, '..', 'build', 'icons');
+if (!fs.existsSync(path.join(ICONS_SOURCE, 'icon.ico')) || !fs.existsSync(path.join(ICONS_SOURCE, 'icon.png'))) {
+  fail('品牌图标缺失: ' + ICONS_SOURCE + '（需要 icon.ico / icon.png）');
+}
+fs.mkdirSync(ICONS_DEST, { recursive: true });
+fs.copyFileSync(path.join(ICONS_SOURCE, 'icon.ico'), path.join(ICONS_DEST, 'icon.ico'));
+fs.copyFileSync(path.join(ICONS_SOURCE, 'icon.png'), path.join(ICONS_DEST, 'icon.png'));
+console.log('[prepare-resources] 品牌图标已同步: ' + ICONS_DEST);
 
 // ── 后端产物预检：JAR 与内置 JRE 必须就位，否则打包版无法启动后端 ──────────────
 // 背景：内置 JRE 由 generate-jre.js 单独生成，不在构建链里。若忘记生成、或生成

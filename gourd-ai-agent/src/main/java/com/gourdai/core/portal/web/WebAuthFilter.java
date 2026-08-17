@@ -95,7 +95,7 @@ public class WebAuthFilter implements Filter {
 
     private void response401(Context ctx) throws IOException {
         ctx.status(401);
-        ctx.headerSet("WWW-Authenticate", "Basic realm=\"Gourd AI\"");
+        ctx.headerSet("WWW-Authenticate", "Basic realm=\"GWork\"");
         ctx.output("需要访问认证");
     }
 }

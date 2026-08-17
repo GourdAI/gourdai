@@ -42,6 +42,7 @@ import org.noear.solon.net.websocket.listener.SimpleWebSocketListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.Disposable;
+import reactor.core.publisher.SignalType;
 import reactor.core.scheduler.Schedulers;
 
 import java.io.File;
@@ -50,6 +51,7 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -282,12 +284,14 @@ public class WebGate extends SimpleWebSocketListener {
      * @param attachmentTypes 附件类型数组，与 attachments 一一对应（如 "image"）
      * @param hitlAction      HITL 操作类型，取值 "approve" 或 "reject"（可为 null）
      * @param source          本轮输入来源："WeChat"/"Feishu"/"DingTalk"/"Loop" 等；网页手动输入传 null
+     * @return true 表示输入已被受理执行；false 表示会话繁忙（有任务在执行）被跳过，
+     *         调用方应据此向前端返回 busy 状态，由前端暂存消息待当前任务完成后补发
      */
-    public void onChatInput(String sessionId,
-                            String sessionCwd,
-                            String input, String selectedModel,
-                            UploadedFile[] attachments, String[] attachmentTypes,
-                            String hitlAction, String source) {
+    public boolean onChatInput(String sessionId,
+                               String sessionCwd,
+                               String input, String selectedModel,
+                               UploadedFile[] attachments, String[] attachmentTypes,
+                               String hitlAction, String source) {
         AgentSession session = null;
         try {
             session = engine.getSession(sessionId);
@@ -298,6 +302,14 @@ public class WebGate extends SimpleWebSocketListener {
                 session.attrs().put("_input_source", source);
             } else {
                 session.attrs().remove("_input_source");
+            }
+
+            // 并发防护：同一会话已有任务在执行时，跳过重复触发（如客户端超时重试/双发），
+            // 避免两个并行 ReAct 循环的 chunk 流交错推送到同一会话，导致前端思考块与正文错位。
+            // 与 safeChatInput 的 busy-skip 语义一致；HITL 审批/拒绝不受限（其前置流已结束）。
+            if (Assert.isEmpty(hitlAction) && isSessionBusy(session)) {
+                LOG.warn("[WebGate] chat input skipped for session {}: task in progress", sessionId);
+                return false;
             }
 
             String agentName = null;
@@ -327,7 +339,7 @@ public class WebGate extends SimpleWebSocketListener {
                 }
                 // Resume streaming after HITL decision
                 performAgentTaskAsync(session, sessionCwd, null, selectedModel, agentName);
-                return;
+                return true;
             }
 
             // Handle file upload - save to session directory
@@ -400,7 +412,7 @@ public class WebGate extends SimpleWebSocketListener {
                 // 命令分发
                 if (currentInput.startsWith("/") && imageBlocks.isEmpty()) {
                     if (isCommand(session, sessionCwd, currentInput, selectedModel, agentName)) {
-                        return;
+                        return true;
                     }
                 }
 
@@ -415,7 +427,7 @@ public class WebGate extends SimpleWebSocketListener {
                         engine.prepareResume(resumeTrace, session, currentInput, true, sessionCwd);
                         // 空 Prompt 触发库的恢复分支，复用已有工作记忆
                         performAgentTaskAsync(session, sessionCwd, Prompt.of(), selectedModel, agentName);
-                        return;
+                        return true;
                     }
                 }
 
@@ -457,12 +469,13 @@ public class WebGate extends SimpleWebSocketListener {
                             }
                             java.nio.file.Files.write(labelFile.toPath(), label.getBytes("UTF-8"));
                         }
-                    } catch (Throwable e) {
+                } catch (Throwable e) {
                         LOG.warn("[WebGate] Failed to generate label for session {}: {}", sessionId, e.getMessage());
                     }
                 }
             }
         }
+        return true;
     }
 
     /**
@@ -490,25 +503,61 @@ public class WebGate extends SimpleWebSocketListener {
         ChatModel chatModel = engine.getModelOrMain(selectedModel);
         ReActAgent agent = engine.getAgentOrMain(agentName);
 
+        // 自引用持有：供 doOnError/doFinally 做同实例判定（终止回调可能早于/晚于新订阅登记）
+        final Disposable[] self = new Disposable[1];
+        // done 兜底守卫：流的任何终止路径（complete/error/cancel）都必须让前端收到恰好一个 done。
+        // 实测存在 cancel/竞态下 concatWith(done) 不再发射的路径（如新任务取代旧任务 dispose、
+        // 并行工具段异常完成方式不完整），前端将永远停留在加载态，故在 doFinally 兜底补发（幂等）。
+        final AtomicBoolean doneSent = new AtomicBoolean(false);
+
         Disposable disposable = streamBuilder.buildStreamFlux(session, agent, chatModel, sessionCwd, prompt)
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnNext(line -> {
+                    if ("done".equals(line.getType())) {
+                        doneSent.set(true);
+                    }
                     emitToClient(sessionId, line);
                 })
                 .doOnError(e -> {
                     LOG.error("Task fail: {}", e.getMessage(), e);
-                    session.attrs().remove("disposable");
+                    removeDisposableIfSame(session, self[0]);
 
                     emitToClient(sessionId, WebChunk.ofError(e));
-                    emitToClient(sessionId, WebChunk.ofDone());
+                    if (doneSent.compareAndSet(false, true)) {
+                        emitToClient(sessionId, WebChunk.ofDone());
+                    }
                 })
                 .doFinally(s -> {
-                    session.attrs().remove("disposable");  // 正常完成时清理
+                    removeDisposableIfSame(session, self[0]);  // 正常完成时清理
+                    // cancel/异常竞态兜底：done 仍未发出则补发，保证前端等待态必然收敛。
+                    // 但 cancel 需甄别来源：被新任务取代（attrs 已登记新订阅，由新任务发 done）或被
+                    // interruptSession 接管（attrs 已移除，由其推送 done）时，此处补发会误杀前端
+                    // 新一轮任务的等待态（前端 finishStream 不区分轮次），故跳过；其余取消来源
+                    // （如流内部操作符自行 cancel）保守补发。
+                    if (doneSent.compareAndSet(false, true)) {
+                        if (s == SignalType.CANCEL && session.attrs().get("disposable") != self[0]) {
+                            LOG.info("[WebGate] stream cancelled by replacement/interrupt for session {}, skip fallback done", sessionId);
+                        } else {
+                            LOG.warn("[WebGate] done missing on signal {} for session {}, emitting fallback done", s, sessionId);
+                            emitToClient(sessionId, WebChunk.ofDone());
+                        }
+                    }
                 })
                 .subscribe();
 
-        session.attrs().put("disposable", disposable);
+        self[0] = disposable;
 
+        // 新任务取代旧任务：若旧订阅仍未结束则取消，防止同一会话两个并行循环的 chunk 流交错（与 WsGate 一致）
+        Disposable old = (Disposable) session.attrs().put("disposable", disposable);
+        if (old != null && old != disposable && !old.isDisposed()) {
+            old.dispose();
+        }
+
+        // 收敛注册微竞态：若该订阅在登记前就已终止（doFinally 运行时 self 尚未赋值，无法按同实例移除），
+        // 此处依据 isDisposed（终止态，探针已验证语义与可见性）补移除；若期间已有新任务登记，同实例判定不会误删。
+        if (disposable.isDisposed()) {
+            removeDisposableIfSame(session, disposable);
+        }
     }
 
     /**
@@ -538,9 +587,16 @@ public class WebGate extends SimpleWebSocketListener {
         CountDownLatch countDownLatch = new CountDownLatch(1);
         AtomicReference<String> finalAnswerRef = new AtomicReference<>("");
 
+        final Disposable[] self = new Disposable[1];
+        // done 兜底守卫（与异步路径同因）：任何终止信号下保证前端恰好收到一个 done
+        final AtomicBoolean doneSent = new AtomicBoolean(false);
+
         Disposable disposable = streamBuilder.buildStreamFlux(session, agent, chatModel, sessionCwd, prompt)
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnNext(line -> {
+                    if ("done".equals(line.getType())) {
+                        doneSent.set(true);
+                    }
                     emitToClient(sessionId, line);
 
                     if ("trace".equals(line.getType())) {
@@ -549,17 +605,39 @@ public class WebGate extends SimpleWebSocketListener {
                 })
                 .doOnError(e -> {
                     LOG.error("Task fail: {}", e.getMessage(), e);
+                    removeDisposableIfSame(session, self[0]);
 
                     emitToClient(sessionId, WebChunk.ofError(e));
-                    emitToClient(sessionId, WebChunk.ofDone());
+                    if (doneSent.compareAndSet(false, true)) {
+                        emitToClient(sessionId, WebChunk.ofDone());
+                    }
                 })
                 .doFinally(s -> {
-                    session.attrs().remove("disposable");
+                    removeDisposableIfSame(session, self[0]);
+                    // 与异步路径同策略：cancel 且已被取代/interrupt 接管时跳过补发，防误杀新一轮等待态
+                    if (doneSent.compareAndSet(false, true)) {
+                        if (s == SignalType.CANCEL && session.attrs().get("disposable") != self[0]) {
+                            LOG.info("[WebGate] stream cancelled by replacement/interrupt for session {}, skip fallback done", sessionId);
+                        } else {
+                            LOG.warn("[WebGate] done missing on signal {} for session {}, emitting fallback done", s, sessionId);
+                            emitToClient(sessionId, WebChunk.ofDone());
+                        }
+                    }
                     countDownLatch.countDown();
                 })
                 .subscribe();
 
-        session.attrs().put("disposable", disposable);
+        self[0] = disposable;
+
+        Disposable old = (Disposable) session.attrs().put("disposable", disposable);
+        if (old != null && old != disposable && !old.isDisposed()) {
+            old.dispose();
+        }
+
+        // 收敛注册微竞态（同异步路径注释）
+        if (disposable.isDisposed()) {
+            removeDisposableIfSame(session, disposable);
+        }
         RunUtil.runAndTry(countDownLatch::await);
         return finalAnswerRef.get();
     }
@@ -665,7 +743,19 @@ public class WebGate extends SimpleWebSocketListener {
      */
     private boolean isSessionBusy(AgentSession session) {
         Disposable disposable = (Disposable) session.attrs().get("disposable");
-        return disposable != null;
+        // 已终止的流其 Disposable 处于 disposed 状态，视为非繁忙（防止残留引用误判）
+        return disposable != null && !disposable.isDisposed();
+    }
+
+    /**
+     * 仅当会话属性中的 disposable 仍为 expected 实例时移除，
+     * 避免旧任务的 doOnError/doFinally 收尾时误删新任务的 disposable。
+     */
+    private void removeDisposableIfSame(AgentSession session, Disposable expected) {
+        if (expected == null) {
+            return;
+        }
+        session.attrs().compute("disposable", (k, v) -> v == expected ? null : v);
     }
 
     /**

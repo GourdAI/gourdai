@@ -81,8 +81,11 @@ public class AgentFlags {
 
     //------------------
 
-    //马具目录
-    private static final String harnessHome = ".gourdai/";
+    //马具目录（品牌升级 Gourd AI → GWork 后，全局区/工作区目录统一为 .gwork）
+    private static final String harnessHome = ".gwork/";
+
+    /** 旧品牌时期的马具目录名（仅用于启动时一次性迁移，勿再用于新路径拼接） */
+    private static final String LEGACY_HARNESS_HOME = ".gourdai";
 
     /**
      * 当前目录（进程工作目录 user.dir）。
@@ -104,20 +107,28 @@ public class AgentFlags {
     /**
      * 马具全局区落盘根（<b>安装目录</b>，与进程当前工作目录解耦）。
      *
-     * <p>解析顺序：系统属性 {@code -Dgourdai.home} → 环境变量 {@code GOURDAI_HOME} →
-     * 回退 {@code user.dir}。</p>
+     * <p>解析顺序：系统属性 {@code -Dgwork.home} → 环境变量 {@code GWORK_HOME} →
+     * 兼容旧名 {@code -Dgourdai.home} / {@code GOURDAI_HOME}（品牌升级前的启动器/脚本仍在用）
+     * → 回退 {@code user.dir}。</p>
      *
      * <p>桌面端由 {@code backend.js} 以 {@code cwd=安装资源目录} 拉起 web 后端，二者恰好一致；
      * 但 <b>ACP 子进程</b>由编辑器从<b>工作区</b>拉起（{@code cwd=工作区}），若仍用 {@code user.dir}
      * 会把全局区错误地指向工作区，导致读不到全局模型配置。故桌面端在拉起 Java 时统一注入
-     * {@code -Dgourdai.home=<安装目录>}，使 web/桌面/CLI/ACP 四种入口解析到同一份全局配置。
+     * {@code -Dgwork.home=<安装目录>}，使 web/桌面/CLI/ACP 四种入口解析到同一份全局配置。
      * 纯 CLI 安装（无注入）时回退 {@code user.dir}，行为与历史一致。</p>
      *
      * <p>注意：全局区仅承载<b>配置/技能/子代理/命令/扩展</b>等跨工作区不变的数据；
      * <b>会话、工作区记忆、channel 凭据</b>等随工作区走的数据走 {@link #getUserDir()}，不经此方法。</p>
      */
     public static String getHarnessBase() {
-        String home = System.getProperty("gourdai.home");
+        String home = System.getProperty("gwork.home");
+        if (home == null || home.isEmpty()) {
+            home = System.getenv("GWORK_HOME");
+        }
+        if (home == null || home.isEmpty()) {
+            // 品牌升级（Gourd AI → GWork）旧名兼容：升级前的桌面端/启动器注入的旧属性仍有效
+            home = System.getProperty("gourdai.home");
+        }
         if (home == null || home.isEmpty()) {
             home = System.getenv("GOURDAI_HOME");
         }
@@ -125,6 +136,57 @@ public class AgentFlags {
             return home;
         }
         return getUserDir();
+    }
+
+    /**
+     * 一次性迁移：把旧品牌时期的 {@code .gourdai} 目录整体升级为 {@code .gwork}。
+     *
+     * <p>对<b>全局区</b>（{@code getHarnessBase()}）与<b>工作区</b>（{@code user.dir}，
+     * 二者不同时）各执行一次：若旧目录存在且新目录尚不存在，则整体改名（原子 rename，
+     * 数据零丢失）；新目录已存在则不动旧目录（保守起见绝不删除，避免历史“配置丢失”事故复发）。
+     * 改名前会先把 2026-08 期间误产生的嵌套 {@code .gourdai/.gourdai} 内容上移归位。</p>
+     *
+     * <p>必须由 {@code App.main} 在<b>读取任何配置之前</b>调用；ACP/CLI 启动器直连
+     * java -jar 不经桌面端 Node，因此迁移不能只依赖 Node 侧。</p>
+     */
+    public static void migrateLegacyHarnessHome() {
+        try {
+            String base = getHarnessBase();
+            if (base != null && !base.isEmpty()) {
+                migrateLegacyDir(base);
+            }
+            String userDir = getUserDir();
+            if (userDir != null && !userDir.isEmpty() && !userDir.equals(base)) {
+                migrateLegacyDir(userDir);
+            }
+        } catch (Throwable e) {
+            LOG.warn("[AgentFlags] Legacy harness home migration failed: {}", e.getMessage());
+        }
+    }
+
+    private static void migrateLegacyDir(String root) throws java.io.IOException {
+        Path legacy = Paths.get(root, LEGACY_HARNESS_HOME);
+        Path current = Paths.get(root, harnessHome);
+        if (!Files.isDirectory(legacy) || Files.exists(current)) {
+            return; // 无旧数据，或新目录已存在（不覆盖、不删除旧目录）
+        }
+        // 先上移历史嵌套遗留（.gourdai/.gourdai），避免旧 bug 数据被埋进新目录
+        Path nested = legacy.resolve(LEGACY_HARNESS_HOME);
+        if (Files.isDirectory(nested)) {
+            try (java.util.stream.Stream<Path> children = Files.list(nested)) {
+                for (Path child : children.toList()) {
+                    Files.move(child, legacy.resolve(child.getFileName()),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+            try {
+                Files.deleteIfExists(nested); // 上移后应为空目录
+            } catch (java.io.IOException e) {
+                // 仍非空（或权限受限）则随整目录 rename 一并带走，不影响迁移
+            }
+        }
+        Files.move(legacy, current);
+        LOG.info("[AgentFlags] 旧马具目录已升级: {} → {}", legacy, current);
     }
 
     public static String getUserExtensions() {

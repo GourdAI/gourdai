@@ -199,14 +199,14 @@
             <artifactId>solon-scheduling-simple</artifactId>
         </dependency>
 
+        <!--
+          HTTP/WebSocket 服务器插件：smarthttp（国产轻量引擎，单插件自带 HTTP + WebSocket 同端口支持）。
+          替代原 solon-server-jetty + solon-server-jetty-add-websocket 组合（包体约 0.8MB vs 2.7MB）。
+          注意：Solon 本体不带网络监听能力，必须存在某个 server 插件，否则 enableHttp 后无人绑定端口。
+        -->
         <dependency>
             <groupId>org.noear</groupId>
-            <artifactId>solon-server-jetty</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.noear</groupId>
-            <artifactId>solon-server-jetty-add-websocket</artifactId>
+            <artifactId>solon-server-smarthttp</artifactId>
         </dependency>
 
         <dependency>

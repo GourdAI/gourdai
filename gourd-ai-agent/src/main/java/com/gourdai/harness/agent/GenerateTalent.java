@@ -18,6 +18,7 @@ package com.gourdai.harness.agent;
 import org.noear.solon.ai.annotation.ToolMapping;
 import org.noear.solon.ai.chat.talent.AbsTalent;
 import com.gourdai.harness.HarnessEngine;
+import com.gourdai.core.config.AgentFlags;
 import org.noear.solon.annotation.Param;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -139,7 +140,7 @@ public class GenerateTalent extends AbsTalent {
             boolean shouldSave = saveToFile != null && saveToFile;
 
             if (shouldSave) {
-                Path agentsDir = Paths.get(__cwd, ".gourdai", "agents");
+                Path agentsDir = Paths.get(__cwd, AgentFlags.getHarnessHome(), "agents");
                 if (!Files.exists(agentsDir)) {
                     Files.createDirectories(agentsDir);
                 }

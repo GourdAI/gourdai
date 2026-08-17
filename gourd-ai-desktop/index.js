@@ -119,7 +119,7 @@ function createProjectWindow(options) {
 
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   const win = new BrowserWindow({
-    title: 'Gourd AI',
+    title: 'GWork',
     width: Math.min(1440, Math.max(1024, Math.floor(width * 0.8))),
     height: Math.min(900, Math.max(640, Math.floor(height * 0.85))),
     minWidth: 960,
@@ -183,7 +183,7 @@ function createMainWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
   mainWindow = new BrowserWindow({
-    title: 'Gourd AI',
+    title: 'GWork',
     width: Math.min(1440, width),
     height: Math.min(900, height),
     minWidth: 960,
@@ -263,7 +263,7 @@ function createTray() {
     return;
   }
   tray = trayInstance;
-  tray.setToolTip('Gourd AI');
+  tray.setToolTip('GWork');
 
   const menu = Menu.buildFromTemplate([
     {
@@ -383,7 +383,7 @@ ipcMain.handle('get-window-project', (event) => {
 ipcMain.on('window-title-update', (event, title) => {
   const sender = event && event.sender;
   const win = sender && !sender.isDestroyed() ? BrowserWindow.fromWebContents(sender) : null;
-  if (win) win.setTitle(String(title || 'Gourd AI'));
+  if (win) win.setTitle(String(title || 'GWork'));
 });
 
 // 渲染层主动查询后端就绪状态（'pending' | 'ready' | 'failed'）。

@@ -3,6 +3,7 @@
         "describe_images": "Mô tả những hình ảnh này",
         "process_files": "Xin vui lòng xử lý những tệp này",
         "connection_disconnected": "Kết nối đã ngắt, vui lòng thử lại sau",
+        "busy_deferred": "Nhiệm vụ trước vẫn đang chạy; tin nhắn này sẽ tự động gửi khi hoàn thành",
         "unknown_error": "Lỗi không xác định",
         "backend_start_failed": "Khởi động backend thất bại:",
         "connected": "Đã kết nối",
@@ -72,8 +73,8 @@
         "model_group_other": "Khác",
         "thinking": {
             "off": {
-                "label": "Tắt suy nghĩ",
-                "desc": "Không bật suy luận/suy nghĩ"
+                "label": "Mặc định",
+                "desc": "Dùng hành vi mặc định của mô hình"
             },
             "minimal": {
                 "label": "Tối thiểu",
@@ -103,7 +104,7 @@
                 "label": "Tối đa",
                 "desc": "Suy luận mạnh nhất, bất kể chi phí"
             },
-            "default_label": "Suy nghĩ"
+            "default_label": "Mặc định"
         }
     },
     "base": {
@@ -119,12 +120,12 @@
         "review_view": "Kiểm tra mã",
         "terminal_shortcut": "Phím tắt terminal",
         "menu": "Trình đơn",
-        "title": "Gourd AI",
+        "title": "GWork",
         "new_chat": "Trò chuyện mới",
         "placeholder_welcome": "Mô tả nhiệm vụ của bạn, hỗ trợ đính kèm tệp…",
         "placeholder_chat": "Nhập tin nhắn, Shift+Enter để xuống dòng…",
         "history_title": "Lịch sử",
-        "welcome_title": "Chào bạn, tôi là Gourd AI!",
+        "welcome_title": "Chào bạn, tôi là GWork!",
         "welcome_sub": "Bạn cần hỗ trợ gì?",
         "drop_attach": "Thả để thêm tệp đính kèm",
         "thinking_label": "Suy nghĩ",
@@ -140,6 +141,7 @@
         "subagent": "Tác nhân con",
         "loop_task": "Tác vụ lặp",
         "history_msg": "Lịch sử tin nhắn",
+        "plus_more": "Thêm",
         "voice_input": "Nhập thoại",
         "send": "Gửi",
         "all_sessions": "Tất cả phiên",
@@ -150,16 +152,16 @@
         "queue": "Hàng đợi",
         "refresh": "Làm mới",
         "welcome_greeting": {
-            "0": "Cảm hứng bị kẹt? Đưa cho Gourd AI đi~",
-            "1": "Gourd AI, người bạn học tập và làm việc, có vấn đề thì nhờ bạn ấy~",
-            "2": "Hôm nay có ý tưởng gì mới? Nói cho Gourd AI nghe nào~",
+            "0": "Cảm hứng bị kẹt? Đưa cho GWork đi~",
+            "1": "GWork, người bạn học tập và làm việc, có vấn đề thì nhờ bạn ấy~",
+            "2": "Hôm nay có ý tưởng gì mới? Nói cho GWork nghe nào~",
             "3": "Muốn trò chuyện gì? Tôi luôn trực tuyến~",
             "4": "Có vấn đề khó gì? Cùng nhau giải quyết đi!",
             "5": "Viết code, tra tài liệu, brainstorm, bắt đầu bất cứ lúc nào~",
             "6": "Nói ra ý tưởng của bạn, phần còn lại để tôi lo~",
             "7": "Bị tắc rồi? Để tôi giúp bạn sắp xếp lại suy nghĩ~",
             "8": "Một ngày mới, cảm hứng mới, nói cho tôi nghe?",
-            "9": "Dù lớn hay nhỏ, Gourd AI luôn ở đây~",
+            "9": "Dù lớn hay nhỏ, GWork luôn ở đây~",
             "10": "Nói ý tưởng cho tôi, tôi giúp bạn thực hiện~",
             "11": "Có câu hỏi cứ hỏi, không ngại phiền~",
             "12": "Code, bài viết, phương án, tất cả đều có thể trò chuyện~",
@@ -169,17 +171,18 @@
             "16": "Đừng do dự, có gì muốn hỏi cứ trực tiếp đến~",
             "17": "Bí quyết tăng gấp đôi hiệu suất: đưa việc vặt cho tôi~",
             "18": "Biến vấn đề phức tạp thành đơn giản, thử nói cho tôi nghe?",
-            "19": "Chào bạn, tôi là Gourd AI!"
+            "19": "Chào bạn, tôi là GWork!"
         },
         "loading": "Đang tải…",
         "search_history": "Tìm kiếm lịch sử tin nhắn…",
-        "learn_more": "Tìm hiểu thêm về Gourd AI",
+        "learn_more": "Tìm hiểu thêm về GWork",
         "resize_input": "Kéo để chỉnh chiều cao ô nhập, nhấp đúp để đặt lại",
         "memory_view": "Trí nhớ"
     },
     "settings": {
         "common": {
             "back": "Quay lại",
+            "close": "Đóng",
             "delete": "Xóa",
             "copy": "Sao chép",
             "refresh": "Làm mới",
@@ -197,7 +200,8 @@
             "lsp": "Cấu hình LSP",
             "loop": "Lập lịch",
             "channel": "Từ xa",
-            "acp": "ACP"
+            "acp": "ACP",
+            "about": "Giới thiệu & cập nhật"
         },
         "general": {
             "title": "Chung",
@@ -629,12 +633,12 @@
         },
         "acp": {
             "title": "Tích hợp ACP cho trình soạn thảo",
-            "desc": "Cho phép các trình soạn thảo như VSCode, JetBrains gọi trực tiếp Gourd AI thông qua Agent Client Protocol.",
+            "desc": "Cho phép các trình soạn thảo như VSCode, JetBrains gọi trực tiếp GWork thông qua Agent Client Protocol.",
             "ready": "Launcher đã sẵn sàng. Bạn có thể cấu hình trình soạn thảo ngay bây giờ.",
             "not_ready": "Launcher chưa được cài đặt.",
-            "not_ready_desc": "Hãy khởi động ứng dụng desktop đóng gói một lần để tự động cài launcher gourdai, sau đó mở lại trang này.",
+            "not_ready_desc": "Hãy khởi động ứng dụng desktop đóng gói một lần để tự động cài launcher gwork, sau đó mở lại trang này.",
             "how_title": "Cách hoạt động",
-            "how_desc": "ACP sử dụng giao vận stdio tiêu chuẩn: trình soạn thảo đóng vai trò client và tạo gourdai acp như một tiến trình con khi cần, giao tiếp qua stdin/stdout. Không cần dịch vụ chạy liên tục, cổng hay địa chỉ - chỉ cần đặt lệnh dưới đây trong trình soạn thảo của bạn.",
+            "how_desc": "ACP sử dụng giao vận stdio tiêu chuẩn: trình soạn thảo đóng vai trò client và tạo gwork acp như một tiến trình con khi cần, giao tiếp qua stdin/stdout. Không cần dịch vụ chạy liên tục, cổng hay địa chỉ - chỉ cần đặt lệnh dưới đây trong trình soạn thảo của bạn.",
             "generic_title": "Tích hợp trình soạn thảo",
             "generic_desc": "Điền các trường sau vào bất kỳ trình soạn thảo hoặc plugin hỗ trợ ACP.",
             "command_label": "lệnh (command)",
@@ -645,17 +649,15 @@
             "load_failed": "Tải thất bại, vui lòng thử lại.",
             "model_title": "Mô hình được ACP sử dụng",
             "model_desc": "ACP chạy như một tiến trình con độc lập và không chia sẻ trạng thái chọn mô hình của cửa sổ trò chuyện, vì vậy hãy chọn mô hình mà nó sẽ sử dụng tại đây.",
-            "model_label": "Mô hình",
             "model_follow_default": "Theo mô hình mặc định ({0})",
             "model_follow_default_empty": "Theo mô hình mặc định",
             "model_none": "Chưa cấu hình mô hình nào. Vui lòng thêm và bật một mô hình trong Cài đặt - Mô hình trước.",
             "model_saved": "Đã lưu mô hình ACP",
             "model_save_failed": "Lưu thất bại, vui lòng thử lại",
-            "thinking_label": "Độ sâu suy nghĩ",
             "thinking_hint": "Kiểm soát mức độ suy luận; tắt sẽ sử dụng hành vi mặc định của mô hình",
             "thinking_saved": "Đã lưu cài đặt độ sâu suy nghĩ",
             "thinking_save_failed": "Lưu thất bại, vui lòng thử lại",
-            "zed_integration_desc": "Hợp nhất đoạn JSON dưới đây vào cấu hình ACP của trình soạn thảo, sau đó chọn Gourd AI trong bảng Agent.",
+            "zed_integration_desc": "Hợp nhất đoạn JSON dưới đây vào cấu hình ACP của trình soạn thảo, sau đó chọn GWork trong bảng Agent.",
             "integration_json": "Cấu hình JSON"
         },
         "save": "Lưu",
@@ -670,7 +672,34 @@
         "code": {
             "remove_no_delete": "Gỡ bỏ (không xóa thư mục trên đĩa)"
         },
-        "operation_failed": "Thao tác thất bại"
+        "operation_failed": "Thao tác thất bại",
+        "about": {
+            "title": "Giới thiệu & cập nhật",
+            "desc": "Xem thông tin phiên bản, kiểm tra và tải phiên bản GWork mới",
+            "version_card": "Thông tin phiên bản",
+            "desktop_version": "Phiên bản desktop",
+            "backend_version": "Phiên bản backend",
+            "web_na": "K/A (trình duyệt)",
+            "homepage": "Trang chủ",
+            "update_card": "Kiểm tra cập nhật",
+            "idle_hint": "Cập nhật được kiểm tra tự động khi khởi động",
+            "check_update": "Kiểm tra cập nhật",
+            "checking": "Đang kiểm tra cập nhật…",
+            "up_to_date": "Bạn đang dùng phiên bản mới nhất",
+            "new_version": "Có phiên bản mới {0}",
+            "auto_downloading": "Đang tải phiên bản mới ở nền…",
+            "downloading": "Đang tải cập nhật",
+            "downloaded": "Đã tải xong phiên bản {0}",
+            "install_restart": "Cài đặt & khởi động lại",
+            "install_hint": "Cập nhật sẽ hoàn tất sau khi khởi động lại; cấu hình và dữ liệu của bạn được giữ nguyên",
+            "notify_hint": "Nền tảng này chưa hỗ trợ tự động cài đặt trong ứng dụng. Vui lòng tải gói cài đặt và cập nhật thủ công",
+            "download_update": "Tải phiên bản mới",
+            "check_failed": "Kiểm tra cập nhật thất bại",
+            "retry": "Thử lại",
+            "web_mode": "Trình duyệt không hỗ trợ cập nhật ứng dụng. Vui lòng dùng bản desktop",
+            "dev_mode": "Môi trường phát triển không tham gia cập nhật tự động",
+            "release_notes": "Ghi chú phát hành"
+        }
     },
     "chat": {
         "thinking": "Đang suy nghĩ…",
@@ -777,12 +806,9 @@
         "open_project_where": "Mở dự án «{0}» ở đâu?",
         "open_in_this_window": "Mở trong cửa sổ này",
         "open_in_new_window": "Mở trong cửa sổ mới",
-        "file_saved": "Đã lưu {0}",
         "save_failed": "Lưu thất bại",
         "expandChat": "Mở rộng thanh trò chuyện",
         "editorEmpty": "Chọn một tệp từ cây thư mục bên trái để bắt đầu chỉnh sửa\nPhía bên phải có thể đối thoại cộng tác với AI",
-        "unsaved": "● Chưa lưu",
-        "save": "Lưu (Ctrl+S)",
         "project": {
             "start": "Chọn hoặc tạo mới một dự án để bắt đầu",
             "openFolder": "Mở thư mục",

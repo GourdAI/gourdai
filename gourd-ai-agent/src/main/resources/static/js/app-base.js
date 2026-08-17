@@ -46,7 +46,6 @@ function SessionState(sessionId) {
     this.thinkingBlockStartTime = null;
     this.thinkingUserScrolledUp = false;  // 思考区用户主动向上滚动标记
 
-    this.messageStartTime = null;
     this.userMsgCounter = 0;
 }
 
@@ -155,6 +154,8 @@ function scrollToBottom(force) {
 }
 
 function resetStreamState(sess) {
+    // 先处置增量渲染器（取消挂起帧），再清空元素引用，避免会话切换后残留帧写入旧 DOM
+    if (typeof disposeSessionStreamMd === 'function') disposeSessionStreamMd(sess);
     sess.currentBubbleEl = null;
     sess.pendingToolStarted = false;
     sess.reasonBuffer = '';

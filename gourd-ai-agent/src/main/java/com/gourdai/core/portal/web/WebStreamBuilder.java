@@ -26,6 +26,7 @@ import com.gourdai.agent.react.task.ActionChunk;
 import com.gourdai.agent.react.task.ObservationChunk;
 import com.gourdai.agent.react.task.ReasonChunk;
 import com.gourdai.agent.react.task.ThoughtChunk;
+import com.gourdai.agent.util.AgentUtil;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import com.gourdai.harness.HarnessEngine;
@@ -428,7 +429,7 @@ public class WebStreamBuilder {
                 }
 
                 if (TodoTalent.TOOL_TODOWRITE.equals(chunk.getToolName())) {
-                    String todos = (String) chunk.getArgs().get(TodoTalent.PARAM_TODOS);
+                    String todos = AgentUtil.asStringArg(chunk.getArgs(), TodoTalent.PARAM_TODOS);
 
                     if (Assert.isNotEmpty(todos)) {
                         webChunk.setText(todos);
@@ -437,7 +438,7 @@ public class WebStreamBuilder {
                 }
 
                 if (TerminalTalent.TOOL_WRITE.equals(chunk.getToolName())) {
-                    String content = (String) chunk.getArgs().get(TerminalTalent.PARAM_CONTENT);
+                    String content = AgentUtil.asStringArg(chunk.getArgs(), TerminalTalent.PARAM_CONTENT);
 
                     if (Assert.isNotEmpty(content)) {
                         webChunk.setText(content);

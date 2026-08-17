@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * verify-setup.js - 验证 Gourd AI Desktop 配置
+ * verify-setup.js - 验证 GWork Desktop 配置
  */
 
 const path = require('path');
 const fs = require('fs');
 
-console.log('=== Gourd AI Desktop 配置验证 ===\n');
+console.log('=== GWork Desktop 配置验证 ===\n');
 
 let allOk = true;
 

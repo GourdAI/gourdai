@@ -37,6 +37,7 @@ import org.noear.solon.core.util.RankEntity;
 import org.noear.solon.core.util.RunUtil;
 import org.noear.solon.flow.FlowContext;
 import org.noear.solon.lang.Preview;
+import com.gourdai.agent.util.AgentUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,6 +45,7 @@ import java.io.StringReader;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
 
 /**
  * ReAct 动作执行任务 (Action/Acting)
@@ -55,6 +57,12 @@ import java.util.concurrent.CompletionException;
 @Preview("3.8.1")
 public class ActionTask {
     private static final Logger LOG = LoggerFactory.getLogger(ActionTask.class);
+
+    /**
+     * 并行只读工具段单工具超时（秒）：与 bash 默认超时对齐。
+     * 触发后以 TimeoutException 完成 future，由上层按异常收口，防止单工具卡死拖死整轮流。
+     */
+    private static final long PARALLEL_TOOL_TIMEOUT_SECONDS = 180;
 
     /**
      * 只读工具名单：这些工具不修改文件系统、不触发 HITL、不改变路由，
@@ -293,7 +301,11 @@ public class ActionTask {
             final ToolCall call = segment.get(k);
             final List<ChatMessage> slot = slots.get(k);
             futures.add(CompletableFuture.runAsync(
-                    () -> doActionInto(call, trace, slot, aliasIdsByPrimaryId), RunUtil.io()));
+                    () -> doActionInto(call, trace, slot, aliasIdsByPrimaryId), RunUtil.io())
+                    // 防挂死兑底：任务卡死/被队列饿死时以 TimeoutException 完成，
+                    // 避免 allOf().join() 无限阻塞进而拖死整轮 ReAct 流（done 永不发射）。
+                    // 超时后上层按异常收口，前端仍能收到 error+done 收敛。
+                    .orTimeout(PARALLEL_TOOL_TIMEOUT_SECONDS, TimeUnit.SECONDS));
         }
 
         try {
@@ -536,7 +548,7 @@ public class ActionTask {
      */
     private ToolResult executeTool(ReActTrace trace, String name, Map<String, Object> args) {
         if (FeedbackTool.TOOL_NAME.equals(name)) {
-            String reason = (String) args.get("reason");
+            String reason = AgentUtil.asStringArg(args, "reason");
             trace.setRoute(Agent.ID_END);
             trace.setFinalAnswer(reason);
             trace.getContext().interrupt();

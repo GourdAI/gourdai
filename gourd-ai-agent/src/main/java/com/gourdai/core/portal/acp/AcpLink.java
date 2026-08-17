@@ -155,7 +155,7 @@ public class AcpLink implements Runnable {
                     ChatModel chatModel = resolveChatModel(agentRuntime, latestSettings);
 
                     if (chatModel == null) {
-                        return acpContext.sendMessage("未配置可用模型：请在 Gourd AI「设置 - 编码工具接入」中选择 ACP 使用的模型，或先在「设置 - 模型」中添加并启用一个模型。")
+                        return acpContext.sendMessage("未配置可用模型：请在 GWork「设置 - 编码工具接入」中选择 ACP 使用的模型，或先在「设置 - 模型」中添加并启用一个模型。")
                                 .thenReturn(new AcpSchema.PromptResponse(AcpSchema.StopReason.END_TURN));
                     }
 

@@ -4,13 +4,13 @@
  * cli-provision.js —— 桌面端「注册终端命令」
  *
  * 目的：桌面版安装后，用户在 cmd / PowerShell / Git Bash 里也能直接敲
- *       `gourdai cli`、`gourdai web 0`、`gourdai run '你好'`，与旧的 CLI 安装模式一致。
+ *       `gwork cli`、`gwork web 0`、`gwork run '你好'`，与旧的 CLI 安装模式一致。
  *
  * 关键点（与 CLI 安装模式的本质区别）：
  * - 桌面端**自带完整 JRE**（extraResources/jre）与 `gourd-ai-agent.jar`（同一个 App 主类，
  *   完整支持 cli/web/run/serve 子命令）。所以启动器**直接硬编码指向自带 java.exe + jar**，
  *   全程**不检测系统 Java**（正是需求所强调的：有自己的 JRE，不用额外找 Java）。
- * - 启动器写入安装目录的 `.gourdai/bin`（与后端 user.dir 下的 .gourdai 一致），
+ * - 启动器写入安装目录的 `.gwork/bin`（与后端 user.dir 下的 .gwork 一致），
  *   并把该目录加入用户 PATH。
  * - 幂等自愈：每次 App 启动都重写启动器（安装目录变化/升级后自动刷新指向），PATH 已有则不动。
  * - 全程 try/catch，任何失败都只告警、绝不影响 App 启动。
@@ -24,11 +24,12 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
-const { getResourcesDir, getRuntimeHomeDir, migrateNestedHarnessDir } = require('./backend');
+const { app } = require('electron');
+const { getResourcesDir, getRuntimeHomeDir, migrateLegacyHarnessDirs } = require('./backend');
 
 // 启动器里埋的标记：卸载助手据此判断「这是桌面端写的」，避免误删 CLI 安装模式的启动器
 const SENTINEL = 'gourd-ai-desktop-provisioned';
-const HARNESS_HOME = '.gourdai';
+const HARNESS_HOME = '.gwork';
 
 const IS_WIN = process.platform === 'win32';
 
@@ -48,8 +49,8 @@ function getUserHome() {
 }
 
 /**
- * 启动器/PATH 落盘根：可写运行时<b>基目录</b>（backend.getRuntimeHomeDir，不含 .gourdai，
- * 与后端 -Dgourdai.home 语义一致，Java 侧自行拼接 .gourdai 子目录）。
+ * 启动器/PATH 落盘根：可写运行时<b>基目录</b>（backend.getRuntimeHomeDir，不含 .gwork，
+ * 与后端 -Dgwork.home 语义一致，Java 侧自行拼接 .gwork 子目录）。
  * Windows/Linux 为安装目录（extraResources）；
  * macOS 打包版为包外用户目录（.app 签名包内不可写）。
  */
@@ -100,7 +101,7 @@ function getBundledJavaMajor() {
 
 /**
  * 组装 JVM 参数（编码统一 UTF-8；21+ 追加 native-access）。
- * 注意：不含任何可能带空格的项；-Dgourdai.home 因安装路径常含空格，
+ * 注意：不含任何可能带空格的项；-Dgwork.home 因安装路径常含空格，
  * 由各启动器按自身引号规则单独承载。
  * @param {number|null} major
  * @returns {string[]}
@@ -122,29 +123,29 @@ function buildJavaOpts(major) {
 
 /** CMD/.bat 启动器（Windows 原生控制台） */
 function batContent(javaPath, jarPath, javaOpts, homeDir) {
-  // -Dgourdai.home 需整体加引号：安装路径常含空格（如 C:\Program Files\...），否则会被拆成多个参数
-  const homeOpt = '"-Dgourdai.home=' + homeDir + '"';
+  // -Dgwork.home 需整体加引号：安装路径常含空格（如 C:\Program Files\...），否则会被拆成多个参数
+  const homeOpt = '"-Dgwork.home=' + homeDir + '"';
   return [
     '@echo off',
     'rem ' + SENTINEL,
-    'rem Gourd AI CLI Launcher (Desktop bundled JRE) —— 由桌面端自动生成，勿手改',
+    'rem GWork CLI Launcher (Desktop bundled JRE) —— 由桌面端自动生成，勿手改',
     'setlocal',
     'rem 自愈：App 已卸载/移动（自带 JAR 不在）→ 提示并退出（NSIS 卸载器会清理启动器与 PATH）',
     'if not exist "' + jarPath + '" (',
-    '    echo gourdai: Gourd AI 桌面端运行时未找到，可能已卸载或移动安装目录。1>&2',
+    '    echo gwork: GWork 桌面端运行时未找到，可能已卸载或移动安装目录。1>&2',
     '    exit /b 127',
     ')',
     '"' + javaPath + '" ' + javaOpts.join(' ') + ' ' + homeOpt + ' -jar "' + jarPath + '" %*',
   ].join('\r\n') + '\r\n';
 }
 
-/** PowerShell 启动器（gourdai.ps1） */
+/** PowerShell 启动器（gwork.ps1） */
 function ps1Content(javaPath, jarPath, javaOpts, homeDir) {
   // 单引号字面量整体传递，避免安装路径含空格被 PowerShell 拆分为多参数
-  const homeOpt = "'-Dgourdai.home=" + homeDir + "'";
+  const homeOpt = "'-Dgwork.home=" + homeDir + "'";
   return [
     '# ' + SENTINEL,
-    '# Gourd AI CLI Launcher (Desktop bundled JRE) —— 由桌面端自动生成，勿手改',
+    '# GWork CLI Launcher (Desktop bundled JRE) —— 由桌面端自动生成，勿手改',
     'param([Parameter(ValueFromRemainingArguments)]$RestArgs)',
     'try {',
     '    $OutputEncoding = [System.Text.Encoding]::UTF8',
@@ -152,7 +153,7 @@ function ps1Content(javaPath, jarPath, javaOpts, homeDir) {
     '    [Console]::InputEncoding = [System.Text.Encoding]::UTF8',
     '} catch {}',
     'if (-not (Test-Path -LiteralPath "' + jarPath + '")) {',
-    '    [Console]::Error.WriteLine("gourdai: Gourd AI 桌面端运行时未找到，可能已卸载或移动安装目录。")',
+    '    [Console]::Error.WriteLine("gwork: GWork 桌面端运行时未找到，可能已卸载或移动安装目录。")',
     '    exit 127',
     '}',
     '& "' + javaPath + '" ' + javaOpts.join(' ') + ' ' + homeOpt + ' -jar "' + jarPath + '" @RestArgs',
@@ -161,7 +162,7 @@ function ps1Content(javaPath, jarPath, javaOpts, homeDir) {
 }
 
 /**
- * Git Bash / WSL / macOS / Linux 启动器（无扩展名 gourdai）。
+ * Git Bash / WSL / macOS / Linux 启动器（无扩展名 gwork）。
  * Windows 下把反斜杠路径转成正斜杠（Java 与 bash 均接受），并复用 CLI 安装模式的
  * winpty 逻辑保证交互式行编辑正常。
  *
@@ -179,23 +180,23 @@ function shContent(javaPath, jarPath, javaOpts, homeDir) {
   return [
     '#!/bin/bash',
     '# ' + SENTINEL,
-    '# Gourd AI CLI Launcher (Desktop bundled JRE) —— 由桌面端自动生成，勿手改',
+    '# GWork CLI Launcher (Desktop bundled JRE) —— 由桌面端自动生成，勿手改',
     'JAVA="' + j + '"',
     'JAR="' + jar + '"',
     'JAVA_OPTS="' + optStr + '"',
-    // -Dgourdai.home 单独成变量并在 exec 时加引号传参，避免安装路径含空格被词拆分
-    'HOME_OPT="-Dgourdai.home=' + home + '"',
+    // -Dgwork.home 单独成变量并在 exec 时加引号传参，避免安装路径含空格被词拆分
+    'HOME_OPT="-Dgwork.home=' + home + '"',
     '# 自愈：App 已卸载（自带 JAR 不在）→ 清掉桌面端写的启动器后优雅退出',
     'if [ ! -f "$JAR" ]; then',
     '    BIN="' + bin + '"',
     '    if [ ! -f "$BIN/gourd-ai-agent.jar" ]; then',
-    '        for n in gourdai gourdai.bat gourdai.ps1 desktop-cli-uninstall.sh; do',
+    '        for n in gwork gwork.bat gwork.ps1 gourdai gourdai.bat gourdai.ps1 desktop-cli-uninstall.sh; do',
     '            f="$BIN/$n"',
     '            if [ -f "$f" ] && grep -qF "' + SENTINEL + '" "$f" 2>/dev/null; then rm -f "$f"; fi',
     '        done',
     '        rm -f "$BIN/desktop-cli-uninstall.sh" 2>/dev/null',
     '    fi',
-    '    echo "gourdai: Gourd AI 桌面端似乎已卸载（未找到运行时）。已自动清理该命令。" >&2',
+    '    echo "gwork: GWork 桌面端似乎已卸载（未找到运行时）。已自动清理该命令。" >&2',
     '    exit 127',
     'fi',
     '# Git Bash / MSYS 终端需要 winpty 才能正确处理行编辑',
@@ -214,18 +215,18 @@ function shContent(javaPath, jarPath, javaOpts, homeDir) {
 
 /**
  * Windows 卸载助手（desktop-cli-uninstall.ps1）。
- * 写在安装目录的 .gourdai\bin（与启动器同处）；由 NSIS customUnInstall 在删除应用文件<b>之前</b>调用。
+ * 写在安装目录的 .gwork\bin（与启动器同处）；由 NSIS customUnInstall 在删除应用文件<b>之前</b>调用。
  * 逻辑：只删带 sentinel 的启动器；与 CLI 安装模式共存（存在 gourd-ai-agent.jar）时保留 PATH；
  *       清理干净后自删。
  */
 function uninstallPs1Content() {
   const binDir = getBinDir();
   return [
-    '# Gourd AI 桌面端 CLI 命令卸载助手（由桌面端自动生成）',
+    '# GWork 桌面端 CLI 命令卸载助手（由桌面端自动生成）',
     '$ErrorActionPreference = "SilentlyContinue"',
     '$bin = ' + JSON.stringify(binDir),
     '$sentinel = "' + SENTINEL + '"',
-    '$names = @("gourdai.bat","gourdai.ps1","gourdai")',
+    '$names = @("gwork.bat","gwork.ps1","gwork","gourdai.bat","gourdai.ps1","gourdai")',
     '$hasCli = Test-Path (Join-Path $bin "gourd-ai-agent.jar")',
     'foreach ($n in $names) {',
     '    $f = Join-Path $bin $n',
@@ -260,19 +261,19 @@ function uninstallShContent() {
   const binDir = getBinDir();
   return [
     '#!/bin/bash',
-    '# Gourd AI 桌面端 CLI 命令卸载助手（由桌面端自动生成）',
+    '# GWork 桌面端 CLI 命令卸载助手（由桌面端自动生成）',
     'BIN="' + binDir + '"',
     'SENTINEL="' + SENTINEL + '"',
-    'for n in gourdai gourdai.bat gourdai.ps1; do',
+    'for n in gwork gwork.bat gwork.ps1 gourdai gourdai.bat gourdai.ps1; do',
     '    f="$BIN/$n"',
     '    if [ -f "$f" ] && grep -qF "$SENTINEL" "$f" 2>/dev/null; then rm -f "$f"; fi',
     'done',
     '# 从各 shell rc 文件移除桌面端追加的 PATH 段',
     'for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile"; do',
     '    [ -f "$rc" ] || continue',
-    '    if grep -qF "# Gourd AI Desktop CLI" "$rc" 2>/dev/null; then',
+    '    if grep -qF "# GWork Desktop CLI" "$rc" 2>/dev/null || grep -qF "# Gourd AI Desktop CLI" "$rc" 2>/dev/null; then',
     '        tmp="$(mktemp)"',
-    '        grep -vF "# Gourd AI Desktop CLI" "$rc" | grep -vF ".gourdai/bin" > "$tmp" && mv "$tmp" "$rc"',
+    '        grep -vF "# GWork Desktop CLI" "$rc" | grep -vF "# Gourd AI Desktop CLI" | grep -vF ".gwork/bin" | grep -vF ".gourdai/bin" > "$tmp" && mv "$tmp" "$rc"',
     '    fi',
     'done',
     '',
@@ -291,23 +292,25 @@ function writeScript(filePath, content, executable) {
 // ── PATH 注册 ──────────────────────────────────────────────────────────────
 
 /**
- * Windows：通过 PowerShell 的 .NET API 把安装目录的 .gourdai\bin 加入用户 PATH（幂等）。
+ * Windows：通过 PowerShell 的 .NET API 把安装目录的 .gwork\bin 加入用户 PATH（幂等）。
  * 用 -EncodedCommand 传脚本，彻底规避引号转义问题；.NET SetEnvironmentVariable
  * 会广播 WM_SETTINGCHANGE，新开的终端即可生效（避免 setx 的 1024 字符截断坑）。
  * @returns {Promise<void>}
  */
 function ensurePathWindows() {
-  // 安装目录下的 .gourdai\bin（与后端一致）；用字面量注入 PowerShell，规避转义
+  // 安装目录下的 .gwork\bin（与后端一致）；用字面量注入 PowerShell，规避转义
   const binDir = getBinDir();
-  // 旧版 bug 期间误写入 PATH 的嵌套 bin（.gourdai\.gourdai\bin）一并摘除
-  const staleBinDir = path.join(getHarnessBase(), HARNESS_HOME, HARNESS_HOME, 'bin');
+  // 品牌升级：旧 .gourdai\bin 与旧版 bug 期间误写入的嵌套 bin（.gourdai\.gourdai\bin）一并摘除
+  const legacyBinDir = path.join(getHarnessBase(), '.gourdai', 'bin');
+  const staleBinDir = path.join(getHarnessBase(), '.gourdai', '.gourdai', 'bin');
   const psScript = [
     '$d = ' + JSON.stringify(binDir),
+    '$legacy = ' + JSON.stringify(legacyBinDir),
     '$stale = ' + JSON.stringify(staleBinDir),
     '$p = [Environment]::GetEnvironmentVariable("Path","User")',
-    '# 清理历史残留：嵌套 bin 目录（已废弃）从 PATH 中剔除',
+    '# 清理历史残留：旧品牌 bin 目录（.gourdai\bin 与嵌套 bin）从 PATH 中剔除',
     'if ($p) {',
-    '    $clean = (($p -split ";" | Where-Object { $_ -and ($_.TrimEnd("\\") -ine $stale.TrimEnd("\\")) }) -join ";")',
+    '    $clean = (($p -split ";" | Where-Object { $_ -and ($_.TrimEnd("\\") -ine $legacy.TrimEnd("\\")) -and ($_.TrimEnd("\\") -ine $stale.TrimEnd("\\")) }) -join ";")',
     '    if ($clean -ne $p) {',
     '        [Environment]::SetEnvironmentVariable("Path", $clean, "User")',
     '        $p = $clean',
@@ -339,9 +342,10 @@ function ensurePathWindows() {
 function ensurePathUnix() {
   const home = getUserHome();
   const binDir = getBinDir();
-  // 旧版 bug 期间误写入 rc 的嵌套 bin（.gourdai/.gourdai/bin）PATH 行，读到即清理
-  const staleBinDir = path.join(getHarnessBase(), HARNESS_HOME, HARNESS_HOME, 'bin');
-  const marker = '# Gourd AI Desktop CLI';
+  // 品牌升级：旧 .gourdai/bin 与旧版 bug 期间误写入 rc 的嵌套 bin（.gourdai/.gourdai/bin）PATH 行，读到即清理
+  const legacyBinDir = path.join(getHarnessBase(), '.gourdai', 'bin');
+  const staleBinDir = path.join(getHarnessBase(), '.gourdai', '.gourdai', 'bin');
+  const marker = '# GWork Desktop CLI';
   const line = 'export PATH="$PATH:' + binDir + '"';
   const shell = path.basename(process.env.SHELL || 'bash');
 
@@ -363,12 +367,19 @@ function ensurePathUnix() {
       let existing = '';
       if (fs.existsSync(file)) {
         existing = fs.readFileSync(file, 'utf8');
-        // 清理旧版误写入的嵌套 bin PATH 行（幂等）
-        if (existing.includes(staleBinDir)) {
-          existing = existing.split('\n').filter((l) => !l.includes(staleBinDir)).join('\n');
+        // 清理旧版误写入的嵌套 bin PATH 行 + 品牌升级前的 .gourdai/bin 行（幂等）
+        const lines = existing.split('\n').filter((l) => !l.includes(staleBinDir) && !l.includes(legacyBinDir));
+        if (lines.length !== existing.split('\n').length) {
+          existing = lines.join('\n');
           fs.writeFileSync(file, existing, 'utf8');
         }
-        if (existing.includes(binDir)) continue; // 已配置
+        if (existing.includes(binDir)) {
+          // 品牌迁移：旧版写入的 rc 注释标记刷新为新品牌名（PATH 行本身不变，幂等）
+          if (existing.includes('# Gourd AI Desktop CLI')) {
+            fs.writeFileSync(file, existing.split('# Gourd AI Desktop CLI').join(marker), 'utf8');
+          }
+          continue; // 已配置
+        }
       } else {
         fs.mkdirSync(path.dirname(file), { recursive: true });
       }
@@ -383,7 +394,7 @@ function ensurePathUnix() {
 // ── 主入口 ─────────────────────────────────────────────────────────────────
 
 /**
- * 注册（或自愈刷新）桌面端的 `gourdai` 终端命令。
+ * 注册（或自愈刷新）桌面端的 `gwork` 终端命令。
  * 幂等、非阻塞、全程 try/catch。定位不到自带运行时则跳过（绝不回退系统 Java）。
  * @returns {Promise<boolean>} 是否成功写入启动器
  */
@@ -396,8 +407,8 @@ async function provisionCli() {
     }
 
     // 与 startBackend 中的调用幂等互补：provisionCli 与 bootstrap 并发执行，
-    // 必须在写 bin 目录前确保嵌套全局区已上移，否则旧嵌套 bin 可能反向覆盖新启动器
-    migrateNestedHarnessDir();
+    // 必须在写 bin 目录前确保旧全局区已升级/上移，否则旧嵌套 bin 可能反向覆盖新启动器
+    migrateLegacyHarnessDirs();
 
     const javaPath = getBundledJava();
     const jarPath = getBundledJar();
@@ -411,13 +422,30 @@ async function provisionCli() {
     fs.mkdirSync(binDir, { recursive: true });
 
     const javaOpts = buildJavaOpts(getBundledJavaMajor());
-    // 全局配置区基目录（与后端 -Dgourdai.home 一致，不含 .gourdai），注入让 ACP 子进程（cwd=工作区）也能定位全局配置
+    // 打包版 CLI 文件日志同样仅输出 ERROR（与后端一致，防 DEBUG 日志撑爆全局区；
+    // 启动器是落盘常驻脚本，只能烤入稳定的 isPackaged 属性，不能烤环境变量）
+    if (app.isPackaged) {
+      javaOpts.push('-Dsolon.logging.appender.file.level=ERROR');
+    }
+    // 全局配置区基目录（与后端 -Dgwork.home 一致，不含 .gwork），注入让 ACP 子进程（cwd=工作区）也能定位全局配置
     const homeDir = getRuntimeHomeDir();
 
     // 三种启动器一律重写（自愈：安装目录变化后自动指向新路径）
-    writeScript(path.join(binDir, 'gourdai.bat'), batContent(javaPath, jarPath, javaOpts, homeDir), false);
-    writeScript(path.join(binDir, 'gourdai.ps1'), ps1Content(javaPath, jarPath, javaOpts, homeDir), false);
-    writeScript(path.join(binDir, 'gourdai'), shContent(javaPath, jarPath, javaOpts, homeDir), true);
+    writeScript(path.join(binDir, 'gwork.bat'), batContent(javaPath, jarPath, javaOpts, homeDir), false);
+    writeScript(path.join(binDir, 'gwork.ps1'), ps1Content(javaPath, jarPath, javaOpts, homeDir), false);
+    writeScript(path.join(binDir, 'gwork'), shContent(javaPath, jarPath, javaOpts, homeDir), true);
+
+    // 品牌升级：删除旧命令残留（仅限带桌面端 sentinel 的，CLI 安装模式的同名文件不受影响）
+    for (const legacyName of ['gourdai.bat', 'gourdai.ps1', 'gourdai']) {
+      const legacyPath = path.join(binDir, legacyName);
+      try {
+        if (fs.existsSync(legacyPath)
+          && fs.readFileSync(legacyPath, 'utf8').includes(SENTINEL)) {
+          fs.unlinkSync(legacyPath);
+          console.log('[cli-provision] 已清理旧命令残留: ' + legacyPath);
+        }
+      } catch (e) { /* ignore */ }
+    }
 
     // 卸载助手（win 由 NSIS 调用，unix 供手动执行）
     if (IS_WIN) {
@@ -433,7 +461,7 @@ async function provisionCli() {
       ensurePathUnix();
     }
 
-    console.log('[cli-provision] 终端命令已就绪: ' + path.join(binDir, 'gourdai') + ' （新开终端后可用 `gourdai cli` / `gourdai web 0`）');
+    console.log('[cli-provision] 终端命令已就绪: ' + path.join(binDir, 'gwork') + ' （新开终端后可用 `gwork cli` / `gwork web 0`）');
     return true;
   } catch (err) {
     console.warn('[cli-provision] 注册终端命令失败（不影响 App 启动）:', err && err.message);

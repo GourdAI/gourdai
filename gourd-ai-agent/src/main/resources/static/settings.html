@@ -3,9 +3,14 @@
 <!-- Settings Overlay (放在 body 最外层，确保 position:fixed 覆盖全屏) -->
 <div class="settings-overlay" id="settingsOverlay" style="display:none">
     <div class="settings-panel">
+        <button class="settings-close-btn" id="settingsCloseBtn" type="button" data-i18n-title="settings.common.close">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
         <div class="settings-content">
             <div class="settings-tabs">
-                <div class="settings-tabs-title" data-i18n="settings.title">设置</div>
+                <div class="settings-tabs-title-row">
+                    <div class="settings-tabs-title" data-i18n="settings.title">设置</div>
+                </div>
                 <button class="settings-tab active" data-tab="general"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> <span data-i18n="settings.tabs.general">通用设置</span></button>
                 <button class="settings-tab" data-tab="permission"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> <span data-i18n="settings.tabs.permission">工具权限</span></button>
                 <button class="settings-tab" data-tab="providers"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27a7 7 0 0 1-12.46 0H6a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 12 2z"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg> <span data-i18n="settings.tabs.providers">模型配置</span></button>
@@ -17,9 +22,10 @@
                 <button class="settings-tab" data-tab="loop"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> <span data-i18n="settings.tabs.loop">定时任务</span></button>
                 <button class="settings-tab" data-tab="channel"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> <span data-i18n="settings.tabs.channel">远控通道</span></button>
        <button class="settings-tab" data-tab="acp"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="12" y1="20" x2="12" y2="20"/></svg> <span data-i18n="settings.tabs.acp">ACP配置</span></button>
+                <button class="settings-tab" data-tab="about"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg> <span data-i18n="settings.tabs.about">关于与更新</span></button>
 
                 <div class="settings-tabs-footer">
-                    <div class="settings-product-name">Gourd AI</div>
+                    <div class="settings-product-name">GWork</div>
                 </div>
             </div>
             <div class="settings-body">
@@ -851,6 +857,8 @@
                 <div class="settings-tab-content" id="settingsTabChannel"></div>
                 <!-- ACP Tab -->
                 <div class="settings-tab-content" id="settingsTabAcp"></div>
+                <!-- About & Update Tab -->
+                <div class="settings-tab-content" id="settingsTabAbout"></div>
             </div><!-- /.settings-body -->
         </div><!-- /.settings-content -->
     </div>

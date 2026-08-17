@@ -52,7 +52,7 @@ public class WorktreeManager {
     /**
      * 使用指定 worktree 目录名
      *
-     * @param worktreeDir worktree 目录名（如 ".gourdai/loop-worktrees"）
+     * @param worktreeDir worktree 目录名（如 ".gwork/loop-worktrees"）
      */
     public WorktreeManager(String worktreeDir) {
         this.worktreeDir = worktreeDir;

@@ -51,7 +51,9 @@ public class AgentSettings implements Serializable {
     private Map<String, ProviderDo> providers = new LinkedHashMap<>();
 
     /** 内置连接：官方托管入口名称（锁定，不可改名/删除） */
-    public static final String BUILTIN_PROVIDER_NAME = "Gourd AI";
+    public static final String BUILTIN_PROVIDER_NAME = "GWork";
+    /** 内置连接：品牌升级前的旧名称（仅用于存量配置迁移："Gourd AI" → "GWork"） */
+    public static final String LEGACY_BUILTIN_PROVIDER_NAME = "Gourd AI";
     /** 内置连接：官方托管入口 API 地址（锁定，不可修改） */
     public static final String BUILTIN_PROVIDER_API_URL = "https://www.gourd-ai.cn";
 
@@ -62,6 +64,20 @@ public class AgentSettings implements Serializable {
      * <p>密钥默认留空，由用户自行填写。每次启动加载后调用，实现"内置常驻、自动重建"。</p>
      */
     public void ensureBuiltinProviders() {
+        // 品牌迁移：旧版配置中按旧名 "Gourd AI" 持久化的内置条目，原地改键为 GWork，
+        // 保留用户已填密钥/模型列表，避免升级后出现新旧两个内置条目
+        ProviderDo legacy = providers.get(LEGACY_BUILTIN_PROVIDER_NAME);
+        if (legacy != null) {
+            if (providers.containsKey(BUILTIN_PROVIDER_NAME) == false) {
+                providers.remove(LEGACY_BUILTIN_PROVIDER_NAME);
+                providers.put(BUILTIN_PROVIDER_NAME, legacy);
+            } else {
+                // 极罕见共存场景（手工新建过 GWork 条目）：旧条目降级为普通连接，
+                // 数据不丢，但不再呈现为锁定的内置项
+                legacy.setBuiltin(false);
+            }
+        }
+
         ProviderDo existing = providers.get(BUILTIN_PROVIDER_NAME);
         if (existing == null) {
             ProviderDo builtin = new ProviderDo();
@@ -245,8 +261,8 @@ public class AgentSettings implements Serializable {
      */
     public static AgentSettings loadFromFile() {
         try {
-            Path globalFile = Paths.get(AgentFlags.getHarnessBase(), ".gourdai", "settings.json").toAbsolutePath();
-            Path localFile = Paths.get(AgentFlags.getUserDir(), ".gourdai", "settings.json").toAbsolutePath();
+            Path globalFile = Paths.get(AgentFlags.getHarnessBase(), AgentFlags.getHarnessHome(), "settings.json").toAbsolutePath();
+            Path localFile = Paths.get(AgentFlags.getUserDir(), AgentFlags.getHarnessHome(), "settings.json").toAbsolutePath();
             boolean isLocalAsGlobal = localFile.toString().equals(globalFile.toString());
 
             AgentSettings agentSettings = new AgentSettings();
@@ -337,11 +353,11 @@ public class AgentSettings implements Serializable {
      */
     public void saveToFile() {
         try {
-            Path globalFileOld = Paths.get(AgentFlags.getHarnessBase(), ".gourdai", "config.yml").toAbsolutePath();
-            Path localFileOld = Paths.get(AgentFlags.getUserDir(), ".gourdai", "config.yml").toAbsolutePath();
+            Path globalFileOld = Paths.get(AgentFlags.getHarnessBase(), AgentFlags.getHarnessHome(), "config.yml").toAbsolutePath();
+            Path localFileOld = Paths.get(AgentFlags.getUserDir(), AgentFlags.getHarnessHome(), "config.yml").toAbsolutePath();
 
-            Path globalFile = Paths.get(AgentFlags.getHarnessBase(), ".gourdai", "settings.json").toAbsolutePath();
-            Path localFile = Paths.get(AgentFlags.getUserDir(), ".gourdai", "settings.json").toAbsolutePath();
+            Path globalFile = Paths.get(AgentFlags.getHarnessBase(), AgentFlags.getHarnessHome(), "settings.json").toAbsolutePath();
+            Path localFile = Paths.get(AgentFlags.getUserDir(), AgentFlags.getHarnessHome(), "settings.json").toAbsolutePath();
             boolean isLocalAsGlobal = localFile.toString().equals(globalFile.toString());
 
             Files.createDirectories(globalFile.getParent());

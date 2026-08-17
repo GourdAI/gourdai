@@ -1,623 +1,325 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GourdAI - 统一 API 网关</title>
-    <link rel="stylesheet" href="./gourdai.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GWork · 桌面 AI 工作台</title>
+  <meta name="description" content="GWork 把多模型接入、Agent 任务编排、技能市场与本地工作区结合在一起，在一个桌面窗口里完成对话、编码、文档与自动化。支持 Windows / macOS / Linux。">
+  <meta name="keywords" content="GWork, AI 工作台, 桌面 AI, Agent, 智能编码, 多模型, noear, Solon">
+  <meta property="og:title" content="GWork · 桌面 AI 工作台">
+  <meta property="og:description" content="一个桌面，装下所有 AI 工作。多模型接入 · Agent 任务编排 · 技能市场 · 本地优先。">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://gourdwork.com/">
+  <meta property="og:image" content="https://gourdwork.com/assets/icon-512.png">
+  <meta name="theme-color" content="#050607">
+  <link rel="icon" href="assets/favicon.ico">
+  <link rel="apple-touch-icon" href="assets/icon-512.png">
+  <link rel="stylesheet" href="css/styles.css">
 </head>
-<body data-theme-font="sans" data-theme-content-layout="full">
-<div id="root">
-    <div class="bg-background text-foreground relative">
-        <section class="relative z-10 overflow-hidden px-6 pt-24 pb-16 md:pt-32 md:pb-24 lg:pt-36 lg:pb-28">
-            <div aria-hidden="true" class="pointer-events-none absolute inset-0 -z-10 opacity-25 dark:opacity-[0.12]"
-                 style="background: radial-gradient(60% 50% at 20% 20%, oklch(0.72 0.18 250 / 0.8) 0%, transparent 70%), radial-gradient(50% 40% at 80% 15%, oklch(0.65 0.15 200 / 0.6) 0%, transparent 70%), radial-gradient(40% 35% at 40% 80%, oklch(0.7 0.12 280 / 0.4) 0%, transparent 70%);"></div>
-            <div aria-hidden="true"
-                 class="absolute inset-0 -z-10 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_30%,black_20%,transparent_100%)] bg-[size:4rem_4rem] opacity-[0.08]"></div>
-            <div class="mx-auto grid max-w-6xl grid-cols-1 items-start gap-12 lg:grid-cols-12 lg:gap-8">
-                <div class="flex flex-col items-start text-left lg:col-span-6">
-                    <div class="landing-animate-fade-up mb-5 inline-flex items-center gap-1.5 rounded-full border border-blue-500/20 bg-blue-500/5 px-3 py-1.5 text-[11px] font-medium text-blue-600 opacity-0 shadow-xs dark:border-blue-400/20 dark:bg-blue-400/5 dark:text-blue-400"
-                         style="animation-delay: 0ms;"><span class="relative flex size-1.5"><span
-                            class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span><span
-                            class="relative inline-flex size-1.5 rounded-full bg-blue-500 dark:bg-blue-400"></span></span><span>人工智能应用基座</span>
-                    </div>
-                    <h1 class="landing-animate-fade-up text-[clamp(2.25rem,4.5vw,3.25rem)] leading-[1.15] font-bold tracking-tight"
-                        style="animation-delay: 60ms;">统一 API 网关，服务于<br><span
-                            class="bg-gradient-to-r from-blue-400 via-violet-400 to-purple-500 bg-clip-text text-transparent">海量 AI 模型</span>
-                    </h1>
-                    <p class="landing-animate-fade-up text-muted-foreground/80 mt-5 max-w-xl text-base leading-relaxed opacity-0 md:text-[15px]"
-                       style="animation-delay: 120ms;">通过统一、标准的接口协议接入海量模型。承载 AI
-                        应用，高效管理数字资产，连接未来。</p>
-                    <div class="landing-animate-fade-up mt-10 w-full max-w-xl opacity-0"
-                         style="animation-delay: 240ms;">
-                        <div class="mb-4 flex flex-col gap-1"><span
-                                class="text-muted-foreground/50 text-[10px] font-bold tracking-[0.15em] uppercase">智能桌面助手</span>
-                            <p class="text-muted-foreground/60 text-xs leading-relaxed">GourdAI 桌面版为您提供强大的 AI 助手能力，支持办公文档处理、智能编码辅助、实时对话交互等功能</p></div>
-                        <div class="flex flex-wrap items-center gap-3">
-                            <div class="group border-border/40 bg-gradient-to-br from-blue-500/5 to-violet-500/5 hover:from-blue-500/10 hover:to-violet-500/10 flex items-center gap-2.5 rounded-full border px-5 py-2.5 text-sm font-medium shadow-[0_1px_2.5px_rgba(0,0,0,0.01)] backdrop-blur-xs transition-all duration-300">
-                                <svg class="size-5 shrink-0 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                                </svg>
-                                <span class="text-foreground/80">办公文档</span>
-                            </div>
-                            <div class="group border-border/40 bg-gradient-to-br from-emerald-500/5 to-green-500/5 hover:from-emerald-500/10 hover:to-green-500/10 flex items-center gap-2.5 rounded-full border px-5 py-2.5 text-sm font-medium shadow-[0_1px_2.5px_rgba(0,0,0,0.01)] backdrop-blur-xs transition-all duration-300">
-                                <svg class="size-5 shrink-0 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
-                                </svg>
-                                <span class="text-foreground/80">智能编码</span>
-                            </div>
-                            <div class="group border-border/40 bg-gradient-to-br from-amber-500/5 to-orange-500/5 hover:from-amber-500/10 hover:to-orange-500/10 flex items-center gap-2.5 rounded-full border px-5 py-2.5 text-sm font-medium shadow-[0_1px_2.5px_rgba(0,0,0,0.01)] backdrop-blur-xs transition-all duration-300">
-                                <svg class="size-5 shrink-0 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
-                                </svg>
-                                <span class="text-foreground/80">实时对话</span>
-                            </div>
-                        </div>
-                        <div class="mt-6">
-                            <a href="https://www.gourd-ai.cn/gourdai/gourd-ai-desktop.exe"
-                               target="_top" rel="noopener"
-                               style="display: inline-flex; align-items: center; gap: 0.625rem; border-radius: 0.5rem; background: linear-gradient(to right, #2563eb, #7c3aed); padding: 0.75rem 1.5rem; font-size: 0.875rem; font-weight: 600; color: white; box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.25); transition: all 0.3s; text-decoration: none;"
-                               onmouseover="this.style.boxShadow='0 20px 25px -5px rgba(37, 99, 235, 0.4)'; this.style.transform='scale(1.02)';"
-                               onmouseout="this.style.boxShadow='0 10px 15px -3px rgba(37, 99, 235, 0.25)'; this.style.transform='scale(1)';">
-                                <svg style="width: 1.25rem; height: 1.25rem;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                                </svg>
-                                <span>下载 Windows 桌面版</span>
-                                <svg style="width: 1rem; height: 1rem;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
-                                </svg>
-                            </a>
-                        </div>
-                </div>
-                </div>
-                <div class="landing-animate-fade-up flex w-full justify-center opacity-0 lg:col-span-6"
-                     style="animation-delay: 320ms;">
-                    <div class="mx-auto w-full max-w-2xl mt-8 lg:mt-0">
-                        <div class="overflow-hidden rounded-2xl border backdrop-blur-sm border-border/60 bg-white/95 shadow-[0_20px_50px_-25px_rgba(15,23,42,0.18)] dark:border-white/[0.06] dark:bg-[#0b0f17]/95 dark:shadow-[0_20px_60px_-25px_rgba(0,0,0,0.7)]">
-                            <div class="flex items-center gap-1 border-b px-2 sm:gap-1.5 sm:px-3 border-border/50 dark:border-white/[0.05]">
-                                <button class="terminal-tab active relative -mb-px flex items-center gap-1.5 border-b-2 px-2.5 py-2.5 text-[11px] font-medium tracking-wide transition-colors sm:px-3 sm:text-xs border-emerald-500 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400" data-tab="0">
-                                    Chat
-                                </button>
-                                <button class="terminal-tab relative -mb-px flex items-center gap-1.5 border-b-2 px-2.5 py-2.5 text-[11px] font-medium tracking-wide transition-colors sm:px-3 sm:text-xs text-foreground/40 hover:text-foreground/70 border-transparent" data-tab="1">
-                                    Responses
-                                </button>
-                                <button class="terminal-tab relative -mb-px flex items-center gap-1.5 border-b-2 px-2.5 py-2.5 text-[11px] font-medium tracking-wide transition-colors sm:px-3 sm:text-xs text-foreground/40 hover:text-foreground/70 border-transparent" data-tab="2">
-                                    Claude
-                                </button>
-                                <button class="terminal-tab relative -mb-px flex items-center gap-1.5 border-b-2 px-2.5 py-2.5 text-[11px] font-medium tracking-wide transition-colors sm:px-3 sm:text-xs text-foreground/40 hover:text-foreground/70 border-transparent" data-tab="3">
-                                    Gemini
-                                </button>
-                                <div class="ml-auto flex items-center gap-2 pr-2 sm:pr-3"><span
-                                        class="inline-block size-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.45)]"></span><span
-                                        class="text-foreground/40 font-mono text-[10px] tracking-wider uppercase">200 ok</span>
-                                </div>
-                            </div>
-                            <div class="flex items-center gap-2.5 border-b px-5 py-3 border-border/40 dark:border-white/[0.04]">
-                                <span id="method-badge" class="rounded-md px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wider bg-amber-500/10 text-amber-600 dark:bg-amber-400/10 dark:text-amber-400">POST</span><code
-                                    id="endpoint-text" class="text-foreground/75 truncate font-mono text-[12.5px] transition-opacity duration-200 opacity-100">/v1/responses</code>
-                            </div>
-                            <div class="grid h-[400px] grid-rows-[235px_minmax(0,1fr)] font-mono text-[12.5px] leading-[1.55]">
-                                <div class="relative px-5 py-4"><span
-                                        class="text-foreground/30 font-sans text-[10px] font-semibold tracking-[0.18em] uppercase">Request</span>
-                                    <div id="request-content" class="mt-2 transition-opacity duration-200 opacity-100">
-                                        <div class="break-words whitespace-pre-wrap"><span
-                                                class="font-medium text-emerald-600 dark:text-emerald-400">curl</span>
-                                            <span class="text-blue-600 dark:text-blue-400">-X</span> <span
-                                                    class="text-blue-600 dark:text-blue-400">POST</span> <span
-                                                    class="text-amber-700 dark:text-amber-300">"/v1/responses"</span>
-                                            <span class="text-foreground/55">\</span></div>
-                                        <div class="break-words whitespace-pre-wrap"><span aria-hidden="true"
-                                                                                           class="inline-block"
-                                                                                           style="width: 2ch;"></span><span
-                                                class="text-blue-600 dark:text-blue-400">-H</span> <span
-                                                class="text-amber-700 dark:text-amber-300">"Authorization: Bearer sk-••••"</span>
-                                            <span class="text-foreground/55">\</span></div>
-                                        <div class="break-words whitespace-pre-wrap"><span aria-hidden="true"
-                                                                                           class="inline-block"
-                                                                                           style="width: 2ch;"></span><span
-                                                class="text-blue-600 dark:text-blue-400">-d</span> <span
-                                                class="text-amber-700 dark:text-amber-300">'{</span></div>
-                                        <div class="break-words whitespace-pre-wrap"><span aria-hidden="true"
-                                                                                           class="inline-block"
-                                                                                           style="width: 4ch;"></span><span
-                                                class="text-sky-700 dark:text-sky-300">"model"</span><span
-                                                class="text-foreground/55">: </span><span
-                                                class="text-amber-700 dark:text-amber-300">"your-model"</span><span
-                                                class="text-foreground/55">,</span></div>
-                                        <div class="break-words whitespace-pre-wrap"><span aria-hidden="true"
-                                                                                           class="inline-block"
-                                                                                           style="width: 4ch;"></span><span
-                                                class="text-sky-700 dark:text-sky-300">"input"</span><span
-                                                class="text-foreground/55">: </span><span
-                                                class="text-amber-700 dark:text-amber-300">"..."</span></div>
-                                        <div class="break-words whitespace-pre-wrap"><span aria-hidden="true"
-                                                                                           class="inline-block"
-                                                                                           style="width: 2ch;"></span><span
-                                                class="text-amber-700 dark:text-amber-300">}'</span></div>
-                                    </div>
-                                </div>
-                                <div class="relative border-t px-5 py-4 border-border/40 bg-muted/20 dark:border-white/[0.05] dark:bg-white/[0.015]">
-                                    <span class="text-foreground/30 font-sans text-[10px] font-semibold tracking-[0.18em] uppercase">Response</span>
-                                    <div id="response-content" class="mt-2 transition-opacity duration-200 opacity-100">
-                                        <div class="break-words whitespace-pre-wrap"><span
-                                                class="text-foreground/55">{</span></div>
-                                        <div class="break-words whitespace-pre-wrap"><span><span
-                                                class="text-foreground/55">  </span><span
-                                                class="text-sky-700 dark:text-sky-300">"output"</span><span
-                                                class="text-foreground/55">: [{ </span><span
-                                                class="text-sky-700 dark:text-sky-300">"type"</span><span
-                                                class="text-foreground/55">: </span><span
-                                                class="text-amber-700 dark:text-amber-300">"output_text"</span><span
-                                                class="text-foreground/55">, </span><span
-                                                class="text-sky-700 dark:text-sky-300">"text"</span><span
-                                                class="text-foreground/55">: </span></span><span
-                                                class="font-medium text-amber-600 dark:text-amber-400">"Response workflow ready."</span><span><span
-                                                class="text-foreground/55"> }],</span></span></div>
-                                        <div class="break-words whitespace-pre-wrap"><span><span
-                                                class="text-foreground/55">  </span><span
-                                                class="text-sky-700 dark:text-sky-300">"usage"</span><span
-                                                class="text-foreground/55">: { </span><span
-                                                class="text-sky-700 dark:text-sky-300">"total_tokens"</span><span
-                                                class="text-foreground/55">: </span></span><span
-                                                class="font-medium text-violet-600 dark:text-violet-300">31</span><span><span
-                                                class="text-foreground/55"> }</span></span></div>
-                                        <div class="break-words whitespace-pre-wrap"><span
-                                                class="text-foreground/55">}</span></div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="flex items-center justify-between border-t px-5 py-2.5 border-border/40 bg-muted/30 dark:border-white/[0.05] dark:bg-white/[0.02]">
-                                <div class="text-foreground/40 flex items-center gap-3 text-[10px] tabular-nums"><span
-                                        class="flex items-center gap-1"><span id="stat-latency" class="font-mono">168</span><span
-                                        class="tracking-wider uppercase">ms</span></span><span
-                                        class="bg-foreground/15 size-1 rounded-full"></span><span
-                                        class="flex items-center gap-1"><span id="stat-tokens" class="font-mono">31</span><span
-                                        class="tracking-wider uppercase">tokens</span></span><span
-                                        class="bg-foreground/15 size-1 rounded-full"></span><span
-                                        class="flex items-center gap-1"><span
-                                        class="tracking-wider uppercase">cost</span><span
-                                        id="stat-cost" class="font-mono">$0.00093</span></span></div>
-                                <span class="text-foreground/30 font-mono text-[10px] tracking-wider uppercase">stream · sse</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-        <div class="border-border/40 bg-muted/10 relative z-10 border-y">
-            <div class="mx-auto max-w-6xl px-6 py-10 md:py-12">
-                <div class="grid grid-cols-2 gap-8 md:grid-cols-4 md:gap-12">
-                    <div class="flex flex-col items-center text-center"><span
-                            class="text-2xl font-bold tracking-tight md:text-3xl"><span class="tabular-nums">50+</span></span><span
-                            class="text-muted-foreground mt-1.5 text-xs">上游服务适配</span></div>
-                    <div class="flex flex-col items-center text-center"><span
-                            class="text-2xl font-bold tracking-tight md:text-3xl"><span class="tabular-nums">100+</span></span><span
-                            class="text-muted-foreground mt-1.5 text-xs">模型计费支持</span></div>
-                    <div class="flex flex-col items-center text-center"><span
-                            class="text-2xl font-bold tracking-tight md:text-3xl"><span class="tabular-nums">50+</span></span><span
-                            class="text-muted-foreground mt-1.5 text-xs">兼容 API 路由</span></div>
-                    <div class="flex flex-col items-center text-center"><span
-                            class="text-2xl font-bold tracking-tight md:text-3xl"><span class="tabular-nums">10+</span></span><span
-                            class="text-muted-foreground mt-1.5 text-xs">调度控制能力</span></div>
-                </div>
-            </div>
-        </div>
-        <section class="relative z-10 px-6 py-24 md:py-32">
-            <div class="mx-auto max-w-6xl">
-                <div class="will-change-[transform,opacity] mb-16 max-w-lg landing-animate-fade-up"><p
-                        class="text-muted-foreground mb-3 text-xs font-medium tracking-widest uppercase">核心功能</p>
-                    <h2 class="text-2xl leading-tight font-bold tracking-tight md:text-3xl">为开发者打造，<br>为规模而设计
-                    </h2></div>
-                <div class="border-border/40 bg-border/40 grid gap-px overflow-hidden rounded-xl border md:grid-cols-3">
-                    <div class="will-change-[transform,opacity] bg-background group hover:bg-muted/20 p-7 transition-colors duration-300 md:p-8 md:col-span-2 landing-animate-scale-in">
-                        <div class="mb-3 flex items-center gap-3"><span
-                                class="border-border/40 bg-muted text-muted-foreground flex size-7 items-center justify-center rounded-md border text-[10px] font-semibold tabular-nums">01</span>
-                            <h3 class="text-sm font-semibold">极速</h3></div>
-                        <p class="text-muted-foreground text-sm leading-relaxed">优化的网络架构，确保毫秒级响应时间</p>
-                        <div class="mt-4 grid grid-cols-3 gap-2">
-                            <div class="border-border/30 bg-muted/20 text-muted-foreground flex items-center justify-center rounded-lg border px-3 py-2 text-xs transition-colors duration-300 hover:border-blue-500/30 hover:bg-blue-500/5">
-                                OpenAI
-                            </div>
-                            <div class="border-border/30 bg-muted/20 text-muted-foreground flex items-center justify-center rounded-lg border px-3 py-2 text-xs transition-colors duration-300 hover:border-blue-500/30 hover:bg-blue-500/5">
-                                Claude
-                            </div>
-                            <div class="border-border/30 bg-muted/20 text-muted-foreground flex items-center justify-center rounded-lg border px-3 py-2 text-xs transition-colors duration-300 hover:border-blue-500/30 hover:bg-blue-500/5">
-                                Gemini
-                            </div>
-                            <div class="border-border/30 bg-muted/20 text-muted-foreground flex items-center justify-center rounded-lg border px-3 py-2 text-xs transition-colors duration-300 hover:border-blue-500/30 hover:bg-blue-500/5">
-                                DeepSeek
-                            </div>
-                            <div class="border-border/30 bg-muted/20 text-muted-foreground flex items-center justify-center rounded-lg border px-3 py-2 text-xs transition-colors duration-300 hover:border-blue-500/30 hover:bg-blue-500/5">
-                                Qwen
-                            </div>
-                            <div class="border-border/30 bg-muted/20 text-muted-foreground flex items-center justify-center rounded-lg border px-3 py-2 text-xs transition-colors duration-300 hover:border-blue-500/30 hover:bg-blue-500/5">
-                                Llama
-                            </div>
-                        </div>
-                    </div>
-                    <div class="will-change-[transform,opacity] bg-background group hover:bg-muted/20 p-7 transition-colors duration-300 md:p-8 md:col-span-1 landing-animate-scale-in"
-                         style="animation-delay: 100ms;">
-                        <div class="mb-3 flex items-center gap-3"><span
-                                class="border-border/40 bg-muted text-muted-foreground flex size-7 items-center justify-center rounded-md border text-[10px] font-semibold tabular-nums">02</span>
-                            <h3 class="text-sm font-semibold">安全可靠</h3></div>
-                        <p class="text-muted-foreground text-sm leading-relaxed">企业级安全性，提供全面的权限管理</p>
-                        <div class="mt-4 flex items-center justify-center">
-                            <div class="relative">
-                                <div class="flex size-16 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/5">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                         fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                         stroke-linejoin="round" class="lucide lucide-shield size-7 text-emerald-500/70"
-                                         aria-hidden="true">
-                                        <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path>
-                                    </svg>
-                                </div>
-                                <div class="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-emerald-500">
-                                    <svg class="size-2.5 text-white" fill="none" viewBox="0 0 24 24"
-                                         stroke="currentColor" stroke-width="3">
-                                        <path stroke-linecap="round" stroke-linejoin="round"
-                                              d="m4.5 12.75 6 6 9-13.5"></path>
-                                    </svg>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="will-change-[transform,opacity] bg-background group hover:bg-muted/20 p-7 transition-colors duration-300 md:p-8 md:col-span-1 landing-animate-scale-in"
-                         style="animation-delay: 200ms;">
-                        <div class="mb-3 flex items-center gap-3"><span
-                                class="border-border/40 bg-muted text-muted-foreground flex size-7 items-center justify-center rounded-md border text-[10px] font-semibold tabular-nums">03</span>
-                            <h3 class="text-sm font-semibold">全球覆盖</h3></div>
-                        <p class="text-muted-foreground text-sm leading-relaxed">多区域部署，实现稳定的全球访问</p>
-                        <div class="mt-4 space-y-2">
-                            <div class="flex items-center gap-2">
-                                <div class="flex size-6 items-center justify-center rounded-full text-[10px] font-bold border-border/40 bg-muted text-muted-foreground border">
-                                    1
-                                </div>
-                                <div class="bg-border/40 h-px flex-1"></div>
-                                <span class="text-muted-foreground text-xs">负载均衡</span></div>
-                            <div class="flex items-center gap-2">
-                                <div class="flex size-6 items-center justify-center rounded-full text-[10px] font-bold border border-blue-500/30 bg-blue-500/20 text-blue-500">
-                                    2
-                                </div>
-                                <div class="bg-border/40 h-px flex-1"></div>
-                                <span class="text-muted-foreground text-xs">速率限制</span></div>
-                            <div class="flex items-center gap-2">
-                                <div class="flex size-6 items-center justify-center rounded-full text-[10px] font-bold border-border/40 bg-muted text-muted-foreground border">
-                                    3
-                                </div>
-                                <div class="bg-border/40 h-px flex-1"></div>
-                                <span class="text-muted-foreground text-xs">成本跟踪</span></div>
-                        </div>
-                    </div>
-                    <div class="will-change-[transform,opacity] bg-background group hover:bg-muted/20 p-7 transition-colors duration-300 md:p-8 md:col-span-2 landing-animate-scale-in"
-                         style="animation-delay: 300ms;">
-                        <div class="mb-3 flex items-center gap-3"><span
-                                class="border-border/40 bg-muted text-muted-foreground flex size-7 items-center justify-center rounded-md border text-[10px] font-semibold tabular-nums">04</span>
-                            <h3 class="text-sm font-semibold">开发者友好</h3></div>
-                        <p class="text-muted-foreground text-sm leading-relaxed">兼容常见 AI 应用工作流的 API 路由</p>
-                        <div class="mt-4 flex items-center gap-3">
-                            <div class="flex -space-x-2">
-                                <div class="border-background from-muted to-muted/60 text-muted-foreground flex size-8 items-center justify-center rounded-full border-2 bg-gradient-to-br text-[9px] font-bold">
-                                    API
-                                </div>
-                                <div class="border-background from-muted to-muted/60 text-muted-foreground flex size-8 items-center justify-center rounded-full border-2 bg-gradient-to-br text-[9px] font-bold">
-                                    SDK
-                                </div>
-                                <div class="border-background from-muted to-muted/60 text-muted-foreground flex size-8 items-center justify-center rounded-full border-2 bg-gradient-to-br text-[9px] font-bold">
-                                    CLI
-                                </div>
-                                <div class="border-background from-muted to-muted/60 text-muted-foreground flex size-8 items-center justify-center rounded-full border-2 bg-gradient-to-br text-[9px] font-bold">
-                                    Docs
-                                </div>
-                            </div>
-                            <div class="text-muted-foreground flex items-center gap-1.5 text-xs">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                     stroke-linejoin="round" class="lucide lucide-code size-3.5 text-blue-500"
-                                     aria-hidden="true">
-                                    <path d="m16 18 6-6-6-6"></path>
-                                    <path d="m8 6-6 6 6 6"></path>
-                                </svg>
-                                兼容多协议
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="mt-12 grid grid-cols-2 gap-8 md:grid-cols-4 md:gap-12">
-                    <div class="will-change-[transform,opacity] flex flex-col items-center text-center landing-animate-fade-up">
-                        <div class="text-muted-foreground border-border/50 bg-muted/30 group-hover:text-foreground mb-3 flex size-12 items-center justify-center rounded-xl border transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                 fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                 stroke-linejoin="round" class="lucide lucide-gauge size-5" aria-hidden="true">
-                                <path d="m12 14 4-4"></path>
-                                <path d="M3.34 19a10 10 0 1 1 17.32 0"></path>
-                            </svg>
-                        </div>
-                        <h3 class="mb-1.5 text-sm font-semibold">高性能</h3>
-                        <p class="text-muted-foreground max-w-[200px] text-xs leading-relaxed">
-                            支持高并发和自动负载均衡</p></div>
-                    <div class="will-change-[transform,opacity] flex flex-col items-center text-center landing-animate-fade-up"
-                         style="animation-delay: 100ms;">
-                        <div class="text-muted-foreground border-border/50 bg-muted/30 group-hover:text-foreground mb-3 flex size-12 items-center justify-center rounded-xl border transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                 fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                 stroke-linejoin="round" class="lucide lucide-dollar-sign size-5" aria-hidden="true">
-                                <line x1="12" x2="12" y1="2" y2="22"></line>
-                                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-                            </svg>
-                        </div>
-                        <h3 class="mb-1.5 text-sm font-semibold">透明计费</h3>
-                        <p class="text-muted-foreground max-w-[200px] text-xs leading-relaxed">
-                            按量付费，实时监控使用情况</p></div>
-                    <div class="will-change-[transform,opacity] flex flex-col items-center text-center landing-animate-fade-up"
-                         style="animation-delay: 200ms;">
-                        <div class="text-muted-foreground border-border/50 bg-muted/30 group-hover:text-foreground mb-3 flex size-12 items-center justify-center rounded-xl border transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                 fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                 stroke-linejoin="round" class="lucide lucide-users size-5" aria-hidden="true">
-                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
-                                <path d="M16 3.128a4 4 0 0 1 0 7.744"></path>
-                                <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
-                                <circle cx="9" cy="7" r="4"></circle>
-                            </svg>
-                        </div>
-                        <h3 class="mb-1.5 text-sm font-semibold">团队协作</h3>
-                        <p class="text-muted-foreground max-w-[200px] text-xs leading-relaxed">
-                            多用户管理，灵活分配权限</p></div>
-                    <div class="will-change-[transform,opacity] flex flex-col items-center text-center landing-animate-fade-up"
-                         style="animation-delay: 300ms;">
-                        <div class="text-muted-foreground border-border/50 bg-muted/30 group-hover:text-foreground mb-3 flex size-12 items-center justify-center rounded-xl border transition-colors">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                 fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                 stroke-linejoin="round" class="lucide lucide-heart-handshake size-5"
-                                 aria-hidden="true">
-                                <path d="M19.414 14.414C21 12.828 22 11.5 22 9.5a5.5 5.5 0 0 0-9.591-3.676.6.6 0 0 1-.818.001A5.5 5.5 0 0 0 2 9.5c0 2.3 1.5 4 3 5.5l5.535 5.362a2 2 0 0 0 2.879.052 2.12 2.12 0 0 0-.004-3 2.124 2.124 0 1 0 3-3 2.124 2.124 0 0 0 3.004 0 2 2 0 0 0 0-2.828l-1.881-1.882a2.41 2.41 0 0 0-3.409 0l-1.71 1.71a2 2 0 0 1-2.828 0 2 2 0 0 1 0-2.828l2.823-2.762"></path>
-                            </svg>
-                        </div>
-                        <h3 class="mb-1.5 text-sm font-semibold">开源项目</h3>
-                        <p class="text-muted-foreground max-w-[200px] text-xs leading-relaxed">
-                            社区驱动、可自托管、易于扩展</p></div>
-                </div>
-            </div>
-        </section>
-        <section class="border-border/40 relative z-10 border-t px-6 py-24 md:py-32">
-            <div class="mx-auto max-w-6xl">
-                <div class="will-change-[transform,opacity] mb-16 text-center md:mb-20 landing-animate-fade-up"><p
-                        class="text-muted-foreground mb-3 text-xs font-medium tracking-widest uppercase">工作流程</p>
-                    <h2 class="text-2xl font-bold tracking-tight md:text-3xl">三步快速上手</h2></div>
-                <div class="grid gap-8 md:grid-cols-3 md:gap-12">
-                    <div class="will-change-[transform,opacity] relative flex flex-col items-center text-center landing-animate-fade-up">
-                        <div class="relative mb-6">
-                            <div class="text-muted-foreground border-border/50 bg-muted/30 flex size-16 items-center justify-center rounded-2xl border transition-colors">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                     fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                     stroke-linejoin="round" class="lucide lucide-settings size-6" aria-hidden="true">
-                                    <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"></path>
-                                    <circle cx="12" cy="12" r="3"></circle>
-                                </svg>
-                            </div>
-                            <div class="bg-foreground text-background absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full text-xs font-bold">
-                                1
-                            </div>
-                        </div>
-                        <h3 class="mb-2 text-base font-semibold">配置</h3>
-                        <p class="text-muted-foreground max-w-[240px] text-sm leading-relaxed">添加 API
-                            密钥，设置渠道并配置访问权限</p></div>
-                    <div class="will-change-[transform,opacity] relative flex flex-col items-center text-center landing-animate-fade-up"
-                         style="animation-delay: 150ms;">
-                        <div class="relative mb-6">
-                            <div class="text-muted-foreground border-border/50 bg-muted/30 flex size-16 items-center justify-center rounded-2xl border transition-colors">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                     fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                     stroke-linejoin="round" class="lucide lucide-zap size-6" aria-hidden="true">
-                                    <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"></path>
-                                </svg>
-                            </div>
-                            <div class="bg-foreground text-background absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full text-xs font-bold">
-                                2
-                            </div>
-                        </div>
-                        <h3 class="mb-2 text-base font-semibold">连接</h3>
-                        <p class="text-muted-foreground max-w-[240px] text-sm leading-relaxed">通过 OpenAI、Claude、Gemini
-                            以及其他兼容 API 路由接入</p></div>
-                    <div class="will-change-[transform,opacity] relative flex flex-col items-center text-center landing-animate-fade-up"
-                         style="animation-delay: 300ms;">
-                        <div class="relative mb-6">
-                            <div class="text-muted-foreground border-border/50 bg-muted/30 flex size-16 items-center justify-center rounded-2xl border transition-colors">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                                     fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
-                                     stroke-linejoin="round" class="lucide lucide-chart-column size-6"
-                                     aria-hidden="true">
-                                    <path d="M3 3v16a2 2 0 0 0 2 2h16"></path>
-                                    <path d="M18 17V9"></path>
-                                    <path d="M13 17V5"></path>
-                                    <path d="M8 17v-3"></path>
-                                </svg>
-                            </div>
-                            <div class="bg-foreground text-background absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full text-xs font-bold">
-                                3
-                            </div>
-                        </div>
-                        <h3 class="mb-2 text-base font-semibold">监控</h3>
-                        <p class="text-muted-foreground max-w-[240px] text-sm leading-relaxed">
-                            通过实时分析跟踪用量、成本和性能</p></div>
-                </div>
-            </div>
-        </section>
-        <section class="relative z-10 overflow-hidden px-6 py-24 md:py-32">
-            <div aria-hidden="true" class="absolute inset-0 -z-10 opacity-20 dark:opacity-[0.08]"
-                 style="background: radial-gradient(50% 50% at 30% 50%, oklch(0.7 0.15 250 / 0.7) 0%, transparent 70%), radial-gradient(40% 40% at 70% 40%, oklch(0.65 0.12 200 / 0.5) 0%, transparent 70%);"></div>
-            <div class="will-change-[transform,opacity] mx-auto max-w-2xl text-center landing-animate-scale-in"><h2
-                    class="text-2xl leading-tight font-bold tracking-tight md:text-4xl">准备好简化<br><span
-                    class="bg-gradient-to-r from-blue-400 via-violet-400 to-purple-500 bg-clip-text text-transparent">你的 AI 集成了吗？</span>
-            </h2>
-                <p class="text-muted-foreground/80 mx-auto mt-5 max-w-md text-sm leading-relaxed md:text-base">
-                    部署你自己的网关，并通过已配置的上游服务开始转发请求。</p>
-            </div>
-        </section>
+<body>
+
+  <!-- 背景层：动态极光 + 细网格 + 光标追光 -->
+  <div class="bg-aurora" aria-hidden="true"></div>
+  <div class="bg-grid" aria-hidden="true"></div>
+  <div class="bg-spot" aria-hidden="true"></div>
+
+  <!-- ===== 导航 ===== -->
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="#top" aria-label="GWork 首页">
+        <img src="assets/logo-white.png" alt="GWork">
+        <span>GWork</span>
+      </a>
+      <nav class="nav-links" aria-label="主导航">
+        <a href="#features">产品能力</a>
+        <a href="#quickstart">快速上手</a>
+        <a href="#downloads">下载</a>
+      </nav>
+      <div class="nav-right">
+        <a class="btn btn-primary btn-sm" href="#downloads">立即下载</a>
+        <button class="nav-toggle" id="navToggle" aria-label="打开菜单" aria-expanded="false">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+      </div>
     </div>
-</div>
+  </header>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="#features">产品能力</a>
+    <a href="#quickstart">快速上手</a>
+    <a href="#downloads">下载</a>
+    <a class="btn btn-primary" href="#downloads">立即下载</a>
+  </div>
 
-<script>
-// 终端演示标签切换功能
-(function() {
-    const tabs = document.querySelectorAll('.terminal-tab');
-    let currentTab = 0;
-    let autoSwitchInterval;
+  <main id="top">
 
-    if (!tabs.length) {
-        console.log('未找到终端标签');
-        return;
-    }
+    <!-- ===== Hero ===== -->
+    <section class="hero">
+      <div class="container">
+        <a class="hero-badge rise" href="#downloads">
+          <span class="pulse-dot" aria-hidden="true"></span>
+          <span>桌面 AI 工作台</span>
+        </a>
 
-    console.log('找到', tabs.length, '个标签');
+        <h1 class="rise" style="animation-delay: 80ms">
+          一个桌面，装下<br><span class="dim-gradient">所有 AI 工作</span>
+        </h1>
 
-    // 标签颜色配置
-    const tabColors = [
-        { border: 'border-emerald-500 dark:border-emerald-400', text: 'text-emerald-600 dark:text-emerald-400' },
-        { border: 'border-amber-500 dark:border-amber-400', text: 'text-amber-600 dark:text-amber-400' },
-        { border: 'border-blue-500 dark:border-blue-400', text: 'text-blue-600 dark:text-blue-400' },
-        { border: 'border-violet-500 dark:border-violet-400', text: 'text-violet-600 dark:text-violet-400' }
-    ];
+        <p class="hero-sub rise" style="animation-delay: 160ms">
+          GWork 将多模型接入、Agent 任务编排、技能市场与本地工作区结合在一起，
+          让你在熟悉的桌面里完成对话、编码、文档与自动化。
+        </p>
 
-    // 每个标签的内容数据
-    const tabData = [
-        {
-            method: 'POST',
-            methodClass: 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400',
-            endpoint: '/v1/chat/completions',
-            request: `<div class="break-words whitespace-pre-wrap"><span class="font-medium text-emerald-600 dark:text-emerald-400">curl</span> <span class="text-blue-600 dark:text-blue-400">-X</span> <span class="text-blue-600 dark:text-blue-400">POST</span> <span class="text-amber-700 dark:text-amber-300">"/v1/chat/completions"</span> <span class="text-foreground/55">\\</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 2ch;"></span><span class="text-blue-600 dark:text-blue-400">-H</span> <span class="text-amber-700 dark:text-amber-300">"Authorization: Bearer sk-••••"</span> <span class="text-foreground/55">\\</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 2ch;"></span><span class="text-blue-600 dark:text-blue-400">-d</span> <span class="text-amber-700 dark:text-amber-300">'{</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 4ch;"></span><span class="text-sky-700 dark:text-sky-300">"model"</span><span class="text-foreground/55">: </span><span class="text-amber-700 dark:text-amber-300">"gpt-4"</span><span class="text-foreground/55">,</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 4ch;"></span><span class="text-sky-700 dark:text-sky-300">"messages"</span><span class="text-foreground/55">: [...]</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 2ch;"></span><span class="text-amber-700 dark:text-amber-300">}'</span></div>`,
-            response: `<div class="break-words whitespace-pre-wrap"><span class="text-foreground/55">{</span></div>
-<div class="break-words whitespace-pre-wrap"><span><span class="text-foreground/55">  </span><span class="text-sky-700 dark:text-sky-300">"choices"</span><span class="text-foreground/55">: [{ </span><span class="text-sky-700 dark:text-sky-300">"message"</span><span class="text-foreground/55">: { </span><span class="text-sky-700 dark:text-sky-300">"content"</span><span class="text-foreground/55">: </span></span><span class="font-medium text-amber-600 dark:text-amber-400">"Hello! How can I help?"</span><span><span class="text-foreground/55"> } }],</span></span></div>
-<div class="break-words whitespace-pre-wrap"><span><span class="text-foreground/55">  </span><span class="text-sky-700 dark:text-sky-300">"usage"</span><span class="text-foreground/55">: { </span><span class="text-sky-700 dark:text-sky-300">"total_tokens"</span><span class="text-foreground/55">: </span></span><span class="font-medium text-violet-600 dark:text-violet-300">42</span><span><span class="text-foreground/55"> }</span></span></div>
-<div class="break-words whitespace-pre-wrap"><span class="text-foreground/55">}</span></div>`,
-            latency: '156',
-            tokens: '42',
-            cost: '$0.00126'
-        },
-        {
-            method: 'POST',
-            methodClass: 'bg-amber-500/10 text-amber-600 dark:bg-amber-400/10 dark:text-amber-400',
-            endpoint: '/v1/responses',
-            request: `<div class="break-words whitespace-pre-wrap"><span class="font-medium text-emerald-600 dark:text-emerald-400">curl</span> <span class="text-blue-600 dark:text-blue-400">-X</span> <span class="text-blue-600 dark:text-blue-400">POST</span> <span class="text-amber-700 dark:text-amber-300">"/v1/responses"</span> <span class="text-foreground/55">\\</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 2ch;"></span><span class="text-blue-600 dark:text-blue-400">-H</span> <span class="text-amber-700 dark:text-amber-300">"Authorization: Bearer sk-••••"</span> <span class="text-foreground/55">\\</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 2ch;"></span><span class="text-blue-600 dark:text-blue-400">-d</span> <span class="text-amber-700 dark:text-amber-300">'{</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 4ch;"></span><span class="text-sky-700 dark:text-sky-300">"model"</span><span class="text-foreground/55">: </span><span class="text-amber-700 dark:text-amber-300">"your-model"</span><span class="text-foreground/55">,</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 4ch;"></span><span class="text-sky-700 dark:text-sky-300">"input"</span><span class="text-foreground/55">: </span><span class="text-amber-700 dark:text-amber-300">"..."</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 2ch;"></span><span class="text-amber-700 dark:text-amber-300">}'</span></div>`,
-            response: `<div class="break-words whitespace-pre-wrap"><span class="text-foreground/55">{</span></div>
-<div class="break-words whitespace-pre-wrap"><span><span class="text-foreground/55">  </span><span class="text-sky-700 dark:text-sky-300">"output"</span><span class="text-foreground/55">: [{ </span><span class="text-sky-700 dark:text-sky-300">"type"</span><span class="text-foreground/55">: </span><span class="text-amber-700 dark:text-amber-300">"output_text"</span><span class="text-foreground/55">, </span><span class="text-sky-700 dark:text-sky-300">"text"</span><span class="text-foreground/55">: </span></span><span class="font-medium text-amber-600 dark:text-amber-400">"Response workflow ready."</span><span><span class="text-foreground/55"> }],</span></span></div>
-<div class="break-words whitespace-pre-wrap"><span><span class="text-foreground/55">  </span><span class="text-sky-700 dark:text-sky-300">"usage"</span><span class="text-foreground/55">: { </span><span class="text-sky-700 dark:text-sky-300">"total_tokens"</span><span class="text-foreground/55">: </span></span><span class="font-medium text-violet-600 dark:text-violet-300">31</span><span><span class="text-foreground/55"> }</span></span></div>
-<div class="break-words whitespace-pre-wrap"><span class="text-foreground/55">}</span></div>`,
-            latency: '168',
-            tokens: '31',
-            cost: '$0.00093'
-        },
-        {
-            method: 'POST',
-            methodClass: 'bg-blue-500/10 text-blue-600 dark:bg-blue-400/10 dark:text-blue-400',
-            endpoint: '/v1/messages',
-            request: `<div class="break-words whitespace-pre-wrap"><span class="font-medium text-emerald-600 dark:text-emerald-400">curl</span> <span class="text-blue-600 dark:text-blue-400">-X</span> <span class="text-blue-600 dark:text-blue-400">POST</span> <span class="text-amber-700 dark:text-amber-300">"/v1/messages"</span> <span class="text-foreground/55">\\</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 2ch;"></span><span class="text-blue-600 dark:text-blue-400">-H</span> <span class="text-amber-700 dark:text-amber-300">"x-api-key: sk-••••"</span> <span class="text-foreground/55">\\</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 2ch;"></span><span class="text-blue-600 dark:text-blue-400">-d</span> <span class="text-amber-700 dark:text-amber-300">'{</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 4ch;"></span><span class="text-sky-700 dark:text-sky-300">"model"</span><span class="text-foreground/55">: </span><span class="text-amber-700 dark:text-amber-300">"claude-3-5-sonnet"</span><span class="text-foreground/55">,</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 4ch;"></span><span class="text-sky-700 dark:text-sky-300">"messages"</span><span class="text-foreground/55">: [...]</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 2ch;"></span><span class="text-amber-700 dark:text-amber-300">}'</span></div>`,
-            response: `<div class="break-words whitespace-pre-wrap"><span class="text-foreground/55">{</span></div>
-<div class="break-words whitespace-pre-wrap"><span><span class="text-foreground/55">  </span><span class="text-sky-700 dark:text-sky-300">"content"</span><span class="text-foreground/55">: [{ </span><span class="text-sky-700 dark:text-sky-300">"type"</span><span class="text-foreground/55">: </span><span class="text-amber-700 dark:text-amber-300">"text"</span><span class="text-foreground/55">, </span><span class="text-sky-700 dark:text-sky-300">"text"</span><span class="text-foreground/55">: </span></span><span class="font-medium text-amber-600 dark:text-amber-400">"I'm Claude, happy to assist!"</span><span><span class="text-foreground/55"> }],</span></span></div>
-<div class="break-words whitespace-pre-wrap"><span><span class="text-foreground/55">  </span><span class="text-sky-700 dark:text-sky-300">"usage"</span><span class="text-foreground/55">: { </span><span class="text-sky-700 dark:text-sky-300">"output_tokens"</span><span class="text-foreground/55">: </span></span><span class="font-medium text-violet-600 dark:text-violet-300">28</span><span><span class="text-foreground/55"> }</span></span></div>
-<div class="break-words whitespace-pre-wrap"><span class="text-foreground/55">}</span></div>`,
-            latency: '892',
-            tokens: '28',
-            cost: '$0.0084'
-        },
-        {
-            method: 'POST',
-            methodClass: 'bg-violet-500/10 text-violet-600 dark:bg-violet-400/10 dark:text-violet-400',
-            endpoint: '/v1beta/models/{model}:generateContent',
-            request: `<div class="break-words whitespace-pre-wrap"><span class="font-medium text-emerald-600 dark:text-emerald-400">curl</span> <span class="text-blue-600 dark:text-blue-400">-X</span> <span class="text-blue-600 dark:text-blue-400">POST</span> <span class="text-amber-700 dark:text-amber-300">"/v1beta/models/gemini-pro:generateContent"</span> <span class="text-foreground/55">\\</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 2ch;"></span><span class="text-blue-600 dark:text-blue-400">-H</span> <span class="text-amber-700 dark:text-amber-300">"x-goog-api-key: ••••"</span> <span class="text-foreground/55">\\</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 2ch;"></span><span class="text-blue-600 dark:text-blue-400">-d</span> <span class="text-amber-700 dark:text-amber-300">'{</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 4ch;"></span><span class="text-sky-700 dark:text-sky-300">"contents"</span><span class="text-foreground/55">: [{ </span><span class="text-sky-700 dark:text-sky-300">"parts"</span><span class="text-foreground/55">: [{ </span><span class="text-sky-700 dark:text-sky-300">"text"</span><span class="text-foreground/55">: </span><span class="text-amber-700 dark:text-amber-300">"..."</span><span class="text-foreground/55"> }] }]</span></div>
-<div class="break-words whitespace-pre-wrap"><span aria-hidden="true" class="inline-block" style="width: 2ch;"></span><span class="text-amber-700 dark:text-amber-300">}'</span></div>`,
-            response: `<div class="break-words whitespace-pre-wrap"><span class="text-foreground/55">{</span></div>
-<div class="break-words whitespace-pre-wrap"><span><span class="text-foreground/55">  </span><span class="text-sky-700 dark:text-sky-300">"candidates"</span><span class="text-foreground/55">: [{ </span><span class="text-sky-700 dark:text-sky-300">"content"</span><span class="text-foreground/55">: { </span><span class="text-sky-700 dark:text-sky-300">"parts"</span><span class="text-foreground/55">: [{ </span><span class="text-sky-700 dark:text-sky-300">"text"</span><span class="text-foreground/55">: </span></span><span class="font-medium text-amber-600 dark:text-amber-400">"Gemini response"</span><span><span class="text-foreground/55"> }] } }],</span></span></div>
-<div class="break-words whitespace-pre-wrap"><span><span class="text-foreground/55">  </span><span class="text-sky-700 dark:text-sky-300">"usageMetadata"</span><span class="text-foreground/55">: { </span><span class="text-sky-700 dark:text-sky-300">"totalTokenCount"</span><span class="text-foreground/55">: </span></span><span class="font-medium text-violet-600 dark:text-violet-300">37</span><span><span class="text-foreground/55"> }</span></span></div>
-<div class="break-words whitespace-pre-wrap"><span class="text-foreground/55">}</span></div>`,
-            latency: '724',
-            tokens: '37',
-            cost: '$0.00111'
-        }
-    ];
+        <div class="hero-cta rise" style="animation-delay: 240ms">
+          <a class="download-cta" id="heroDownload" href="#downloads">
+            <svg id="heroOsIcon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/>
+            </svg>
+            <span>
+              <span class="cta-title" id="heroCtaTitle">下载 GWork</span>
+              <span class="cta-desc" id="heroCtaDesc">选择你的平台</span>
+            </span>
+          </a>
+          <a class="all-downloads-link" href="#downloads">查看全部下载</a>
+        </div>
 
-    function switchTab(index) {
-        console.log('切换到标签', index);
+        <!-- 应用窗口动效演示 -->
+        <div class="hero-visual rise" style="animation-delay: 340ms">
+          <div class="app-window" aria-label="GWork 应用演示">
+            <div class="win-bar">
+              <div class="win-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+              <div class="win-title">GWork — 官网视觉重构</div>
+              <div class="win-status busy" id="winStatus"><span class="dot"></span><span id="winStatusText">运行中</span></div>
+            </div>
+            <div class="app-body">
+              <aside class="app-side">
+                <div class="side-actions">
+                  <div class="side-action">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                    新建任务
+                  </div>
+                  <div class="side-action">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10v6M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+                    打开工作区
+                  </div>
+                </div>
+                <div class="side-label">任务</div>
+                <ul class="task-list">
+                  <li class="task-item active"><span class="t-dot"></span><span>官网视觉重构</span></li>
+                  <li class="task-item"><span class="t-dot"></span><span>季度数据报表</span></li>
+                  <li class="task-item"><span class="t-dot"></span><span>版本发布说明</span></li>
+                  <li class="task-item"><span class="t-dot"></span><span>依赖升级评估</span></li>
+                </ul>
+                <div class="side-user">
+                  <span class="avatar">G</span>
+                  <span>GWork 用户</span>
+                </div>
+              </aside>
+              <div class="app-main">
+                <div class="chat-scroll" id="demoChat">
+                  <div class="msg user">帮我把官网首页重构成深色科技风，突出多端下载。</div>
+                  <!-- 演示步骤由 main.js 按时间轴注入 -->
+                </div>
+                <div class="chat-input" aria-hidden="true">
+                  <span class="ph">描述你的下一个任务…</span>
+                  <span class="chip"><span class="dot"></span>模型 · 自动</span>
+                  <span class="send">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+                  </span>
+                </div>
+                <button class="replay-btn" id="replayBtn" type="button">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5"/></svg>
+                  重新播放
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
-        // 移除所有标签的active状态和颜色
-        tabs.forEach((tab, i) => {
-            tab.classList.remove('active');
-            tab.classList.remove(...tabColors[i].border.split(' '));
-            tab.classList.remove(...tabColors[i].text.split(' '));
-            tab.classList.add('text-foreground/40', 'hover:text-foreground/70', 'border-transparent');
-        });
+    <!-- ===== 模型跑马灯 ===== -->
+    <div class="model-strip reveal" aria-label="支持的主流模型">
+      <div class="strip-title">兼容主流模型 · 统一标准接口</div>
+      <div class="marquee">
+        <div class="marquee-group" id="marqueeA">
+          <span class="model-chip"><span class="dot"></span>OpenAI · GPT</span>
+          <span class="model-chip"><span class="dot"></span>Anthropic · Claude</span>
+          <span class="model-chip"><span class="dot"></span>Google · Gemini</span>
+          <span class="model-chip"><span class="dot"></span>DeepSeek</span>
+          <span class="model-chip"><span class="dot"></span>阿里 · 通义千问</span>
+          <span class="model-chip"><span class="dot"></span>智谱 · GLM</span>
+          <span class="model-chip"><span class="dot"></span>月之暗面 · Kimi</span>
+          <span class="model-chip"><span class="dot"></span>Ollama · 本地模型</span>
+        </div>
+        <div class="marquee-group" aria-hidden="true">
+          <span class="model-chip"><span class="dot"></span>OpenAI · GPT</span>
+          <span class="model-chip"><span class="dot"></span>Anthropic · Claude</span>
+          <span class="model-chip"><span class="dot"></span>Google · Gemini</span>
+          <span class="model-chip"><span class="dot"></span>DeepSeek</span>
+          <span class="model-chip"><span class="dot"></span>阿里 · 通义千问</span>
+          <span class="model-chip"><span class="dot"></span>智谱 · GLM</span>
+          <span class="model-chip"><span class="dot"></span>月之暗面 · Kimi</span>
+          <span class="model-chip"><span class="dot"></span>Ollama · 本地模型</span>
+        </div>
+      </div>
+    </div>
 
-        // 激活选中的标签
-        const activeTab = tabs[index];
-        activeTab.classList.add('active');
-        activeTab.classList.remove('text-foreground/40', 'hover:text-foreground/70', 'border-transparent');
-        activeTab.classList.add(...tabColors[index].border.split(' '));
-        activeTab.classList.add(...tabColors[index].text.split(' '));
+    <!-- ===== 产品能力 ===== -->
+    <section class="section" id="features">
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="eyebrow">产品能力</div>
+          <h2>保持在技术前沿</h2>
+          <p class="desc">无论是写代码、做文档还是跑自动化流程，GWork 都能让 AI 真正落到你的日常工作里。</p>
+        </div>
+        <div class="feature-grid">
+          <div class="feature-card reveal">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 7 2 2 4-4"/><path d="m3 17 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
+            </div>
+            <h3>Agent 任务编排</h3>
+            <p>把复杂目标拆成可见的多步计划，子代理分工协作，执行过程全程可查、随时接管。</p>
+          </div>
+          <div class="feature-card reveal" style="transition-delay: 60ms">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+            </div>
+            <h3>技能与插件市场</h3>
+            <p>内置技能市场一键安装社区能力，MCP 工具即插即用，让工作台持续进化。</p>
+          </div>
+          <div class="feature-card reveal" style="transition-delay: 120ms">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg>
+            </div>
+            <h3>多模型统一接入</h3>
+            <p>一个界面连接 OpenAI、Claude、Gemini、DeepSeek 与本地 Ollama，随时切换、统一计费口径。</p>
+          </div>
+          <div class="feature-card reveal">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+            </div>
+            <h3>内置编码工作台</h3>
+            <p>Monaco 编辑器、Git 差异对比与集成终端一应俱全，AI 直接在你的项目里读写与验证。</p>
+          </div>
+          <div class="feature-card reveal" style="transition-delay: 60ms">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
+            </div>
+            <h3>本地优先 · 数据自主</h3>
+            <p>工作区与会话数据保存在本地 <code style="font-size:12px">.gwork</code> 目录，密钥不出机器，可完全自托管。</p>
+          </div>
+          <div class="feature-card reveal" style="transition-delay: 120ms">
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+            </div>
+            <h3>跨平台一致体验</h3>
+            <p>Windows、macOS、Linux 同源构建，界面与能力保持一致，换设备无缝衔接。</p>
+          </div>
+        </div>
+      </div>
+    </section>
 
-        // 更新内容区域
-        const data = tabData[index];
-        const methodBadge = document.getElementById('method-badge');
-        const endpointText = document.getElementById('endpoint-text');
-        const requestContent = document.getElementById('request-content');
-        const responseContent = document.getElementById('response-content');
-        const statLatency = document.getElementById('stat-latency');
-        const statTokens = document.getElementById('stat-tokens');
-        const statCost = document.getElementById('stat-cost');
+    <!-- ===== 三步上手 ===== -->
+    <section class="section" id="quickstart">
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="eyebrow">快速上手</div>
+          <h2>三步开始你的第一个任务</h2>
+        </div>
+        <div class="steps">
+          <div class="step-card reveal">
+            <h3>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
+              下载安装
+            </h3>
+            <p>选择对应平台的安装包，双击运行，一分钟内完成安装并启动。</p>
+          </div>
+          <div class="step-card reveal" style="transition-delay: 80ms">
+            <h3>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></svg>
+              接入模型
+            </h3>
+            <p>填入任意服务商的 API Key，或连接本地 Ollama；界面语言跟随系统，开箱即用。</p>
+          </div>
+          <div class="step-card reveal" style="transition-delay: 160ms">
+            <h3>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>
+              开始任务
+            </h3>
+            <p>用一句话描述目标，Agent 自动规划、执行并汇报，你只需审阅与确认。</p>
+          </div>
+        </div>
+      </div>
+    </section>
 
-        if (methodBadge) {
-            methodBadge.className = `rounded-md px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wider ${data.methodClass}`;
-            methodBadge.textContent = data.method;
-        }
-        if (endpointText) endpointText.textContent = data.endpoint;
-        if (requestContent) requestContent.innerHTML = data.request;
-        if (responseContent) responseContent.innerHTML = data.response;
-        if (statLatency) statLatency.textContent = data.latency;
-        if (statTokens) statTokens.textContent = data.tokens;
-        if (statCost) statCost.textContent = data.cost;
+    <!-- ===== 全部下载 ===== -->
+    <section class="section" id="downloads">
+      <div class="container">
+        <div class="section-head reveal">
+          <div class="eyebrow">多端下载</div>
+          <h2>全部下载</h2>
+          <p class="desc">GWork 支持的所有平台安装包。</p>
+        </div>
+        <div class="download-note reveal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5"/></svg>
+          已内置自动更新，安装后始终保持在最新版本。
+        </div>
+        <div class="download-grid reveal" id="downloadGrid">
+          <noscript>
+            <div class="dl-col">
+              <div class="dl-col-head"><h3>Windows</h3></div>
+              <div class="dl-rows">
+                <a class="dl-row" href="downloads/GWork-Setup.exe">
+                  <span class="dl-info"><span class="dl-name">Windows（64 位）</span><span class="fmt">.exe</span></span>
+                </a>
+              </div>
+            </div>
+            <div class="dl-col">
+              <div class="dl-col-head"><h3>macOS</h3></div>
+              <div class="dl-rows">
+                <a class="dl-row" href="downloads/GWork-arm64.dmg">
+                  <span class="dl-info"><span class="dl-name">macOS（Apple 芯片）</span><span class="fmt">.dmg</span></span>
+                </a>
+                <a class="dl-row" href="downloads/GWork-x64.dmg">
+                  <span class="dl-info"><span class="dl-name">macOS（Intel 芯片）</span><span class="fmt">.dmg</span></span>
+                </a>
+              </div>
+            </div>
+            <div class="dl-col">
+              <div class="dl-col-head"><h3>Linux</h3></div>
+              <div class="dl-rows">
+                <a class="dl-row" href="downloads/GWork.AppImage">
+                  <span class="dl-info"><span class="dl-name">Linux x64（免安装）</span><span class="fmt">.AppImage</span></span>
+                </a>
+                <a class="dl-row" href="downloads/GWork.deb">
+                  <span class="dl-info"><span class="dl-name">Linux x64（Debian/Ubuntu）</span><span class="fmt">.deb</span></span>
+                </a>
+              </div>
+            </div>
+          </noscript>
+        </div>
+      </div>
+    </section>
+  </main>
 
-        currentTab = index;
-    }
+  <!-- ===== Footer ===== -->
+  <footer class="footer">
+    <div class="container">
+      <hr>
+      <div class="footer-inner">
+        <div class="footer-brand">
+          <img src="assets/logo-white.png" alt="GWork">
+          <span>© 2026 GWork · gourdwork.com</span>
+        </div>
+        <div class="footer-links">
+          <a href="#features">产品能力</a>
+          <a href="#downloads">下载</a>
+          <a href="#top">返回顶部</a>
+        </div>
+      </div>
+    </div>
+  </footer>
 
-    // 点击事件
-    tabs.forEach((tab, index) => {
-        tab.addEventListener('click', () => {
-            console.log('点击标签', index);
-            switchTab(index);
-            clearInterval(autoSwitchInterval);
-            startAutoSwitch();
-        });
-    });
-
-    // 自动切换
-    function startAutoSwitch() {
-        autoSwitchInterval = setInterval(() => {
-            currentTab = (currentTab + 1) % tabs.length;
-            switchTab(currentTab);
-        }, 4500);
-    }
-
-    // 初始化 - 默认显示第1个标签（Chat - 绿色）
-    switchTab(0);
-    startAutoSwitch();
-})();
-</script>
+  <script src="js/main.js" defer></script>
 </body>
 </html>

@@ -76,7 +76,7 @@ class LoopExecutionResultTest {
                 LoopExecutionResult.fromText("done\n[GOAL_ACHIEVED]"),
                 1, "GOAL_ACHIEVED");
 
-        String json = new String(Files.readAllBytes(workspace.resolve(".gourdai").resolve("loops")
+        String json = new String(Files.readAllBytes(workspace.resolve(".gwork").resolve("loops")
                 .resolve(task.getId()).resolve("history.json")), "UTF-8");
         ONode root = ONode.ofJson(json);
 

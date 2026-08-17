@@ -190,14 +190,12 @@ function ensureThinkingBlock(sess) {
         // text 的内容可能仍缓存在 reasonBuffer 里、contentRafId 尚未触发，此刻 md-content 还是空的。
         // 若此时仅凭 children/textContent 判空，会把思考块插到空气泡之前，随后待渲染的正文落进该气泡，
         // 造成「先到的正文反被顶到后到的思考块之下」（思考块错误置顶）。故把待渲染缓冲一并计入。
-        var hasPendingText = (sess.reasonBuffer && sess.reasonBuffer.trim().length > 0) || !!sess.contentRafId;
+        var hasPendingText = !!(sess.reasonBuffer && sess.reasonBuffer.trim().length > 0);
         var hasContent = cur && ((cur.children && cur.children.length > 0) || (cur.textContent || '').trim().length > 0 || hasPendingText);
         if (hasContent) {
-            // 先把 rAF 里挂起的正文刷进旧气泡，避免其稍后写入新（错误）气泡
-            if (sess.contentRafId) {
-                cancelAnimationFrame(sess.contentRafId);
-                sess.contentRafId = null;
-                cur.innerHTML = renderMd(sess.reasonBuffer);
+            // 先把增量渲染器挂起的尾部刷进旧气泡（finish 内部取消 rAF 并全量收敛），避免其稍后写入新（错误）气泡
+            if (hasPendingText) {
+                getStreamMd(cur).finish();
                 if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(cur);
                 if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(cur);
             }
@@ -236,7 +234,7 @@ function ensureThinkingBlock(sess) {
         });
         sess.thinkingBuffer = '';
         var currentTimerSpan = $(block).find('.thinking-current-timer')[0];
-        startThinkingTimerDual(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime', currentTimerSpan, null);
+        startThinkingTimer(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime', currentTimerSpan);
     }
     return sess.thinkingBlockEl;
 }
@@ -264,12 +262,8 @@ function insertBeforeActions(sess, el) {
 function finishThinkingBlock(sess) {
     if (sess.thinkingBlockEl) {
         stopThinkingTimer(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime');
-        if (sess.reasonRafId) {
-            cancelAnimationFrame(sess.reasonRafId);
-            sess.reasonRafId = null;
-            if (sess.thinkingBodyMdEl) {
-                sess.thinkingBodyMdEl.innerHTML = renderMd(sess.thinkingBuffer);
-            }
+        if (sess.thinkingBodyMdEl) {
+            getStreamMd(sess.thinkingBodyMdEl).finish();
         }
         if (sess.thinkingBodyMdEl && typeof processMermaidBlocks === 'function') processMermaidBlocks(sess.thinkingBodyMdEl);
         $(sess.thinkingBlockEl).removeClass('streaming');
@@ -299,28 +293,28 @@ function clearThinkTags(text) {
 function appendReasonChunk(sess, text) {
     removeThinking(sess);
     ensureThinkingBlock(sess);
-    sess.thinkingBuffer += clearThinkTags(text);
-    if (!sess.reasonRafId) {
-        sess.reasonRafId = requestAnimationFrame(function() {
-            sess.reasonRafId = null;
-            if (!sess.thinkingBlockEl) return;
-            if (sess.thinkingBodyMdEl) {
-                sess.thinkingBodyMdEl.innerHTML = renderMd(sess.thinkingBuffer);
+    var clean = clearThinkTags(text);
+    sess.thinkingBuffer += clean;
+    var mdEl = sess.thinkingBodyMdEl;
+    if (!mdEl) return;
+    // 增量渲染：stable 块只追加一次，tail 每帧重建（极小），消除逐帧全量 innerHTML 重建引起的闪烁
+    var r = getStreamMd(mdEl);
+    r.afterRender = function() {
+        if (!sess.thinkingBlockEl) return;
+        if (sess.thinkingBodyWrapEl) {
+            // 仅当用户未主动向上滚动时才自动跟随底部
+            if (!sess.thinkingUserScrolledUp) {
+                sess.thinkingBodyWrapEl.scrollTop = sess.thinkingBodyWrapEl.scrollHeight;
             }
-            if (sess.thinkingBodyWrapEl) {
-                // 仅当用户未主动向上滚动时才自动跟随底部
-                if (!sess.thinkingUserScrolledUp) {
-                    sess.thinkingBodyWrapEl.scrollTop = sess.thinkingBodyWrapEl.scrollHeight;
-                }
+        }
+        if (sess.sessionId === activeSessionId) {
+            if (!userScrolledUp && messagesWrap) {
+                // 同步赋值减少跳帧
+                messagesWrap.scrollTop = messagesWrap.scrollHeight;
             }
-            if (sess.sessionId === activeSessionId) {
-                if (!userScrolledUp && messagesWrap) {
-                    // 同步赋值减少跳帧
-                    messagesWrap.scrollTop = messagesWrap.scrollHeight;
-                }
-            }
-        });
-    }
+        }
+    };
+    r.append(clean);
 }
 
 function finishPendingTool(sess) {
@@ -1115,28 +1109,23 @@ function appendActionEndChunk(sess, toolName, text, args, toolTitle, actionId, m
 function appendContentChunk(sess, text, append) {
     var clean = clearThinkTags(text);
     sess.reasonBuffer = append ? sess.reasonBuffer + clean : clean;
-    // 节流：同一帧内只渲染一次，避免模型输出极快时高频渲染导致页面闪动
-    if (!sess.contentRafId) {
-        sess.contentRafId = requestAnimationFrame(function() {
-            var el = ensureAssistantBubble(sess);
-            // 流式接收过程中不写 data-md-raw（该属性是复制源，仅由 finishStream 后后端最终答案写入）；
-            // 避免复制到被工具调用切开的中间片段。
-            el.innerHTML = renderMd(sess.reasonBuffer);
-            // 按钮仅添加一次（通过 data-hljs-collected 标记跳过已有按钮的 pre）
-            addCodeBlockButtons(el);
-            // 流式过程中不实时高亮，等 finishStream 时再一次性处理，避免高亮引起的布局跳动
-            // highlightCodeBlocks 延迟执行导致高度变化是抖动的主因
-
-            sess.contentRafId = null;
-
-            if (sess.sessionId === activeSessionId) {
-                if (!userScrolledUp && messagesWrap && !sess._skipScroll) {
-                    // 直接用同步赋值减少跳帧；scrollToBottom 的 rAF 在这里已经太晚
-                    messagesWrap.scrollTop = messagesWrap.scrollHeight;
-                }
+    var el = ensureAssistantBubble(sess);
+    // 增量渲染：stable 块只追加一次，tail 每帧重建（极小），消除逐帧全量 innerHTML 重建引起的闪烁
+    var r = getStreamMd(el);
+    r.afterRender = function() {
+        // 流式接收过程中不写 data-md-raw（该属性是复制源，仅由 finishStream 后后端最终答案写入）；
+        // 避免复制到被工具调用切开的中间片段。
+        // 按钮仅添加一次（通过 data-hljs-collected 标记跳过已有按钮的 pre）
+        if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
+        // 流式过程中不实时高亮，等 finishStream 时再一次性处理，避免高亮引起的布局跳动
+        if (sess.sessionId === activeSessionId) {
+            if (!userScrolledUp && messagesWrap && !sess._skipScroll) {
+                // 直接用同步赋值减少跳帧；scrollToBottom 的 rAF 在这里已经太晚
+                messagesWrap.scrollTop = messagesWrap.scrollHeight;
             }
-        });
-    }
+        }
+    };
+    if (append) r.append(clean); else r.replace(clean);
 }
 
 function appendErrorChunk(sess, text) {
@@ -1254,11 +1243,9 @@ function appendTraceBadge(sess, chunk) {
             // 强刷：确保该智能体 pending 的正文/思考都先渲染（按各自独立状态，支持并行）
             var endState = (sess.agentStates && sess.agentStates[agentId]) || null;
             if (endState) {
-                if (endState.bodyRafId) { cancelAnimationFrame(endState.bodyRafId); endState.bodyRafId = null; }
-                if (endState.thinkingRafId) { cancelAnimationFrame(endState.thinkingRafId); endState.thinkingRafId = null; }
                 if (endState.thinkingBlockEl && endState.thinkingBuffer) {
                     if (endState.thinkingBodyMdEl) {
-                        endState.thinkingBodyMdEl.innerHTML = renderMd(clearThinkTags(endState.thinkingBuffer));
+                        getStreamMd(endState.thinkingBodyMdEl).finish();
                         if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(endState.thinkingBodyMdEl);
                         if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(endState.thinkingBodyMdEl);
                         if (typeof processMermaidBlocks === 'function') processMermaidBlocks(endState.thinkingBodyMdEl);
@@ -1266,7 +1253,7 @@ function appendTraceBadge(sess, chunk) {
                     finishAgentThinkingBlock(sess, endState);
                 }
                 if (endState.bodyMd && endState.bodyText) {
-                    endState.bodyMd.innerHTML = renderMd(endState.bodyText);
+                    getStreamMd(endState.bodyMd).finish();
                     if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(endState.bodyMd);
                     if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(endState.bodyMd);
                     if (typeof processMermaidBlocks === 'function') processMermaidBlocks(endState.bodyMd);
@@ -1354,10 +1341,7 @@ function appendTraceBadge(sess, chunk) {
         thinkingBuffer: '',
         thinkingRafId: null,
         thinkingTimerId: null,
-        thinkingStartTime: null,
-        inlineThinkingEl: null,
-        inlineThinkingTimerId: null,
-        inlineThinkingStartTime: null
+        thinkingStartTime: null
     };
     if (!sess.agentStates) sess.agentStates = {};
     sess.agentStates[agentId] = agentState;
@@ -1383,10 +1367,11 @@ function appendTraceBadge(sess, chunk) {
 /* 清理子智能体相关状态。传入 st 时仅清理该智能体（并行场景互不影响）；不传则全量清理。 */
 function clearAgentState(sess, st) {
     if (st) {
+        if (st.bodyMd && st.bodyMd._streamMd) st.bodyMd._streamMd.dispose();
+        if (st.thinkingBodyMdEl && st.thinkingBodyMdEl._streamMd) st.thinkingBodyMdEl._streamMd.dispose();
         if (st.thinkingRafId) { cancelAnimationFrame(st.thinkingRafId); }
         if (st.thinkingTimerId) { clearInterval(st.thinkingTimerId); }
-        if (st.inlineThinkingTimerId) { clearInterval(st.inlineThinkingTimerId); st.inlineThinkingTimerId = null; }
-        if (st.inlineThinkingEl) { $(st.inlineThinkingEl).remove(); st.inlineThinkingEl = null; }
+
         if (st.bodyRafId) { cancelAnimationFrame(st.bodyRafId); }
         if (sess.agentStates) delete sess.agentStates[st.id];
         if (sess._agentStateLast === st) sess._agentStateLast = null;
@@ -1402,10 +1387,11 @@ function clearAgentState(sess, st) {
     if (sess.agentStates) {
         for (var k in sess.agentStates) {
             var s = sess.agentStates[k];
+            if (s.bodyMd && s.bodyMd._streamMd) s.bodyMd._streamMd.dispose();
+            if (s.thinkingBodyMdEl && s.thinkingBodyMdEl._streamMd) s.thinkingBodyMdEl._streamMd.dispose();
             if (s.thinkingRafId) { cancelAnimationFrame(s.thinkingRafId); }
             if (s.thinkingTimerId) { clearInterval(s.thinkingTimerId); }
-            if (s.inlineThinkingTimerId) { clearInterval(s.inlineThinkingTimerId); s.inlineThinkingTimerId = null; }
-            if (s.inlineThinkingEl) { $(s.inlineThinkingEl).remove(); s.inlineThinkingEl = null; }
+            
             if (s.bodyRafId) { cancelAnimationFrame(s.bodyRafId); }
         }
         sess.agentStates = {};
@@ -1427,8 +1413,7 @@ function ensureAgentThinkingBlock(sess, st) {
     if (!st || st.thinkingBlockEl) return;
     // 若正文缓冲区有未渲染内容，先强刷出来，确保新思考块落在旧正文之后
     if (st.bodyText && st.bodyMd) {
-        if (st.bodyRafId) { cancelAnimationFrame(st.bodyRafId); st.bodyRafId = null; }
-        st.bodyMd.innerHTML = renderMd(st.bodyText);
+        getStreamMd(st.bodyMd).finish();
         if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(st.bodyMd);
     }
     // 新思考块应插到最后已有内容之后（按到达顺序），而非始终置顶
@@ -1473,6 +1458,12 @@ function finishAgentThinkingBlock(sess, st) {
     }
     if (!st.thinkingBlockEl) return;
     if (st.thinkingTimerId) { clearInterval(st.thinkingTimerId); st.thinkingTimerId = null; }
+    // 与主思考块 finishThinkingBlock 一致：增量渲染器全量收敛（取消挂起帧、移除 tail/常驻 pre），
+    // 否则块结束后残留帧继续写入、DOM 停留在流式中间态（agent_end 强刷因 thinkingBuffer 已清空调过）
+    if (st.thinkingBodyMdEl) {
+        getStreamMd(st.thinkingBodyMdEl).finish();
+        if (typeof processMermaidBlocks === 'function') processMermaidBlocks(st.thinkingBodyMdEl);
+    }
     $(st.thinkingBlockEl).removeClass('streaming');
     var elapsed = '';
     if (st.thinkingStartTime) elapsed = ' (' + Math.floor((Date.now() - st.thinkingStartTime) / 1000) + 's)';
@@ -1487,16 +1478,17 @@ function finishAgentThinkingBlock(sess, st) {
 function appendAgentReasonChunk(sess, text, st) {
     if (!st) return;
     ensureAgentThinkingBlock(sess, st);
-    st.thinkingBuffer += clearThinkTags(text);
-    if (!st.thinkingRafId) {
-        st.thinkingRafId = requestAnimationFrame(function() {
-            st.thinkingRafId = null;
-            if (!st.thinkingBlockEl) return;
-            if (st.thinkingBodyMdEl) st.thinkingBodyMdEl.innerHTML = renderMd(st.thinkingBuffer);
-            if (st.thinkingBodyWrapEl && !sess.thinkingUserScrolledUp) st.thinkingBodyWrapEl.scrollTop = st.thinkingBodyWrapEl.scrollHeight;
-            if (sess.sessionId === activeSessionId && !userScrolledUp && messagesWrap) messagesWrap.scrollTop = messagesWrap.scrollHeight;
-        });
-    }
+    var clean = clearThinkTags(text);
+    st.thinkingBuffer += clean;
+    var mdEl = st.thinkingBodyMdEl;
+    if (!mdEl) return;
+    var r = getStreamMd(mdEl);
+    r.afterRender = function() {
+        if (!st.thinkingBlockEl) return;
+        if (st.thinkingBodyWrapEl && !sess.thinkingUserScrolledUp) st.thinkingBodyWrapEl.scrollTop = st.thinkingBodyWrapEl.scrollHeight;
+        if (sess.sessionId === activeSessionId && !userScrolledUp && messagesWrap) messagesWrap.scrollTop = messagesWrap.scrollHeight;
+    };
+    r.append(clean);
 }
 
 /* 子代理正文 chunk → md-content (节流渲染) */
@@ -1504,17 +1496,15 @@ function appendAgentBodyContent(sess, text, st) {
     if (!st) st = sess._agentStateLast;
     if (!st || !st.bodyMd) return;
     st.bodyText = (st.bodyText || '') + text;
-    if (!st.bodyRafId) {
-        st.bodyRafId = requestAnimationFrame(function() {
-            st.bodyRafId = null;
-            var body = st.bodyMd;
-            if (body && document.contains(body)) {
-                body.innerHTML = renderMd(st.bodyText);
-                addCodeBlockButtons(body);
-            }
-            if (sess.sessionId === activeSessionId && !userScrolledUp && messagesWrap) messagesWrap.scrollTop = messagesWrap.scrollHeight;
-        });
-    }
+    var body = st.bodyMd;
+    var r = getStreamMd(body);
+    r.afterRender = function() {
+        if (body && document.contains(body)) {
+            if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(body);
+        }
+        if (sess.sessionId === activeSessionId && !userScrolledUp && messagesWrap) messagesWrap.scrollTop = messagesWrap.scrollHeight;
+    };
+    r.append(text);
 }
 
 /* ===== Command Output ===== */
@@ -1528,42 +1518,18 @@ function appendCommandOutput(sess, text) {
 }
 
 /* ===== Thinking Indicators ===== */
-function startThinkingTimer(sess, timerKey, startTimeKey, labelEl, anchorTime) {
-    // anchorTime 用于让计时锚定整段响应起点（sess.messageStartTime），
-    // 这样指示器反复显隐时秒数保持连续，不会从 0 重来。
-    sess[startTimeKey] = anchorTime || Date.now();
-    if (sess[timerKey]) clearInterval(sess[timerKey]);
-    function tick() {
-        if (!labelEl || !labelEl.parentNode) { clearInterval(sess[timerKey]); sess[timerKey] = null; return; }
-        var elapsed = Math.floor((Date.now() - sess[startTimeKey]) / 1000);
-        $(labelEl).text(elapsed + 's');
-    }
-    tick();
-    sess[timerKey] = setInterval(tick, 1000);
-}
-
 function stopThinkingTimer(sess, timerKey, startTimeKey) {
     if (sess[timerKey]) { clearInterval(sess[timerKey]); sess[timerKey] = null; }
     sess[startTimeKey] = null;
 }
 
-// 双计时器版本：同时更新当前思考计时和总时间计时
-// currentTimerSpan: 显示当前思考阶段的时间
-// totalTimerSpan: 显示从消息开始到现在的总时间
-function startThinkingTimerDual(sess, timerKey, startTimeKey, currentTimerSpan, totalTimerSpan) {
+function startThinkingTimer(sess, timerKey, startTimeKey, currentTimerSpan) {
     sess[startTimeKey] = Date.now();
     if (sess[timerKey]) clearInterval(sess[timerKey]);
     function tick() {
         if (!currentTimerSpan || !currentTimerSpan.parentNode) { clearInterval(sess[timerKey]); sess[timerKey] = null; return; }
-        var now = Date.now();
-        // 当前思考阶段时间
-        var currentElapsed = Math.floor((now - sess[startTimeKey]) / 1000);
-        $(currentTimerSpan).text(currentElapsed + 's');
-        // 总时间（从消息发送开始）
-        if (totalTimerSpan && sess.messageStartTime) {
-            var totalElapsed = Math.floor((now - sess.messageStartTime) / 1000);
-            $(totalTimerSpan).text(totalElapsed + 's');
-        }
+        var elapsed = Math.floor((Date.now() - sess[startTimeKey]) / 1000);
+        $(currentTimerSpan).text(elapsed + 's');
     }
     tick();
     sess[timerKey] = setInterval(tick, 1000);
@@ -1579,7 +1545,7 @@ function showThinking(sess) {
         + '</span></div>';
     $(sess.container).append(sess.thinkingEl);
     var currentTimerSpan = $(sess.thinkingEl).find('.thinking-current-timer')[0];
-    startThinkingTimerDual(sess, 'thinkingTimerId', 'thinkingStartTime', currentTimerSpan, null);
+    startThinkingTimer(sess, 'thinkingTimerId', 'thinkingStartTime', currentTimerSpan);
     if (sess.sessionId === activeSessionId) scrollToBottom(true);
 }
 function removeThinking(sess) {
@@ -1609,7 +1575,7 @@ function showInlineThinking(sess) {
     if (!el) return;
     $(el).removeClass('hidden-reserve');
     var currentTimerSpan = $(el).find('.thinking-current-timer')[0];
-    startThinkingTimerDual(sess, 'inlineThinkingTimerId', 'inlineThinkingStartTime', currentTimerSpan, null);
+    startThinkingTimer(sess, 'inlineThinkingTimerId', 'inlineThinkingStartTime', currentTimerSpan);
     if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 function removeInlineThinking(sess) {
@@ -1621,38 +1587,7 @@ function purgeInlineThinking(sess) {
     if (sess.inlineThinkingEl) { $(sess.inlineThinkingEl).remove(); sess.inlineThinkingEl = null; }
 }
 
-// 子智能体卡片级等待指示器（「圆点 + Ns」，挂在卡片头部右侧）：多智能体并行时，
-// 每个卡片在自己的头部独立展示执行中状态，避免全局指示器挂在主气泡底部导致归属不明
-// （卡片外错位显示）。挂在头部而非卡片体：卡片体默认 display:none（简洁模式不展开），
-// 体内指示器在折叠时不可见，等于无反馈；头部恒可见，展开/折叠两种形态都有加载态。
-// 隐藏时直接移除元素（头部无需占位防跳，避免残留空白）。
-function showAgentInlineThinking(sess, st) {
-    if (!st || !st.card) return;
-    var header = $(st.card).children('.agent-card-header')[0];
-    if (!header) return;
-    var el = st.inlineThinkingEl;
-    if (!el || !el.parentNode) {
-        el = $('<div>').addClass('agent-inline-thinking')[0];
-        el.innerHTML = DOTS_HTML + '<span class="thinking-timer-wrap">'
-            + '<span class="thinking-current-timer">0s</span>'
-            + '</span>';
-        st.inlineThinkingEl = el;
-    }
-    if (el.parentNode !== header) header.appendChild(el);
-    var currentTimerSpan = $(el).find('.thinking-current-timer')[0];
-    st.inlineThinkingStartTime = Date.now();
-    if (st.inlineThinkingTimerId) clearInterval(st.inlineThinkingTimerId);
-    st.inlineThinkingTimerId = setInterval(function() {
-        if (!currentTimerSpan || !currentTimerSpan.parentNode) { clearInterval(st.inlineThinkingTimerId); st.inlineThinkingTimerId = null; return; }
-        $(currentTimerSpan).text(Math.floor((Date.now() - st.inlineThinkingStartTime) / 1000) + 's');
-    }, 1000);
-    if (sess.sessionId === activeSessionId && !userScrolledUp && messagesWrap) messagesWrap.scrollTop = messagesWrap.scrollHeight;
-}
-function hideAgentInlineThinking(st) {
-    if (!st) return;
-    if (st.inlineThinkingTimerId) { clearInterval(st.inlineThinkingTimerId); st.inlineThinkingTimerId = null; }
-    if (st.inlineThinkingEl) { $(st.inlineThinkingEl).remove(); st.inlineThinkingEl = null; }
-}
+
 
 /* ===== HITL ===== */
 function appendHitlCard(sess, toolName, command) {

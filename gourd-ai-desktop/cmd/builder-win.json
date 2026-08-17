@@ -1,9 +1,14 @@
 {
   "appId": "org.noear.gourd-ai-desktop",
-  "productName": "Gourd AI",
+  "productName": "GWork",
   "copyright": "Copyright © 2026 noear.org",
   "directories": {
     "output": "out"
+  },
+  "publish": {
+    "provider": "generic",
+    "url": "https://www.gourd-ai.cn/desktop/latest/",
+    "channel": "latest"
   },
   "files": [
     "main/**/*",
@@ -13,7 +18,7 @@
     {
       "from": "build/extraResources/",
       "to": "extraResources",
-      "filter": ["**/*", "!.gourdai", "!.gourdai/**"]
+      "filter": ["**/*", "!.gwork", "!.gwork/**", "!.gourdai", "!.gourdai/**"]
     },
     {
       "from": "build/ui/",
@@ -40,7 +45,7 @@
     "allowToChangeInstallationDirectory": true,
     "installerIcon": "build/icons/icon.ico",
     "uninstallerIcon": "build/icons/icon.ico",
-    "shortcutName": "Gourd AI",
+    "shortcutName": "GWork",
     "include": "cmd/installer.nsh"
   }
 }

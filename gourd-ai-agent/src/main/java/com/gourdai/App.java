@@ -38,6 +38,10 @@ import java.net.URL;
 public class App {
 
     public static void main(String[] args) {
+        // 品牌升级：.gourdai → .gwork 一次性目录迁移（必须先于任何配置/会话读取，
+        // ACP/CLI 启动器直连 java -jar 不经桌面端 Node，故迁移必须在此收口）
+        AgentFlags.migrateLegacyHarnessHome();
+
         boolean isAcpMode = args.length > 0 && AgentFlags.FLAG_ACP.equals(args[0]);
 
         // 1. 移除 JUL 默认的控制台处理器

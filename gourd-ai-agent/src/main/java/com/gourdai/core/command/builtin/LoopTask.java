@@ -32,7 +32,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *   <li>Skills — AI 根据 prompt 自动匹配可用技能</li>
  *   <li>Worktrees — worktreeEnabled 在独立分支执行</li>
  *   <li>Connectors — channelNotify 结果通知</li>
- *   <li>State — stateDir 持久状态目录 (.gourdai/loops/&lt;id&gt;/)</li>
+ *   <li>State — stateDir 持久状态目录 (.gwork/loops/&lt;id&gt;/)</li>
  * </ul>
  *
  * @author oisin

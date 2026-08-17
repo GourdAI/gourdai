@@ -30,24 +30,24 @@ public class AcpModelResolveTest {
 
     @Test
     public void acpModelTakesPrecedence() {
-        AgentSettings settings = settingsWith("Gourd AI-gourdai-2.0", "Gourd AI-claude-haiku",
-                "Gourd AI-gourdai-2.0", "Gourd AI-claude-haiku");
+        AgentSettings settings = settingsWith("GWork-gourdai-2.0", "GWork-claude-haiku",
+                "GWork-gourdai-2.0", "GWork-claude-haiku");
 
-        assertEquals("Gourd AI-gourdai-2.0", AcpLink.resolveModelName(settings));
+        assertEquals("GWork-gourdai-2.0", AcpLink.resolveModelName(settings));
     }
 
     @Test
     public void fallbackToDefaultModelWhenAcpModelEmpty() {
-        AgentSettings settings = settingsWith(null, "Gourd AI-claude-haiku", "Gourd AI-claude-haiku");
+        AgentSettings settings = settingsWith(null, "GWork-claude-haiku", "GWork-claude-haiku");
 
-        assertEquals("Gourd AI-claude-haiku", AcpLink.resolveModelName(settings));
+        assertEquals("GWork-claude-haiku", AcpLink.resolveModelName(settings));
     }
 
     @Test
     public void fallbackToDefaultModelWhenAcpModelBlank() {
-        AgentSettings settings = settingsWith("  ", "Gourd AI-claude-haiku", "Gourd AI-claude-haiku");
+        AgentSettings settings = settingsWith("  ", "GWork-claude-haiku", "GWork-claude-haiku");
 
-        assertEquals("Gourd AI-claude-haiku", AcpLink.resolveModelName(settings));
+        assertEquals("GWork-claude-haiku", AcpLink.resolveModelName(settings));
     }
 
     @Test

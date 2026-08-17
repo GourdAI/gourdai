@@ -66,7 +66,7 @@
                 fetchedModels = [];
                 renderModelsList();
                 if (currentProvider) {
-                    persistProvider(false);
+                    persistProvider();
                 }
             });
         });
@@ -142,7 +142,7 @@
                     }
                 }
                 if (currentProvider) {
-                    persistProvider(false);
+                    persistProvider();
                 }
             });
         }
@@ -152,14 +152,14 @@
             if (currentProvider) {
                 // 先同步隐藏域，再持久化（通用作用域切换 handler 在其后执行，两者幂等）
                 $('#providerScope').val($(this).data('scope'));
-                persistProvider(false);
+                persistProvider();
             }
         });
         $('input[name="providerStandard"]').on('change', function () {
-            if (currentProvider) persistProvider(false);
+            if (currentProvider) persistProvider();
         });
         $('#providerApiUrl, #providerApiKey, #providerTimeout').on('change', function () {
-            if (currentProvider) persistProvider(false);
+            if (currentProvider) persistProvider();
         });
 
         // 批量选择菜单
@@ -217,7 +217,10 @@
             method: 'GET',
             success: function (res) {
                 if (res.code === 200) {
-                    providers = res.data || [];
+                    // 屏蔽内置服务商（GWork）：不在设置页连接列表中展示（后端配置不受影响）
+                    providers = (res.data || []).filter(function (p) {
+                        return !p.builtin;
+                    });
                     renderProvidersList();
                 }
             },
@@ -294,7 +297,7 @@
         // 内置连接不可删除：隐藏删除按钮（其余字段照常可编辑）
         $('#providerFormDeleteBtn').toggle(!!provider && !isBuiltin);
 
-        // 仅内置服务商（Gourd AI 官方托管）显示"访问官网获取 API 密钥"提示，其它自定义服务商不显示
+        // 仅内置服务商（GWork 官方托管）显示"访问官网获取 API 密钥"提示，其它自定义服务商不显示
         $('#providerBuiltinKeyHint').toggle(isBuiltin);
 
         // 设置作用域按钮状态
@@ -438,7 +441,7 @@
             renderModelsList();
             // 编辑模式下即时生效（新增模式仍随保存按钮一并提交）
             if (currentProvider) {
-                persistProvider(false);
+                persistProvider();
             }
             $overlay.remove();
         }
@@ -464,7 +467,7 @@
         });
         renderModelsList();
         if (currentProvider) {
-            persistProvider(false);
+            persistProvider();
         }
     }
 
@@ -535,7 +538,7 @@
                             renderModelsList();
                             // 编辑模式下拉取结果即时生效
                             if (currentProvider) {
-                                persistProvider(false);
+                                persistProvider();
                             }
                         });
                 showToast(GourdI18n.t('settings.providers.fetch_models_success').replace('{0}', fetchedModels.length), 'success');
@@ -664,12 +667,12 @@
                 }
                 // 持久化按模型启用状态，避免后续同步把开关状态改回去
                 if (currentProvider) {
-                    persistProvider(false);
+                    persistProvider();
                 }
             });
         } else if (currentProvider) {
             // 未同步：即时持久化并触发后端同步生成运行时模型
-            persistProvider(false);
+            persistProvider();
         }
     }
 
@@ -692,9 +695,8 @@
         });
     }
 
-    // 持久化连接及其模型列表。showSuccessToast=true 用于手动保存场景提示；
-    // 编辑模式下各处即时生效的调用传 false（静默保存）
-    function persistProvider(showSuccessToast) {
+    // 持久化连接及其模型列表（保存成功不弹提示，仅失败时提示）
+    function persistProvider() {
         var name = $('#providerName').val();
         var standard = $('input[name="providerStandard"]:checked').val() || DEFAULT_STANDARD;
         var apiUrl = $('#providerApiUrl').val();
@@ -744,9 +746,6 @@
             data: JSON.stringify(data),
             success: function (res) {
                 if (res.code === 200) {
-                    if (showSuccessToast) {
-                        showToast(currentProvider ? GourdI18n.t('settings.loop.updated') : GourdI18n.t('settings.loop.created') + ' ' + GourdI18n.t('settings.providers.title') + GourdI18n.t('settings.providers.model_management'), 'success');
-                    }
                     if (currentProvider) {
                         // 列表接口返回的 apiKey 是脱敏值，回填真实密钥，避免下次即时保存把脱敏值写进去
                         currentProvider.apiKey = apiKey;
@@ -755,9 +754,9 @@
                             loadLlmModelsCache(function () {
                                 renderModelsList();
                             });
-                        }, !showSuccessToast);
+                        });
                     } else {
-                        syncModelsToLlm(data, null, !showSuccessToast);
+                        syncModelsToLlm(data, null);
                         showList();
                     }
                 } else {
@@ -772,7 +771,7 @@
 
     // 保存按钮（新增模式使用；编辑模式隐藏该按钮，所有操作即时生效）
     function saveProvider() {
-        persistProvider(true);
+        persistProvider();
     }
 
     // 归一化超时输入：数字 -> "Ns"；已带 s 或空则原样返回
@@ -783,8 +782,7 @@
         return t;
     }
 
-    // silent=true 时不弹同步成功提示（编辑模式即时生效场景），仅手动保存时展示
-    function syncModelsToLlm(providerData, onDone, silent) {
+    function syncModelsToLlm(providerData, onDone) {
         // 调用后端接口同步模型
         $.ajax({
             url: '/web/settings/providers/sync-models',
@@ -796,9 +794,6 @@
             }),
             success: function (res) {
                 if (res.code === 200) {
-                    if (!silent && res.data > 0) {
-                        showToast(GourdI18n.t('settings.loop.updated') + ' ' + res.data + ' ' + GourdI18n.t('settings.providers.title') + GourdI18n.t('settings.providers.model_management'), 'success');
-                    }
                     // 通知聊天组件刷新模型下拉列表（新增/更新/删除后都要刷新）
                     if (typeof window.reloadModels === 'function') {
                         window.reloadModels();

@@ -5,15 +5,15 @@ server.request:
   maxFileSize: 2mb
 
 solon.app:
-  name: "gourdai"
-  title: "Gourd AI"
+  name: "gwork"
+  title: "GWork"
 
 solon.logging.appender:
   console:
     enable: false
   file:
     level: DEBUG
-    name: ".gourdai/logs/${solon.app.name}"
+    name: ".gwork/logs/${solon.app.name}"
 
 solon:
   logging:

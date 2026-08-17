@@ -51,7 +51,7 @@ import java.nio.file.Paths;
 import java.util.*;
 
 /**
- * Web 门户控制器 —— Gourd AI Web UI 的核心 HTTP 入口。
+ * Web 门户控制器 —— GWork Web UI 的核心 HTTP 入口。
  *
  * <p>职责：接收前端浏览器的 HTTP 请求，将聊天输入、会话管理、Git 操作、文件树浏览等
  * 业务委派给 {@link WebGate}（WebSocket 推送）和 {@link HarnessEngine}（AI 引擎）处理。</p>
@@ -207,8 +207,8 @@ public class WebController {
 
     /**
      * 加载会话列表（按模式区分存储位置）。
-     * <p><b>chat 模式</b>（默认）：扫描安装目录 {@code .gourdai/sessions} 下 {@code web-} 前缀会话（全局、固定不变）。
-     * <b>code 模式</b>：扫描所选项目 {@code <root>/.gourdai/sessions} 下 {@code code-} 前缀会话。</p>
+     * <p><b>chat 模式</b>（默认）：扫描安装目录 {@code .gwork/sessions} 下 {@code web-} 前缀会话（全局、固定不变）。
+     * <b>code 模式</b>：扫描所选项目 {@code <root>/.gwork/sessions} 下 {@code code-} 前缀会话。</p>
      *
      * @param mode 会话模式：{@code "code"} 或其它（默认 chat）
      * @param root code 模式下的项目根目录绝对路径
@@ -772,12 +772,19 @@ public class WebController {
                 }
             }
 
-            // Code 模式：先登记会话所属项目根，确保 AgentSessionProvider 把会话落到项目 .gourdai/sessions/
+            // Code 模式：先登记会话所属项目根，确保 AgentSessionProvider 把会话落到项目 .gwork/sessions/
             if (SessionLocator.isCodeSession(sessionId) && Assert.isNotEmpty(sessionCwd)) {
                 sessionLocator.bindCodeProject(sessionId, sessionCwd);
             }
 
             String hitlAction = ctx.param("hitlAction");
+
+            // 并发防护预检：会话已有任务在执行时直接返回 busy（前端暂存消息待完成后补发），
+            // 并避免把不会执行的用户输入记入 stream.ndjson（补发时会重新记录）。
+            // HITL 审批/拒绝不受限（其前置流必终止）。WebGate.onChatInput 内部仍有同语义兵底检查。
+            if (Assert.isEmpty(hitlAction) && webGate.isSessionBusy(sessionId)) {
+                return Result.succeed("busy");
+            }
 
             // 流式过程回放留存：网页手动输入的用户气泡由前端本地渲染、不走 emitToClient，
             // 故在此显式补记一条 user 事件到 stream.ndjson，保证历史回放时用户消息不丢失。
@@ -789,7 +796,11 @@ public class WebController {
 
             // 路由到 WebGate 处理（AI 结果通过 WebSocket 推送到前端）
             // 网页端手动输入：source=null，出站不回推 IM（仅当活跃会话由 IM/Loop 触发时才回推）
-            webGate.onChatInput(sessionId, sessionCwd, input, model, attachments, attachmentTypes, hitlAction, null);
+            boolean accepted = webGate.onChatInput(sessionId, sessionCwd, input, model, attachments, attachmentTypes, hitlAction, null);
+            if (!accepted) {
+                // 预检与受理之间的竞态窗口内任务刚启动：同 busy 语义返回，前端暂存补发
+                return Result.succeed("busy");
+            }
 
             // 返回简单 JSON，前端通过 WebSocket 接收 AI 结果
             return Result.succeed();

@@ -27,6 +27,7 @@ import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 import org.noear.solon.Utils;
 import com.gourdai.agent.AgentSession;
+import com.gourdai.agent.util.AgentUtil;
 import com.gourdai.agent.react.ReActAgent;
 import com.gourdai.agent.react.ReActChunk;
 import com.gourdai.agent.react.ReActTrace;
@@ -701,7 +702,8 @@ public class CliShell implements Runnable {
                 terminal.writer().println();
                 if (TodoTalent.TOOL_TODOWRITE.equals(action.getToolName())) {
                     //优化 todowrite 打印
-                    argsStr = "\n" + ((String) args.get("todos")).trim();
+                    String todos = AgentUtil.asStringArg(args, TodoTalent.PARAM_TODOS);
+                    argsStr = "\n" + (todos == null ? "" : todos.trim());
                     terminal.writer().println(PURPLE + "❯ " + RESET + BOLD + fullToolName + RESET + " " + DIM + argsStr + RESET);
                 } else {
 
@@ -765,7 +767,7 @@ public class CliShell implements Runnable {
 
         String path = new File(engine.getWorkspace()).getAbsolutePath();
         // 连带版本号，紧凑排列
-        terminal.writer().println(BOLD + "Gourd AI" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + modelName + RESET);
+        terminal.writer().println(BOLD + "GWork" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + modelName + RESET);
         terminal.writer().println(DIM + path + RESET);
         terminal.writer().println(DIM + "Tips: " +
                 RESET + "(esc)" + DIM + " interrupt | " +
@@ -788,7 +790,7 @@ public class CliShell implements Runnable {
 
         String path = new File(engine.getWorkspace()).getAbsolutePath();
 
-        System.out.println(BOLD + "Gourd AI" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + modelName + RESET);
+        System.out.println(BOLD + "GWork" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + modelName + RESET);
         System.out.println(DIM + path + RESET);
         System.out.println(DIM + DateUtil.format(new Date(), "yyyy-MM-dd HH:mm") + RESET);
         System.out.println(text);

@@ -68,7 +68,7 @@
             isDragging = false;
             $resizeHandle.removeClass('dragging');
             $(document.body).css({ cursor: '', userSelect: '' });
-            // code 模式：拖完刷新 CodeMirror，修正行号/光标测量缓存（编辑器本身已随 flex 流式变宽）
+            // code 模式：拖完刷新编辑器布局（Monaco 已随 flex 流式变宽，此处仅触发 layout 校正）
             if (inCodeMode() && typeof window.refreshCodeEditor === 'function') window.refreshCodeEditor();
         });
     }
@@ -149,8 +149,76 @@
         return '';
     }
 
+    // ---- Git 状态着色缓存 ----
+    // 数据由 app-gitdiff.js 在 git status 加载成功后推送（window.filerOnGitStatus），
+    // 本文件零额外接口请求、零额外 git 进程调用，只做内存查表与 class 切换。
+    // files: 文件路径 -> 变更类型（A 新增 / M 修改 / D 删除 / U 未跟踪）
+    // dirs:  目录路径 -> 子树内优先级最高的变更类型（目录名一并着色）
+    var gitColorCache = null;
+    var GIT_TYPE_PRIORITY = { 'D': 3, 'M': 2, 'A': 1, 'U': 1 };
+
+    // 变更类型 -> 颜色 class 后缀（未跟踪视同新增，与 Git 审查面板一致）
+    function gitTypeToClass(type) {
+        if (type === 'D') return 'deleted';
+        if (type === 'M') return 'modified';
+        return 'added'; // A / U
+    }
+
+    // O(变更文件数 × 路径深度) 构建缓存；目录染色仅需一次查表，无逐目录递归
+    function buildGitColorCache(files) {
+        var cache = { files: {}, dirs: {} };
+        (files || []).forEach(function(f) {
+            var p = f && f.path;
+            var t = f && f.type;
+            if (!p || !t) return;
+            cache.files[p] = t;
+            // 沿路径向上聚合祖先目录状态（取优先级最高者）
+            var idx = p.lastIndexOf('/');
+            var dir = idx > 0 ? p.substring(0, idx) : '';
+            while (dir) {
+                var prev = cache.dirs[dir];
+                if (!prev || (GIT_TYPE_PRIORITY[t] || 0) > (GIT_TYPE_PRIORITY[prev] || 0)) {
+                    cache.dirs[dir] = t;
+                }
+                var next = dir.lastIndexOf('/');
+                dir = next > 0 ? dir.substring(0, next) : '';
+            }
+        });
+        return cache;
+    }
+
+    // 节点查表：文件精确匹配，目录直接取子树聚合结果（O(1)）
+    function gitColorOf(path, nodeType) {
+        if (!gitColorCache) return null;
+        return nodeType === 'directory' ? gitColorCache.dirs[path] : gitColorCache.files[path];
+    }
+
+    // 只操作 class 列表：无状态变化时 jQuery 不会触碰 attribute，不触发重排
+    function setGitColorClass($nameEl, statusType) {
+        $nameEl.removeClass('filer-git-modified filer-git-added filer-git-deleted');
+        if (statusType) $nameEl.addClass('filer-git-' + gitTypeToClass(statusType));
+    }
+
+    // 全树重套色：仅在 git status 推送时调用一次，O(节点数) 纯查表
+    function applyGitColorsToTree() {
+        if (!$treeEl.length) return;
+        $treeEl.find('.filer-node').each(function() {
+            var $el = $(this);
+            var st = gitColorOf($el.attr('data-path') || '', $el.attr('data-type') || '');
+            setGitColorClass($el.children('.filer-node-row').children('.filer-node-name'), st);
+        });
+    }
+
+    // 由 app-gitdiff.js 在 status 加载成功后推送；提交/暂存操作后颜色随其刷新自动更新
+    window.filerOnGitStatus = function(files) {
+        gitColorCache = buildGitColorCache(files);
+        applyGitColorsToTree();
+    };
+
     // ---- 加载文件树 ----
     function loadTree() {
+        // 切项目/重载：清空旧项目着色缓存（新项目状态由 gitdiff 推送后自动套色）
+        gitColorCache = null;
         // Code 模式且未选项目时，不请求（清空树）
         if (window.appMode === 'code' && !window.currentProjectRoot) {
             if ($treeEl.length) $treeEl.html('');
@@ -166,6 +234,7 @@
 
     // ---- 清空文件树（切项目/退出 code 模式）----
     function clearFilerTree() {
+        gitColorCache = null; // 防旧项目状态误染新树
         if ($treeEl.length) $treeEl.html('');
     }
     window.clearFilerTree = clearFilerTree;
@@ -230,6 +299,9 @@
 
         var $name = $('<span>').addClass('filer-node-name')
             .text(node.name);
+        // 渲染时查表套色：新渲染节点零额外 DOM 遍历
+        var nameStatus = gitColorOf(node.path, node.type);
+        if (nameStatus) $name.addClass('filer-git-' + gitTypeToClass(nameStatus));
         $row.append($name);
 
         $nodeEl.append($row);
@@ -267,6 +339,8 @@
                             $ne.removeAttr('data-dirty');
                             $.get('/web/chat/filer/tree?path=' + encodeURIComponent(n.path) + '&depth=1' + rootParam(), function(res) {
                                 var subData = (res && res.data) ? res.data : [];
+                                // 重新拉取前清空旧节点，避免追加式刷新导致同级节点重复渲染
+                                $cEl.empty();
                                 subData.forEach(function(child) {
                                     collapseChain(child, $cEl, indent + 1);
                                 });
@@ -353,6 +427,8 @@
                     expandedPaths[dataPath] = true;
                 }
             });
+            // 重新拉取前清空旧节点，避免追加式刷新导致同级节点重复渲染
+            $childrenEl.empty();
             subData.forEach(function(child) {
                 collapseChain(child, $childrenEl, indent + 1);
             });

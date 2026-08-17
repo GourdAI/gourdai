@@ -26,6 +26,24 @@ contextBridge.exposeInMainWorld('__GOURD_IPC__', {
   getWindowProject: () => ipcRenderer.invoke('get-window-project'),
   // 定制窗口标题（如 Code 模式显示当前项目名）。
   setWindowTitle: (title) => ipcRenderer.send('window-title-update', String(title || '')),
+
+  // ─── 自动更新（main/updater.js；仅打包态有效，开发/浏览器环境无事件）──────
+  // 桌面端版本号（package.json version，区别于 jar 后端版本）
+  getAppVersion: () => ipcRenderer.invoke('updater-get-version'),
+  // 当前更新状态快照（mode/status/version/progress/error 等）
+  updaterGetState: () => ipcRenderer.invoke('updater-get-state'),
+  // 手动检查更新
+  updaterCheck: () => ipcRenderer.invoke('updater-check'),
+  // 重试下载（auto 模式）/ 打开下载页（notify 模式）
+  updaterDownload: () => ipcRenderer.invoke('updater-download'),
+  // 安装并重启（auto 模式）/ 打开下载页（notify 模式）
+  updaterInstall: () => ipcRenderer.invoke('updater-install'),
+  // 订阅更新状态变化广播
+  onUpdaterState: (cb) => {
+    if (typeof cb === 'function') {
+      ipcRenderer.on('updater-state', (_e, data) => cb(data));
+    }
+  },
 });
 
 contextBridge.exposeInMainWorld('electronAPI', {

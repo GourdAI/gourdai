@@ -1,5 +1,5 @@
 #
-# Gourd AI CLI Installer for Windows
+# GWork CLI Installer for Windows
 # Usage: irm https://www.gourd-ai.cn/setup.ps1 | iex
 #
 
@@ -28,7 +28,7 @@ if (Test-Path $TEMP_DIR) {
 New-Item -ItemType Directory -Path $TEMP_DIR | Out-Null
 
 try {
-    Write-Info "Downloading Gourd AI CLI $VERSION..."
+    Write-Info "Downloading GWork CLI $VERSION..."
 
     $packageFile = Join-Path $TEMP_DIR "package.tar.gz"
     Invoke-WebRequest -Uri $PACKAGE_URL -OutFile $packageFile -UseBasicParsing

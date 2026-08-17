@@ -21,7 +21,7 @@ public class DemoApp {
                 .mountAdd(MountDir.builder()
                         .alias("@global-agents")
                         .type(MountType.AGENTS)
-                        .path("~/.gourdai/agents/")
+                        .path("~/.gwork/agents/")
                         .primary(true)
                         .build())
                 .modelAdd(new ChatConfig().then(slf -> {

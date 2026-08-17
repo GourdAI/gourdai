@@ -283,9 +283,9 @@ body.code-mode .chat-view {
 }
 body.code-mode .chat-view .messages-wrap { padding-left: 10px; padding-right: 10px; }
 
-/* code 模式对话栏定宽（min-width:320px），输入区工具条过于拥挤：隐藏附件/图片/斜杠命令/技能/子代理/历史
-   等按钮，仅保留模型 + 思考深度选择器与右侧语音/发送。附件仍可拖拽添加，斜杠命令仍可直接输入 / 触发。 */
-body.code-mode #chatView .input-toolbar .attach-btn { display: none !important; }
+/* code 模式对话栏定宽（min-width:320px），输入区工具条空间有限：原一排功能圆钮已收敛为“+”聚合菜单
+  （app.css .plus-menu），单按钮宽度即可在窄栏正常使用，功能（附件/图片/快捷命令/技能/子代理/历史）不再被隐藏。
+   附件仍可拖拽添加，斜杠命令仍可直接输入 / 触发。 */
 
 /* code 模式：缩小右侧语音/发送圆钮，避免在窄对话栏里占用过多空间 */
 body.code-mode #chatView .voice-btn,
@@ -305,16 +305,14 @@ body.code-mode #chatView .model-selector-current .model-name { max-width: 96px; 
 /* 对话栏声明为容器，供下方容器查询按实际宽度响应 */
 body.code-mode .chat-view { container-type: inline-size; container-name: codechat; }
 
-/* 对话栏收窄到阈值：模型/思考深度下拉框只保留图标，隐藏文字与箭头，节省横向空间 */
+/* 对话栏收窄到阈值：模型下拉框只保留图标，隐藏文字与箭头，节省横向空间 */
 @container codechat (max-width: 380px) {
     .input-toolbar .model-selector-current .model-name,
-    .input-toolbar .model-selector-current .model-arrow,
-    .input-toolbar .thinking-selector-current .thinking-name,
-    .input-toolbar .thinking-selector-current .model-arrow {
+    .input-toolbar .model-selector-current .model-thinking-tag,
+    .input-toolbar .model-selector-current .model-arrow {
         display: none;
     }
-    .input-toolbar .model-selector-current,
-    .input-toolbar .thinking-selector-current {
+    .input-toolbar .model-selector-current {
         gap: 0; padding: 5px 7px;
     }
 }
@@ -359,16 +357,24 @@ body.code-mode.chat-collapsed .code-chat-expand-btn {
 }
 body.code-mode.chat-collapsed .code-chat-expand-btn:hover { color: var(--accent); border-color: var(--accent); }
 
+/* ---- 中间编辑器列：编辑器面板 + diff/文件浮层 + 底部终端共享一列 ----
+   chat 模式：容器 display:contents（透明），diff/文件浮层仍直接铺满 main-area，与改造前一致；
+   code 模式：容器为 .main-area 行布局中的编辑器列（flex column），终端在列底部，
+   diff 浮层打开时只隐藏编辑器面板，终端不受影响仍可打开。 */
+.code-editor-col { display: contents; }
+
 /* ---- 中间编辑器面板 ---- */
 .code-editor-pane { display: none; }
+body.code-mode .code-editor-col {
+    display: flex; flex-direction: column; order: 1; flex: 1; min-width: 0; background: var(--bg-main);
+}
 body.code-mode .code-editor-pane {
-    display: flex; order: 1; flex: 1; min-width: 0; flex-direction: column; background: var(--bg-main);
+    display: flex; flex: 1; min-height: 0; min-width: 0; flex-direction: column; background: var(--bg-main);
 }
 
-/* diff/文件浮层打开时接管中间编辑器列：隐藏编辑器面板，让 #gitDiffViewer(flex:1) 独占中间区。
-   否则二者同为 flex:1 会各占一半，右侧残留「代码审查」占位空白。 */
+/* diff/文件浮层打开时接管编辑器列：隐藏编辑器面板（终端面板在编辑器面板之外，不受影响，
+   仍可随 body.terminal-open 在浮层下方显示），让 #gitDiffViewer(flex:1) 独占编辑器列上部。 */
 body.code-mode.viewer-open .code-editor-pane { display: none; }
-body.code-mode.viewer-open .git-diff-viewer { order: 1; }
 
 .code-editor-empty {
     flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -437,55 +443,29 @@ body.code-mode.viewer-open .git-diff-viewer { order: 1; }
 .code-editor-tab-close:hover { background: var(--bg-hover); color: var(--text-primary); }
 
 .code-editor-host { flex: 1; min-height: 0; position: relative; }
-.code-editor-host .CodeMirror { height: 100%; font-family: var(--font-mono); font-size: 13px; line-height: 1.6; }
-
-/* CodeMirror overlay 滚动条统一：overlay 是 addon 自绘 div（不走原生 ::-webkit-scrollbar），
-   simplescrollbars.css 里硬编码了 #bcd（thumb）/ #eee（轨道），与全局原生滚动条不一致。
-   这里覆盖为引用 theme.css 的 --scrollbar-* 公共变量，两端观感对齐。
-   注意：index.html 中 simplescrollbars.min.css 在本文件之后加载，同特异性下会反覆盖，
-   故 thumb 规则加 !important 兜底（vendor 规则无 !important，可稳定胜出）。 */
-.CodeMirror-overlayscroll-vertical,
-.CodeMirror-overlayscroll-horizontal { z-index: 6; background: transparent; }
-.CodeMirror-overlayscroll-vertical { width: var(--scrollbar-size); }
-.CodeMirror-overlayscroll-horizontal { height: var(--scrollbar-size); }
-.CodeMirror-overlayscroll-vertical div,
-.CodeMirror-overlayscroll-horizontal div {
-    background: var(--scrollbar-thumb) !important;
-    border-radius: var(--scrollbar-radius) !important;
+/* Monaco 编辑器宿主：占满容器；字体/字号由 Monaco 自带。
+   滚动条：尺寸由 JS 侧 scrollbar 选项定为 6px（与全局 --scrollbar-size 一致），
+   滑块颜色/圆角在此与 theme.css 的全局 --scrollbar-* 规范对齐（覆盖 Monaco 默认观感）。 */
+.code-editor-host .monaco-editor {
+    position: absolute;
+    inset: 0;
 }
-.CodeMirror-overlayscroll-vertical div:hover,
-.CodeMirror-overlayscroll-horizontal div:hover {
+.code-editor-host .monaco-editor,
+.code-editor-host .monaco-editor .overflow-guard {
+    border-radius: 0;
+}
+
+/* ---- Monaco 滚动条与全局滚动条规范统一（编辑器 / diff / 文件查看器 / minimap 一并生效）---- */
+.monaco-editor .monaco-scrollable-element > .scrollbar > .slider {
+    background: var(--scrollbar-thumb) !important;
+    border-radius: var(--scrollbar-radius);
+}
+.monaco-editor .monaco-scrollable-element > .scrollbar > .slider:hover,
+.monaco-editor .monaco-scrollable-element > .scrollbar > .slider.active {
     background: var(--scrollbar-thumb-hover) !important;
 }
-/* 横竖滚动条同时出现时，CodeMirror 核心会在右下角交角处显示 .CodeMirror-scrollbar-filler
-   （codemirror.min.css 硬编码 background:#fff，且核心会内联 display:block 强制显示）。
-   simplescrollbars.css 里 .CodeMirror-overlayscroll 前缀的 display:none 特异性更高、
-   本应隐藏它——但桌面端实测交角仍残留白点，这里用 !important 双保险彻底去掉。 */
-.CodeMirror-scrollbar-filler {
-    display: none !important;
-    background: transparent !important;
-}
-.CodeMirror-gutter-filler {
-    display: none !important;
-    background: transparent !important;
-}
 
-/* 底部状态栏（文件名 / 语言标签 / 保存按钮）按需求隐藏；保存仍可用 Ctrl+S。
-   JS 仍引用其中的 statusPath/statusLang/dirty/saveBtn 元素，故保留 DOM 只做视觉隐藏。 */
-.code-editor-statusbar {
-    display: none; align-items: center; justify-content: space-between; height: 30px; padding: 0 12px;
-    flex-shrink: 0; border-top: 1px solid var(--border-color); font-size: 11.5px; color: var(--text-secondary);
-    background: var(--bg-sidebar);
-}
-.code-editor-status-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
-.code-editor-status-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.code-editor-dirty { color: var(--accent); font-weight: 500; }
-.code-editor-save-btn {
-    display: flex; align-items: center; gap: 5px; padding: 3px 10px; border: none; border-radius: 6px;
-    background: var(--accent); color: #fff; cursor: pointer; font-size: 11.5px; transition: opacity 0.15s;
-}
-.code-editor-save-btn:hover { opacity: 0.88; }
-.code-editor-save-btn:disabled { opacity: 0.45; cursor: default; }
+/* 底部状态栏已移除（视觉从未启用，DOM/JS/CSS 一并清理，保存走 Ctrl+S） */
 
 /* ---- 本地终端面板（编辑器区底部，body.terminal-open 时显示）---- */
 :root { --code-terminal-height: 240px; }
@@ -539,6 +519,10 @@ body.code-mode.terminal-open .code-terminal-resize-handle:hover { background: va
 /* 移动端：code 模式退化，隐藏编辑器，仅保留树+对话 */
 @media (max-width: 900px) {
     body.code-mode .code-editor-pane { display: none; }
+    /* 编辑器列退化为透明容器（diff 浮层仍可全宽显示）；窄屏不提供底部终端 */
+    body.code-mode .code-editor-col { display: contents; }
+    body.code-mode .code-terminal-pane,
+    body.code-mode .code-terminal-resize-handle { display: none !important; }
     body.code-mode .chat-view { flex: 1; }
     body.code-mode .filer-panel { position: fixed; left: 0; top: 0; z-index: 300; box-shadow: 2px 0 12px rgba(0,0,0,0.2); }
     /* 窄屏对话栏占满，拖拽/收起无意义 */

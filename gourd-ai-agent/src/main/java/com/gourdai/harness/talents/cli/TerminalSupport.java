@@ -736,11 +736,11 @@ public class TerminalSupport {
     private static final List<String> MANDATORY_DENY_FILES = Collections.unmodifiableList(Arrays.asList(
             ".gitconfig", ".gitmodules", ".bashrc", ".bash_profile", ".bash_logout",
             ".zshrc", ".zprofile", ".profile", ".ripgreprc", ".mcp.json",
-            ".gourdai/commands", ".gourdai/agents"
+            ".gwork/commands", ".gwork/agents", ".gourdai/commands", ".gourdai/agents"
     ));
 
     private static final List<String> MANDATORY_DENY_DIRS = Collections.unmodifiableList(Arrays.asList(
-            ".vscode", ".idea", ".gourdai/commands", ".gourdai/agents", ".git/hooks"
+            ".vscode", ".idea", ".gwork/commands", ".gwork/agents", ".gourdai/commands", ".gourdai/agents", ".git/hooks"
     ));
 
     public static boolean isMandatoryDenyRelativePath(String relativePath) {

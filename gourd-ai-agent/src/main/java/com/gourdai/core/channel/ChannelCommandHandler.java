@@ -265,7 +265,7 @@ public class ChannelCommandHandler {
     /**
      * 扫描单个会话根目录下匹配前缀的会话，追加到结果。
      *
-     * @param sessionsDir 会话根目录（如 &lt;root&gt;/.gourdai/sessions）
+     * @param sessionsDir 会话根目录（如 &lt;root&gt;/.gwork/sessions）
      * @param prefix      会话 ID 前缀（chat- / code-）
      * @param projectRoot 项目根（chat 传 null）
      * @param projectName 项目展示名（用于 code 会话标签前缀区分，chat 传 null）

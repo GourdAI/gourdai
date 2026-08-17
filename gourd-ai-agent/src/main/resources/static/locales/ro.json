@@ -3,6 +3,7 @@
         "describe_images": "Descriți aceste imagini",
         "process_files": "Vă rog să procesați aceste fișiere",
         "connection_disconnected": "Conexiunea a fost întreruptă, vă rugăm să încercați din nou mai târziu",
+        "busy_deferred": "Sarcina anterioară este încă în execuție; acest mesaj va fi trimis automat la finalizare",
         "unknown_error": "Eroare necunoscută",
         "backend_start_failed": "Pornirea backend-ului a eșuat:",
         "connected": "Conectat",
@@ -72,8 +73,8 @@
         "model_group_other": "Altele",
         "thinking": {
             "off": {
-                "label": "Gândire dezactivată",
-                "desc": "Fără raționament/gândire activă"
+                "label": "Implicit",
+                "desc": "Folosește comportamentul implicit al modelului"
             },
             "minimal": {
                 "label": "Minim",
@@ -103,7 +104,7 @@
                 "label": "Maxim",
                 "desc": "Raționament maxim, indiferent de cost"
             },
-            "default_label": "Gândire"
+            "default_label": "Implicit"
         }
     },
     "base": {
@@ -119,12 +120,12 @@
         "review_view": "Recenzie cod",
         "terminal_shortcut": "Scurtătură terminal",
         "menu": "Meniu",
-        "title": "Gourd AI",
+        "title": "GWork",
         "new_chat": "Chat Nou",
         "placeholder_welcome": "Descrieți sarcina, sunt suportate fișiere atașate…",
         "placeholder_chat": "Tastați un mesaj, Shift+Enter pentru linie nouă…",
         "history_title": "Istoric",
-        "welcome_title": "Bună, sunt Gourd AI!",
+        "welcome_title": "Bună, sunt GWork!",
         "welcome_sub": "Cum vă pot ajuta?",
         "drop_attach": "Eliberați pentru a atașa fișiere",
         "thinking_label": "Gândește",
@@ -140,6 +141,7 @@
         "subagent": "Sub-agent",
         "loop_task": "Sarcină programată",
         "history_msg": "Mesaje anterioare",
+        "plus_more": "Mai multe",
         "voice_input": "Introducere vocală",
         "send": "Trimite",
         "all_sessions": "Toate sesiunile",
@@ -150,16 +152,16 @@
         "queue": "Coadă",
         "refresh": "Reîmprospătare",
         "welcome_greeting": {
-            "0": "Inspirație blocată? Las-o pe Gourd AI să te ajute~",
-            "1": "Gourd AI, partenerul tău de studiu și muncă, lasă-l pe partener să rezolve~",
-            "2": "Azi, ai vreo idee nouă? Spune-i lui Gourd AI~",
+            "0": "Inspirație blocată? Las-o pe GWork să te ajute~",
+            "1": "GWork, partenerul tău de studiu și muncă, lasă-l pe partener să rezolve~",
+            "2": "Azi, ai vreo idee nouă? Spune-i lui GWork~",
             "3": "Despre ce vrei să vorbim? Sunt mereu disponibil~",
             "4": "Ai vreo problemă? Rezolvăm împreună!",
             "5": "Scriere cod, cercetare, brainstorming, începe oricând~",
             "6": "Spune-mi ideile tale, restul lasă-l pe mine~",
             "7": "Te-ai blocat? Las-mă să îți organizez gândurile~",
             "8": "O zi nouă, o inspirație nouă, vrei să auzim?",
-            "9": "Indiferent cât de mică sau mare e problema, Gourd AI e aici~",
+            "9": "Indiferent cât de mică sau mare e problema, GWork e aici~",
             "10": "Spune-mi ideile tale, le voi ajuta să devină realitate~",
             "11": "Întreabă-mă orice, fără să te îngrijorezi~",
             "12": "Cod, texte, propuneri, putem vorbi despre orice~",
@@ -169,17 +171,18 @@
             "16": "Nu ezita, întreabă direct ce vrei~",
             "17": "Secretul dublării productivității: lasă treburile mărunte pe mine~",
             "18": "Probleme complexe simplificate, încearcă să îmi spui?",
-            "19": "Bună, sunt Gourd AI!"
+            "19": "Bună, sunt GWork!"
         },
         "loading": "Se încarcă…",
         "search_history": "Căutare în istoricul mesajelor…",
-        "learn_more": "Aflați mai multe despre Gourd AI",
+        "learn_more": "Aflați mai multe despre GWork",
         "resize_input": "Trageți pentru a ajusta înălțimea; dublu-clic pentru resetare",
         "memory_view": "Memorie mentală"
     },
     "settings": {
         "common": {
             "back": "Înapoi",
+            "close": "Închide",
             "delete": "Șterge",
             "copy": "Copiază",
             "refresh": "Reîmprospătează",
@@ -197,7 +200,8 @@
             "lsp": "Configurare LSP",
             "loop": "Programare",
             "channel": "La distanță",
-            "acp": "ACP"
+            "acp": "ACP",
+            "about": "Despre și actualizări"
         },
         "general": {
             "title": "General",
@@ -629,12 +633,12 @@
         },
         "acp": {
             "title": "Integrare instrument de codare (ACP)",
-            "desc": "Permite editoarelor precum VSCode, JetBrains și altele să apeleze Gourd AI direct prin Agent Client Protocol.",
+            "desc": "Permite editoarelor precum VSCode, JetBrains și altele să apeleze GWork direct prin Agent Client Protocol.",
             "ready": "Lansatorul este pregătit. Acum puteți configura editorul.",
             "not_ready": "Lansatorul nu este încă instalat.",
-            "not_ready_desc": "Porniți o dată aplicația desktop împachetată pentru a instala automat lansatorul gourdai, apoi redeschideți această pagină.",
+            "not_ready_desc": "Porniți o dată aplicația desktop împachetată pentru a instala automat lansatorul gwork, apoi redeschideți această pagină.",
             "how_title": "Cum funcționează",
-            "how_desc": "ACP folosește transportul stdio standard: editorul acționează ca client și creează gourdai acp ca subproces la cerere, comunicând prin stdin/stdout. Nu este necesar niciun serviciu, port sau adresă de lungă durată - doar setați comanda de mai jos în editorul dvs.",
+            "how_desc": "ACP folosește transportul stdio standard: editorul acționează ca client și creează gwork acp ca subproces la cerere, comunicând prin stdin/stdout. Nu este necesar niciun serviciu, port sau adresă de lungă durată - doar setați comanda de mai jos în editorul dvs.",
             "generic_title": "Integrare editor",
             "generic_desc": "Completați următoarele câmpuri în orice editor sau plugin compatibil cu ACP.",
             "command_label": "command",
@@ -645,17 +649,15 @@
             "load_failed": "Încărcarea a eșuat, încercați din nou.",
             "model_title": "Modelul folosit de ACP",
             "model_desc": "ACP rulează ca un subproces independent și nu partajează starea de selectare a modelului din fereastra de conversație, așa că alegeți aici modelul pe care să îl folosească.",
-            "model_label": "Model",
             "model_follow_default": "Urmează modelul implicit ({0})",
             "model_follow_default_empty": "Urmează modelul implicit",
             "model_none": "Niciun model configurat încă. Adăugați și activați mai întâi unul din Setări - Modele.",
             "model_saved": "Modelul ACP a fost salvat",
             "model_save_failed": "Salvarea a eșuat, încercați din nou",
-            "thinking_label": "Adâncime de raționament",
             "thinking_hint": "Controlează efortul de raționament; dezactivat folosește comportamentul implicit al modelului",
             "thinking_saved": "Setările de adâncime de raționament au fost salvate",
             "thinking_save_failed": "Salvarea a eșuat, încercați din nou",
-            "zed_integration_desc": "Îmbinați JSON-ul de mai jos în setările ACP ale editorului dvs., apoi selectați Gourd AI în panoul Agent.",
+            "zed_integration_desc": "Îmbinați JSON-ul de mai jos în setările ACP ale editorului dvs., apoi selectați GWork în panoul Agent.",
             "integration_json": "Configurație JSON"
         },
         "save": "Salvare",
@@ -670,7 +672,34 @@
         "code": {
             "remove_no_delete": "Elimină (fără a șterge directorul de pe disc)"
         },
-        "operation_failed": "Operațiune eșuată"
+        "operation_failed": "Operațiune eșuată",
+        "about": {
+            "title": "Despre și actualizări",
+            "desc": "Vizualizați informațiile despre versiune și obțineți versiuni noi GWork",
+            "version_card": "Informații versiune",
+            "desktop_version": "Versiune desktop",
+            "backend_version": "Versiune backend",
+            "web_na": "Indisponibil (browser)",
+            "homepage": "Site oficial",
+            "update_card": "Verificare actualizări",
+            "idle_hint": "Actualizările sunt verificate automat la pornire",
+            "check_update": "Verifică actualizările",
+            "checking": "Se verifică actualizările…",
+            "up_to_date": "Folosiți cea mai recentă versiune",
+            "new_version": "Versiune nouă {0} disponibilă",
+            "auto_downloading": "Se descarcă noua versiune în fundal…",
+            "downloading": "Se descarcă actualizarea",
+            "downloaded": "Versiunea {0} a fost descărcată",
+            "install_restart": "Instalează și repornește",
+            "install_hint": "Actualizarea se aplică la repornire; setările și datele sunt păstrate",
+            "notify_hint": "Instalarea automată nu este încă disponibilă pe această platformă. Descărcați pachetul și actualizați manual",
+            "download_update": "Descarcă versiunea nouă",
+            "check_failed": "Verificarea actualizărilor a eșuat",
+            "retry": "Reîncearcă",
+            "web_mode": "Actualizările nu sunt suportate în browser. Folosiți clientul desktop",
+            "dev_mode": "Actualizările automate sunt dezactivate în mediul de dezvoltare",
+            "release_notes": "Note de versiune"
+        }
     },
     "chat": {
         "thinking": "Gândește…",
@@ -777,12 +806,9 @@
         "open_project_where": "Unde deschideți proiectul «{0}»?",
         "open_in_this_window": "Deschide în această fereastră",
         "open_in_new_window": "Deschide într-o fereastră nouă",
-        "file_saved": "{0} salvat",
         "save_failed": "Salvare eșuată",
         "expandChat": "Expandare panou chat",
         "editorEmpty": "Selectați un fișier din arborele din stânga pentru a începe editarea\nColaborați cu IA în dreapta",
-        "unsaved": "● Nesalvat",
-        "save": "Salvare (Ctrl+S)",
         "project": {
             "start": "Selectați sau creați un proiect pentru a începe",
             "openFolder": "Deschidere dosar",

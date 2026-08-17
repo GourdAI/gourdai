@@ -329,6 +329,44 @@ $('#chatImageInput').on('change', function(e) {
     e.target.value = '';
 });
 
+/* ===== Plus 聚合菜单（“+”弹出菜单，chat/code 模式共用） =====
+   菜单项沿用原工具条按钮 ID（attach/image/cmd/skill/agent/loop/history），
+   各自的动作绑定（app-ui/app-history/app-loop）无需改动，这里只负责菜单本身的开关。 */
+(function() {
+    var $plusWraps = $('.plus-menu-wrap');
+    if (!$plusWraps.length) return;
+    function closePlusMenus(exceptEl) {
+        $plusWraps.each(function() {
+            if (this !== exceptEl) $(this).removeClass('open');
+        });
+    }
+    $plusWraps.each(function() {
+        var wrapEl = this;
+        var $wrap = $(wrapEl);
+        // “+”按钮：开关菜单，并与其他弹出面板互斥
+        $wrap.find('.plus-btn').on('click', function(e) {
+            e.stopPropagation();
+            var opening = !$wrap.hasClass('open');
+            closePlusMenus(wrapEl);
+            if (opening && typeof window.closeAllToolbarPanels === 'function') window.closeAllToolbarPanels();
+            $wrap.toggleClass('open', opening);
+        });
+        // 菜单项点击后先执行各自绑定的动作（选文件/命令补全/面板等），再统一收起菜单；
+        // setTimeout 保证晚于同元素上的所有处理器（部分动作带 stopPropagation，不能用委托）
+        $wrap.find('.plus-menu-item').on('click', function() {
+            setTimeout(function() { $wrap.removeClass('open'); }, 0);
+        });
+    });
+    // 点击菜单外部关闭
+    $(document).on('mousedown', function(e) {
+        if (!$(e.target).closest('.plus-menu-wrap').length) closePlusMenus(null);
+    });
+    // Esc 关闭
+    $(document).on('keydown', function(e) {
+        if (e.key === 'Escape') closePlusMenus(null);
+    });
+})();
+
 /* ===== Marked ===== */
 if (typeof marked !== 'undefined') { marked.setOptions({ breaks: true, gfm: true }); }
 var _mdCache = new Map();
@@ -358,6 +396,240 @@ function clearMdCache() {
     _mdCache.clear();
 }
 window.clearMdCache = clearMdCache;
+
+/* ===== 流式增量 Markdown 渲染器（修复展开态逐帧闪烁） =====
+ * 根因：传统流式渲染每帧 `el.innerHTML = renderMd(全量缓冲)`，展开后浏览器每帧
+ * 重建全部 DOM 节点并对可见大子树做全量 style/layout/paint → 整块闪烁，输出越多越严重。
+ * 增量策略（每帧成本 O(tail) 而非 O(全量)）：
+ *  - stable 段：经 marked.lexer 确认已闭合的块级 token，直挂 host（保持 .md-content 直接子级结构，
+ *    兼容现有 `> :first-child` 等 CSS），insertAdjacentHTML 只追加一次、永不重建；
+ *  - tail 段：仅最后一个未完成块，包在单个 .md-stream-tail 里每帧重建（空 div 无边框/padding，
+ *    外边距可穿透折叠，视觉与平铺渲染一致）；
+ *  - 未闭合代码围栏：常驻 <pre><code>，用文本节点 O(delta) 追加，围栏闭合时整块渲染归入 stable；
+ *  - finish()：一次性全量渲染收尾，保证最终结果与传统渲染逐字一致（高亮/mermaid/按钮仍由调用方执行）。
+ * 渲染器只接管元素的「流式阶段」；一次性 renderMd 路径（历史加载/用户消息等）不受影响。 */
+/*STREAMMD-START*/
+function createStreamMd(hostEl) {
+    var r = {
+        host: hostEl,
+        buf: '',
+        stableLen: 0,
+        inFence: false,
+        fenceMarker: '',
+        fenceStart: 0,
+        fenceFrom: 0,
+        fenceConsumed: 0,
+        tailEl: null,
+        fencePre: null,
+        fenceCode: null,
+        rafId: 0,
+        timerId: 0,
+        active: false,
+        afterRender: null
+    };
+    function ensureTail() {
+        if (!r.tailEl) {
+            r.tailEl = document.createElement('div');
+            r.tailEl.className = 'md-stream-tail';
+            r.host.appendChild(r.tailEl);
+        }
+    }
+    function schedule() {
+        if (r.rafId || r.timerId) return;
+        // 桌面窗口被遮挡/最小化时 Chromium 会停发 rAF（默认 backgroundThrottling），
+        // 纯 rAF 调度会让流式渲染整个冻结、结尾一次性补画（"攒批"假象）。
+        // 故 rAF 之外恒挂一个定时器兜底（遮挡时 document.hidden 仍为 false，单靠 hidden 判不够），
+        // 谁先唤醒谁驱动 tick，另一个在 tick 开头取消。
+        r.timerId = setTimeout(tick, 120);
+        if (!(typeof document !== 'undefined' && document.hidden)) {
+            r.rafId = requestAnimationFrame(tick);
+        }
+    }
+    function mdParse(t) {
+        if (typeof marked !== 'undefined') return marked.parse(t);
+        return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+    }
+    function mdEscape(t) {
+        return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    // 在 rem 中查找围栏开启行（行首最多 3 空格），返回 {index, marker, headLen, lang} 或 null
+    function findFenceOpen(rem) {
+        var re = /^ {0,3}(`{3,}|~{3,})(.*)$/gm;
+        var m;
+        while ((m = re.exec(rem))) {
+            // 开启行尚未结束（流式半行，m[0] 后无 \n）时不判定，等行完整再确认，
+            // 避免半行误判（如 info string 的反引号稍后才到达）
+            if (m.index + m[0].length >= rem.length) continue;
+            // CommonMark：反引号围栏的 info string 不得含反引号，此类行不是围栏开启（与 marked 判定对齐）
+            if (m[1].charAt(0) === '`' && m[2].indexOf('`') >= 0) continue;
+            return { index: m.index, marker: m[1], headLen: m[0].length, lang: (m[2] || '').trim() };
+        }
+        return null;
+    }
+    // 从 from 起查找与 marker 同字符、长度不小于它的围栏关闭行，返回该行结束偏移（含行尾 \n），-1 为未闭合
+    function findFenceClose(buf, from, marker) {
+        var re = /^ {0,3}(`{3,}|~{3,})[ \t]*$/gm;
+        re.lastIndex = from;
+        var m = re.exec(buf);
+        while (m) {
+            var run = m[1];
+            if (run.charAt(0) === marker.charAt(0) && run.length >= marker.length) return re.lastIndex;
+            m = re.exec(buf);
+        }
+        return -1;
+    }
+    function tick() {
+        if (r.timerId) { clearTimeout(r.timerId); r.timerId = 0; }
+        if (r.rafId) { cancelAnimationFrame(r.rafId); r.rafId = 0; }
+        var more = false;
+        try {
+            var guard = 0;
+            while (guard++ < 8) {
+                if (r.inFence) {
+                    var closeAt = findFenceClose(r.buf, r.fenceFrom, r.fenceMarker);
+                    if (closeAt < 0) {
+                        // 未闭合：常驻 code 以文本节点追加新增内容（O(delta)，不重建 DOM）
+                        if (r.buf.length > r.fenceConsumed) {
+                            r.fenceCode.appendChild(document.createTextNode(r.buf.slice(r.fenceConsumed)));
+                            r.fenceConsumed = r.buf.length;
+                        }
+                        break;
+                    }
+                    // 闭合：整块渲染归入 stable，移除常驻 pre
+                    var seg = r.buf.slice(r.fenceStart, closeAt);
+                    if (r.fencePre && r.fencePre.parentNode) r.fencePre.parentNode.removeChild(r.fencePre);
+                    r.fencePre = null; r.fenceCode = null;
+                    ensureTail();
+                    r.tailEl.innerHTML = '';
+                    r.tailEl.insertAdjacentHTML('beforebegin', mdParse(seg));
+                    r.stableLen = closeAt;
+                    r.inFence = false;
+                    continue;
+                }
+                var rem = r.buf.slice(r.stableLen);
+                if (!rem) break;
+                var open = findFenceOpen(rem);
+                var lexSrc = open ? rem.slice(0, open.index) : rem;
+                var tokens = null;
+                if (lexSrc && typeof marked !== 'undefined') {
+                    try { tokens = marked.lexer(lexSrc); } catch (e) { tokens = null; }
+                } else if (lexSrc) tokens = null;
+                else tokens = [];
+                if (!tokens) {
+                    // lexer 异常兜底：尾部整体渲染，不推进 stable
+                    ensureTail();
+                    r.tailEl.innerHTML = mdParse(rem);
+                    break;
+                }
+                var commit = 0;
+                if (open) commit = tokens.length;
+                else if (tokens.length) commit = (tokens[tokens.length - 1].type === 'space') ? tokens.length : tokens.length - 1;
+                if (commit > 0) {
+                    var raw = '';
+                    for (var i = 0; i < commit; i++) {
+                        if (tokens[i].raw == null) { raw = ''; commit = 0; break; }
+                        raw += tokens[i].raw;
+                    }
+                    if (commit > 0) {
+                        ensureTail();
+                        r.tailEl.insertAdjacentHTML('beforebegin', mdParse(raw));
+                        r.stableLen += raw.length;
+                        continue;
+                    }
+                }
+                if (open) {
+                    // 进入围栏流式态：常驻 pre/code，开启行之后为正文起点
+                    ensureTail();
+                    r.tailEl.innerHTML = '';
+                    r.inFence = true;
+                    r.fenceMarker = open.marker;
+                    r.fenceStart = r.stableLen + open.index;
+                    r.fenceFrom = r.fenceStart + open.headLen;
+                    var bodyStart = r.fenceFrom;
+                    if (r.buf.charAt(bodyStart) === '\n') bodyStart++;
+                    r.fenceConsumed = bodyStart;
+                    r.fencePre = document.createElement('pre');
+                    r.fenceCode = document.createElement('code');
+                    var lang = open.lang.split(/\s+/)[0];
+                    if (lang) r.fenceCode.className = 'language-' + lang.replace(/[^\w+#.-]/g, '');
+                    r.fencePre.appendChild(r.fenceCode);
+                    r.tailEl.appendChild(r.fencePre);
+                    continue;
+                }
+                // 无围栏：tail = 未提交的最后一个 token（极小，每帧重建无感知）
+                ensureTail();
+                if (commit < tokens.length) {
+                    var tailRaw = '';
+                    for (var t2 = commit; t2 < tokens.length; t2++) tailRaw += (tokens[t2].raw || '');
+                    r.tailEl.innerHTML = tailRaw.trim() ? mdParse(tailRaw) : '';
+                } else r.tailEl.innerHTML = '';
+                break;
+            }
+            more = guard >= 8;
+        } catch (e) {
+            try { ensureTail(); r.tailEl.innerHTML = mdEscape(r.buf.slice(r.stableLen)); } catch (e2) {}
+        }
+        // 空 tail 包裹层当帧移除：避免残留空 div 抢占 :last-child，使流式态外边距与全量渲染收敛一致
+        if (!r.inFence && r.tailEl && !r.tailEl.firstChild) {
+            if (r.tailEl.parentNode) r.tailEl.parentNode.removeChild(r.tailEl);
+            r.tailEl = null;
+        }
+        if (more) schedule();
+        if (r.afterRender) { try { r.afterRender(); } catch (e3) {} }
+    }
+    r.append = function (text) {
+        if (!text) return;
+        if (!r.active) {
+            r.active = true;
+            if (r.host.firstChild) r.host.innerHTML = '';
+            r.tailEl = null; r.stableLen = 0; r.inFence = false; r.buf = '';
+        }
+        r.buf += text;
+        schedule();
+    };
+    r.replace = function (text) {
+        r.active = true;
+        r.host.innerHTML = '';
+        r.tailEl = null; r.fencePre = null; r.fenceCode = null;
+        r.stableLen = 0; r.inFence = false;
+        r.buf = text || '';
+        if (r.buf) schedule();
+    };
+    r.finish = function () {
+        if (r.timerId) { clearTimeout(r.timerId); r.timerId = 0; }
+        if (r.rafId) { cancelAnimationFrame(r.rafId); r.rafId = 0; }
+        if (!r.active) return;
+        r.active = false;
+        r.host.innerHTML = mdParse(r.buf);
+        r.tailEl = null; r.fencePre = null; r.fenceCode = null;
+        r.stableLen = r.buf.length; r.inFence = false;
+    };
+    r.dispose = function () {
+        // 仅取消挂起帧与回调；保留 active/buf，保证 dispose 后仍可 finish() 全量收尾
+        if (r.timerId) { clearTimeout(r.timerId); r.timerId = 0; }
+        if (r.rafId) { cancelAnimationFrame(r.rafId); r.rafId = 0; }
+        r.afterRender = null;
+    };
+    return r;
+}
+function getStreamMd(el) {
+    if (!el._streamMd) el._streamMd = createStreamMd(el);
+    return el._streamMd;
+}
+/* 处置会话级流式渲染器（取消挂起帧；不改动 DOM）。会话切换/删除/流收尾时调用。 */
+function disposeSessionStreamMd(sess) {
+    if (!sess) return;
+    if (sess.currentBubbleEl && sess.currentBubbleEl._streamMd) sess.currentBubbleEl._streamMd.dispose();
+    if (sess.thinkingBodyMdEl && sess.thinkingBodyMdEl._streamMd) sess.thinkingBodyMdEl._streamMd.dispose();
+    if (sess.agentStates) {
+        for (var k in sess.agentStates) {
+            var st = sess.agentStates[k];
+            if (st && st.bodyMd && st.bodyMd._streamMd) st.bodyMd._streamMd.dispose();
+            if (st && st.thinkingBodyMdEl && st.thinkingBodyMdEl._streamMd) st.thinkingBodyMdEl._streamMd.dispose();
+        }
+    }
+}
+/*STREAMMD-END*/
 
 /* ===== Highlight.js ===== */
 function highlightCodeBlocks(container) {
@@ -530,7 +802,7 @@ function initInputResizeHandle(handle, textarea) {
     var dragging = false, startY = 0, startH = 0;
     // The container has transition:all, and during dragging the outer frame lags 250ms behind the textarea's height, causing visual desync;
     // during dragging, temporarily disable the container's transition via .resizing (restored on mouseup).
-    var box = textarea.closest('.input-box, .welcome-input-box');
+    var box = textarea.closest('.input-box, .welcome-input-box, .git-commit-bar');
     handle.addEventListener('mousedown', function (e) {
         if (e.button !== 0) return;
         e.preventDefault();
@@ -549,6 +821,8 @@ function initInputResizeHandle(handle, textarea) {
         var h = Math.max(minH, Math.min(INPUT_RESIZE_MAX, startH + (startY - e.clientY)));
         textarea._manualH = h;
         textarea.style.height = h + 'px';
+        // 解除 CSS max-height 限制（如 git 提交框 80px），双击恢复时清除内联 maxHeight 回 CSS 约束
+        textarea.style.maxHeight = 'none';
     });
     document.addEventListener('mouseup', function () {
         if (!dragging) return;
@@ -560,11 +834,13 @@ function initInputResizeHandle(handle, textarea) {
     });
     handle.addEventListener('dblclick', function () {
         textarea._manualH = 0;
+        textarea.style.maxHeight = '';
         autoResize(textarea);
     });
 }
 initInputResizeHandle(document.querySelector('.welcome-input-box .input-resize-handle'), welcomeInput);
 initInputResizeHandle(document.querySelector('.input-box .input-resize-handle'), chatInput);
+window.initInputResizeHandle = initInputResizeHandle;
 
 /* ===== Voice Input (Web Speech API) - 按住说话（类似微信） ===== */
 var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1053,6 +1329,11 @@ async function processMessageQueue(targetSessionId) {
 }
 
 async function processNextQueuedMessage(sessionId) {
+    // 存在 busy 暂存消息时不再出队新消息：暂存消息会在当前任务 done 后自动补发，
+    // 此时若再出队发送，服务端仍会返回 busy，导致暂存标记被覆盖、消息丢失
+    var guardSess = sessionMap[sessionId];
+    if (guardSess && guardSess._pendingResend) return;
+
     var item = await window.messageQueue.shift(sessionId);
 
     if (!item) {
@@ -1084,6 +1365,10 @@ async function processNextQueuedMessage(sessionId) {
             }
         }, 500);
     });
+
+    // 本条被 busy 暂存：停止本轮出队，等 done 后的自动补发链路接管（补发完成会再触发队列处理）
+    var afterSess = sessionMap[sessionId];
+    if (afterSess && afterSess._pendingResend) return;
 
     // 继续处理下一条
     var remainingAfter = await window.messageQueue.size(sessionId);

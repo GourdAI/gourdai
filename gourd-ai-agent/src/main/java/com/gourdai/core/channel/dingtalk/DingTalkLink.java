@@ -514,7 +514,7 @@ public class DingTalkLink implements Channel, Runnable {
                 // 绑定成功后发一条欢迎提示
                 if (webhook != null && !webhook.isEmpty()) {
                     try {
-                        DingTalkClient.replyViaWebhook(webhook, "绑定成功！已连接到 Gourd AI Web 会话。");
+                        DingTalkClient.replyViaWebhook(webhook, "绑定成功！已连接到 GWork Web 会话。");
                     } catch (Exception e) {
                         LOG.warn("[DingTalk] Welcome message send failed: {}", e.getMessage());
                     }

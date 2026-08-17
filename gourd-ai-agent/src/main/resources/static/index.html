@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <title>Gourd AI</title>
+    <title>GWork</title>
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <meta rel="apple-touch-icon" href="/img/favicon.png"/>
@@ -14,9 +14,7 @@
     <link rel="stylesheet" href="/css/code.css"/>
     <link rel="stylesheet" href="/highlight/github.min.css" media="(prefers-color-scheme: light)" id="hljs-light-theme"/>
     <link rel="stylesheet" href="/highlight/github-dark.min.css" media="(prefers-color-scheme: dark)" id="hljs-dark-theme" disabled/>
-    <link rel="stylesheet" href="/codemirror/codemirror.min.css"/>
-    <link rel="stylesheet" href="/codemirror/addon/simplescrollbars.min.css"/>
-    <link rel="stylesheet" href="/codemirror/theme/material-darker.min.css"/>
+    <!-- 编辑器样式由 Monaco editor.main.js 运行时自动注入（vs/editor/editor.main.css） -->
     <style>
         /* 片段注入前的启动遮罩（bootstrap 注入完成后移除），内联以免依赖尚未加载的样式 */
         #appBootLoading {
@@ -62,8 +60,8 @@
     <div class="sidebar-header">
         <div class="sidebar-header-top">
             <div class="sidebar-logo">
-                <img src="/img/favicon.png" alt="Gourd AI" class="sidebar-logo-img"/>
-                <span class="sidebar-logo-text">Gourd AI</span>
+                <img src="/img/favicon.png" alt="GWork" class="sidebar-logo-img"/>
+                <span class="sidebar-logo-text">GWork</span>
             </div>
             <div class="sidebar-header-actions">
             <button class="sidebar-icon-btn" id="sidebarSearchBtn" title="搜索对话" data-i18n-title="app.search_history">
@@ -144,35 +142,8 @@
 <script src="/js/mermaid.min.js"></script>
 <script src="/highlight/highlight.min.js"></script>
 
-<!-- CodeMirror 5（离线打包，Code 模式编辑器）-->
-<script src="/codemirror/codemirror.min.js"></script>
-<script src="/codemirror/addon/meta.min.js"></script>
-<script src="/codemirror/addon/matchbrackets.min.js"></script>
-<script src="/codemirror/addon/closebrackets.min.js"></script>
-<script src="/codemirror/addon/active-line.min.js"></script>
-<script src="/codemirror/addon/simplescrollbars.min.js"></script>
-<script src="/codemirror/addon/simple.min.js"></script>
-<script src="/codemirror/mode/xml.min.js"></script>
-<script src="/codemirror/mode/javascript.min.js"></script>
-<script src="/codemirror/mode/css.min.js"></script>
-<script src="/codemirror/mode/htmlmixed.min.js"></script>
-<script src="/codemirror/mode/clike.min.js"></script>
-<script src="/codemirror/mode/python.min.js"></script>
-<script src="/codemirror/mode/go.min.js"></script>
-<script src="/codemirror/mode/rust.min.js"></script>
-<script src="/codemirror/mode/sql.min.js"></script>
-<script src="/codemirror/mode/shell.min.js"></script>
-<script src="/codemirror/mode/yaml.min.js"></script>
-<script src="/codemirror/mode/markdown.min.js"></script>
-<script src="/codemirror/mode/ruby.min.js"></script>
-<script src="/codemirror/mode/php.min.js"></script>
-<script src="/codemirror/mode/dart.min.js"></script>
-<script src="/codemirror/mode/swift.min.js"></script>
-<script src="/codemirror/mode/lua.min.js"></script>
-<script src="/codemirror/mode/properties.min.js"></script>
-<script src="/codemirror/mode/dockerfile.min.js"></script>
-<script src="/codemirror/mode/powershell.min.js"></script>
-<script src="/codemirror/mode/vue.min.js"></script>
+<!-- Monaco Editor（离线打包，Code 模式编辑器；AMD 入口 vs/editor/editor.main，Worker/CSS 由编辑器运行时自举）-->
+<script src="/monaco/loader.js"></script>
 
 <!-- ============ 片段装配 + 应用脚本按序加载 ============ -->
 <script src="/js/app-i18n.js"></script>

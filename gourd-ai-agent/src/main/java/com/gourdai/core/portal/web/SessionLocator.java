@@ -16,6 +16,7 @@
 package com.gourdai.core.portal.web;
 
 import com.gourdai.agent.AgentSessionProvider;
+import com.gourdai.core.config.AgentFlags;
 
 import java.io.File;
 import java.nio.file.Paths;
@@ -25,13 +26,13 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 会话目录定位器 —— 统一解析 {@code sessionId → 会话存储目录} 的唯一入口。
  *
- * <p>Gourd AI 支持两种对话模式，会话数据落盘位置不同：</p>
+ * <p>GWork 支持两种对话模式，会话数据落盘位置不同：</p>
  * <ul>
  *   <li><b>Chat 模式</b>（{@code web-} 前缀）：存到<b>安装目录</b>（App 启动的 {@code user.dir}）下的
- *       {@code .gourdai/sessions/}。这是全局会话区，位置固定、跨所选项目不变
+ *       {@code .gwork/sessions/}。这是全局会话区，位置固定、跨所选项目不变
  *       —— 与历史行为完全一致，不做任何迁移。</li>
  *   <li><b>Code 模式</b>（{@code code-} 前缀）：存到<b>所选项目</b>目录
- *       {@code <projectRoot>/.gourdai/sessions/}，随项目走。</li>
+ *       {@code <projectRoot>/.gwork/sessions/}，随项目走。</li>
  * </ul>
  *
  * <h3>Code 会话的项目根注册</h3>
@@ -52,7 +53,7 @@ public class SessionLocator {
 
     /** 安装目录 / 全局会话根（进程 user.dir，固定不变） */
     private final String workspace;
-    /** 马具会话相对存放区，如 ".gourdai/sessions/" */
+    /** 马具会话相对存放区，如 ".gwork/sessions/" */
     private final String harnessSessions;
 
     /** code 会话 → 项目根目录 的内存登记表（进程内有效） */
@@ -135,7 +136,25 @@ public class SessionLocator {
     }
 
     private File sessionsRoot(String root) {
+        migrateLegacyWorkspace(root);
         return Paths.get(root, harnessSessions).toAbsolutePath().normalize().toFile();
+    }
+
+    /**
+     * 品牌升级懒迁移：项目根下旧 {@code .gourdai} 目录一次性改名 {@code .gwork}（幂等）。
+     * <p>Code 模式会话/记忆随项目走，而工作区级目录只能在该项目被打开时迁移；
+     * 全局区（安装目录）已由 {@code App.main} 启动时统一迁移。</p>
+     */
+    private void migrateLegacyWorkspace(String root) {
+        try {
+            java.nio.file.Path legacy = Paths.get(root, ".gourdai");
+            java.nio.file.Path current = Paths.get(root, AgentFlags.getHarnessHome());
+            if (java.nio.file.Files.isDirectory(legacy) && !java.nio.file.Files.exists(current)) {
+                java.nio.file.Files.move(legacy, current);
+            }
+        } catch (Exception e) {
+            // 迁移失败不阻断会话解析（下次打开再试）
+        }
     }
 
     /**

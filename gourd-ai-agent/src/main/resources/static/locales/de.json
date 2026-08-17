@@ -3,6 +3,7 @@
         "describe_images": "Bilder beschreiben",
         "process_files": "Dateien verarbeiten",
         "connection_disconnected": "Verbindung getrennt",
+        "busy_deferred": "Die vorherige Aufgabe läuft noch; diese Nachricht wird nach Abschluss automatisch gesendet",
         "unknown_error": "Unbekannter Fehler",
         "backend_start_failed": "Backend-Start fehlgeschlagen",
         "connected": "Verbunden",
@@ -72,8 +73,8 @@
         "model_group_other": "Sonstige",
         "thinking": {
             "off": {
-                "label": "Denken aus",
-                "desc": "Kein Reasoning/Denken aktiv"
+                "label": "Standard",
+                "desc": "Standardverhalten des Modells verwenden"
             },
             "minimal": {
                 "label": "Minimal",
@@ -103,7 +104,7 @@
                 "label": "Maximal",
                 "desc": "Stärkstes Reasoning, ohne Rücksicht auf Kosten"
             },
-            "default_label": "Denken"
+            "default_label": "Standard"
         }
     },
     "base": {
@@ -119,12 +120,12 @@
         "review_view": "Code-Review",
         "terminal_shortcut": "Terminal-Verknüpfung",
         "menu": "Menü",
-        "title": "Gourd AI",
+        "title": "GWork",
         "new_chat": "Neuer Chat",
         "placeholder_welcome": "Beschreiben Sie Ihre Aufgabe, Datei-Anhänge werden unterstützt…",
         "placeholder_chat": "Nachricht eingeben, Shift+Enter für neue Zeile…",
         "history_title": "Verlauf",
-        "welcome_title": "Hallo, ich bin Gourd AI!",
+        "welcome_title": "Hallo, ich bin GWork!",
         "welcome_sub": "Wie kann ich helfen?",
         "drop_attach": "Loslassen, um Anhang hinzuzufügen",
         "thinking_label": "Denken",
@@ -140,6 +141,7 @@
         "subagent": "Unteragent",
         "loop_task": "Geplante Aufgabe",
         "history_msg": "Nachrichtenverlauf",
+        "plus_more": "Mehr",
         "voice_input": "Spracheingabe",
         "send": "Senden",
         "all_sessions": "Alle Sitzungen",
@@ -150,16 +152,16 @@
         "queue": "Warteschlange",
         "refresh": "Aktualisieren",
         "welcome_greeting": {
-            "0": "Keine Inspiration? Überlass es Gourd AI~",
-            "1": "Gourd AI, dein Lern- und Arbeitspartner, gib dem Partner die Aufgabe~",
-            "2": "Hast du heute neue Ideen? Erzähl es Gourd AI~",
+            "0": "Keine Inspiration? Überlass es GWork~",
+            "1": "GWork, dein Lern- und Arbeitspartner, gib dem Partner die Aufgabe~",
+            "2": "Hast du heute neue Ideen? Erzähl es GWork~",
             "3": "Worüber möchtest du sprechen? Ich bin jederzeit da~",
             "4": "Hast du ein schwieriges Problem? Lass es uns zusammen lösen!",
             "5": "Code schreiben, Recherchieren, Brainstorming, jederzeit starten~",
             "6": "Sag mir deine Idee, den Rest überlass mir~",
             "7": "Festgefahren? Lass mich deine Gedanken ordnen~",
             "8": "Neuer Tag, neue Inspiration, wovon träumst du?",
-            "9": "Egal wie groß oder klein, Gourd AI ist da~",
+            "9": "Egal wie groß oder klein, GWork ist da~",
             "10": "Erzähl mir deine Idee, ich helfe dir dabei~",
             "11": "Frag ruhig, keine Sorge~",
             "12": "Code, Texte, Vorschläge, alles kann besprochen werden~",
@@ -169,17 +171,18 @@
             "16": "Zögere nicht, frag direkt~",
             "17": "Das Geheimnis der verdoppelten Effizienz: Gib mir die Routinearbeit~",
             "18": "Komplexe Probleme vereinfachen, warum nicht mir erzählen?",
-            "19": "Hallo, ich bin Gourd AI!"
+            "19": "Hallo, ich bin GWork!"
         },
         "loading": "Wird geladen…",
         "search_history": "Nachrichtenverlauf durchsuchen…",
-        "learn_more": "Mehr über Gourd AI erfahren",
+        "learn_more": "Mehr über GWork erfahren",
         "resize_input": "Ziehen, um die Eingabehöhe anzupassen; Doppelklick zum Zurücksetzen",
         "memory_view": "Mentales Gedächtnis"
     },
     "settings": {
         "common": {
             "back": "Zurück",
+            "close": "Schließen",
             "delete": "Löschen",
             "copy": "Kopieren",
             "refresh": "Aktualisieren",
@@ -197,7 +200,8 @@
             "lsp": "LSP-Konfiguration",
             "loop": "Zeitplan",
             "channel": "Fernzugriff",
-            "acp": "ACP"
+            "acp": "ACP",
+            "about": "Info & Updates"
         },
         "general": {
             "title": "Allgemein",
@@ -629,12 +633,12 @@
         },
         "acp": {
             "title": "Coding-Tool-Integration (ACP)",
-            "desc": "Ermöglicht Editoren wie VSCode, JetBrains und anderen, Gourd AI direkt über das Agent Client Protocol aufzurufen.",
+            "desc": "Ermöglicht Editoren wie VSCode, JetBrains und anderen, GWork direkt über das Agent Client Protocol aufzurufen.",
             "ready": "Der Launcher ist bereit. Sie können jetzt Ihren Editor konfigurieren.",
             "not_ready": "Der Launcher ist noch nicht installiert.",
-            "not_ready_desc": "Starten Sie die paketierte Desktop-App einmal, um den gourdai-Launcher automatisch zu installieren, und öffnen Sie diese Seite anschließend erneut.",
+            "not_ready_desc": "Starten Sie die paketierte Desktop-App einmal, um den gwork-Launcher automatisch zu installieren, und öffnen Sie diese Seite anschließend erneut.",
             "how_title": "Funktionsweise",
-            "how_desc": "ACP verwendet den standardmäßigen stdio-Transport: Der Editor fungiert als Client und startet bei Bedarf gourdai acp als Subprozess, der über stdin/stdout kommuniziert. Es wird kein dauerhaft laufender Dienst, Port oder keine Adresse benötigt - legen Sie einfach den untenstehenden Befehl in Ihrem Editor fest.",
+            "how_desc": "ACP verwendet den standardmäßigen stdio-Transport: Der Editor fungiert als Client und startet bei Bedarf gwork acp als Subprozess, der über stdin/stdout kommuniziert. Es wird kein dauerhaft laufender Dienst, Port oder keine Adresse benötigt - legen Sie einfach den untenstehenden Befehl in Ihrem Editor fest.",
             "generic_title": "Editor-Integration",
             "generic_desc": "Füllen Sie die folgenden Felder in einem beliebigen ACP-fähigen Editor oder Plugin aus.",
             "command_label": "Befehl (command)",
@@ -645,17 +649,15 @@
             "load_failed": "Laden fehlgeschlagen, bitte erneut versuchen.",
             "model_title": "Von ACP verwendetes Modell",
             "model_desc": "ACP läuft als eigenständiger Subprozess und teilt den Modellauswahl-Status des Chatfensters nicht. Legen Sie daher hier vorab das zu verwendende Modell fest.",
-            "model_label": "Modell",
             "model_follow_default": "Standardmodell folgen ({0})",
             "model_follow_default_empty": "Standardmodell folgen",
             "model_none": "Noch kein Modell konfiguriert. Bitte fügen Sie zuerst unter Einstellungen - Modelle ein Modell hinzu und aktivieren Sie es.",
             "model_saved": "ACP-Modell gespeichert",
             "model_save_failed": "Speichern fehlgeschlagen, bitte erneut versuchen",
-            "thinking_label": "Denktiefe",
             "thinking_hint": "Steuert die Reasoning-Intensität; bei Deaktivierung wird das Standardverhalten des Modells verwendet",
             "thinking_saved": "Denktiefe-Einstellung gespeichert",
             "thinking_save_failed": "Speichern fehlgeschlagen, bitte erneut versuchen",
-            "zed_integration_desc": "Führen Sie das folgende JSON in die ACP-Einstellungen Ihres Editors zusammen und wählen Sie anschließend im Agent-Panel Gourd AI aus.",
+            "zed_integration_desc": "Führen Sie das folgende JSON in die ACP-Einstellungen Ihres Editors zusammen und wählen Sie anschließend im Agent-Panel GWork aus.",
             "integration_json": "JSON-Konfiguration"
         },
         "save": "Speichern",
@@ -670,7 +672,34 @@
         "code": {
             "remove_no_delete": "Entfernen (Verzeichnis bleibt erhalten)"
         },
-        "operation_failed": "Vorgang fehlgeschlagen"
+        "operation_failed": "Vorgang fehlgeschlagen",
+        "about": {
+            "title": "Info & Updates",
+            "desc": "Versionsinformationen anzeigen und nach neuen GWork-Versionen suchen",
+            "version_card": "Versionsinformationen",
+            "desktop_version": "Desktop-Version",
+            "backend_version": "Backend-Version",
+            "web_na": "n. v. (Browser)",
+            "homepage": "Offizielle Webseite",
+            "update_card": "Nach Updates suchen",
+            "idle_hint": "Updates werden beim Start automatisch geprüft",
+            "check_update": "Nach Updates suchen",
+            "checking": "Suche nach Updates…",
+            "up_to_date": "Sie verwenden die neueste Version",
+            "new_version": "Neue Version {0} verfügbar",
+            "auto_downloading": "Neue Version wird im Hintergrund heruntergeladen…",
+            "downloading": "Update wird heruntergeladen",
+            "downloaded": "Version {0} heruntergeladen",
+            "install_restart": "Installieren und neu starten",
+            "install_hint": "Das Update wird beim Neustart installiert; Einstellungen und Daten bleiben erhalten",
+            "notify_hint": "Automatische Installation wird auf dieser Plattform noch nicht unterstützt. Laden Sie das Paket herunter und aktualisieren Sie manuell",
+            "download_update": "Neue Version herunterladen",
+            "check_failed": "Update-Prüfung fehlgeschlagen",
+            "retry": "Erneut versuchen",
+            "web_mode": "App-Updates werden im Browser nicht unterstützt. Bitte verwenden Sie den Desktop-Client",
+            "dev_mode": "Automatische Updates sind in der Entwicklungsumgebung deaktiviert",
+            "release_notes": "Versionshinweise"
+        }
     },
     "chat": {
         "thinking": "Denken…",
@@ -777,12 +806,9 @@
         "open_project_where": "Wo soll das Projekt „{0}“ geöffnet werden?",
         "open_in_this_window": "In diesem Fenster öffnen",
         "open_in_new_window": "In neuem Fenster öffnen",
-        "file_saved": "Gespeichert: {0}",
         "save_failed": "Speichern fehlgeschlagen",
         "expandChat": "Chat-Panel erweitern",
         "editorEmpty": "Wählen Sie eine Datei aus dem linken Baum zum Bearbeiten\nRechts können Sie mit dem AI-Assistenten zusammenarbeiten",
-        "unsaved": "● Ungespeichert",
-        "save": "Speichern (Ctrl+S)",
         "project": {
             "start": "Wählen oder erstellen Sie ein Projekt zum Starten",
             "openFolder": "Ordner öffnen",

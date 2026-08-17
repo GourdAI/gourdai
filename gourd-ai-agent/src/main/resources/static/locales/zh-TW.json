@@ -3,6 +3,7 @@
         "describe_images": "描述圖片",
         "process_files": "處理檔案中",
         "connection_disconnected": "連線已中斷",
+        "busy_deferred": "上一則任務仍在執行，本則訊息將在其完成後自動傳送",
         "unknown_error": "未知錯誤",
         "backend_start_failed": "後端啟動失敗",
         "connected": "已連線",
@@ -72,8 +73,8 @@
         "model_group_other": "其他",
         "thinking": {
             "off": {
-                "label": "關閉思考",
-                "desc": "不啟用思考/推理"
+                "label": "預設",
+                "desc": "跟隨模型預設行為"
             },
             "minimal": {
                 "label": "極簡",
@@ -103,7 +104,7 @@
                 "label": "極限",
                 "desc": "最強推理，不計成本"
             },
-            "default_label": "思考"
+            "default_label": "預設"
         }
     },
     "base": {
@@ -113,12 +114,12 @@
         "confirm": "確認"
     },
     "app": {
-        "title": "Gourd AI",
+        "title": "GWork",
         "new_chat": "新對話",
         "placeholder_welcome": "描述你的任務，支援檔案附件…",
         "placeholder_chat": "輸入訊息，Shift+Enter 換行…",
         "history_title": "歷史對話",
-        "welcome_title": "你好，我是 Gourd AI！",
+        "welcome_title": "你好，我是 GWork！",
         "welcome_sub": "需要什麼幫助嗎？",
         "drop_attach": "放開以新增附件",
         "thinking_label": "思考",
@@ -134,6 +135,7 @@
         "subagent": "子代理",
         "loop_task": "循環任務",
         "history_msg": "歷史訊息",
+        "plus_more": "更多",
         "voice_input": "語音輸入",
         "send": "傳送",
         "all_sessions": "所有會話",
@@ -144,16 +146,16 @@
         "queue": "佇列",
         "refresh": "重新整理",
         "welcome_greeting": {
-            "0": "靈感卡住？交給 Gourd AI 吧~",
-            "1": "Gourd AI，你的學習、工作搭子，有問題交給搭子~",
-            "2": "今天，有什麼新想法？告訴 Gourd AI 吧~",
+            "0": "靈感卡住？交給 GWork 吧~",
+            "1": "GWork，你的學習、工作搭子，有問題交給搭子~",
+            "2": "今天，有什麼新想法？告訴 GWork 吧~",
             "3": "想聊點什麼？我隨時線上~",
             "4": "有什麼難題？一起來搞定！",
             "5": "寫程式、查資料、腦力激盪，隨時開始~",
             "6": "說出你的想法，剩下的交給我了~",
             "7": "卡關了？讓我來幫你理清思路~",
             "8": "新的一天，新的靈感，說來聽聽？",
-            "9": "無論大小問題，Gourd AI 都在~",
+            "9": "無論大小問題，GWork 都在~",
             "10": "把你的想法告訴我，我來幫你實現~",
             "11": "有問題儘管問，不怕麻煩~",
             "12": "程式碼、文案、方案，統統可以聊~",
@@ -163,11 +165,11 @@
             "16": "別猶豫，有什麼想問的直接來~",
             "17": "效率翻倍的秘訣：把雜事交給我了~",
             "18": "複雜問題簡單化，試試告訴我？",
-            "19": "你好，我是 Gourd AI！"
+            "19": "你好，我是 GWork！"
         },
         "loading": "載入中…",
         "search_history": "搜尋歷史訊息…",
-        "learn_more": "了解更多關於 Gourd AI",
+        "learn_more": "了解更多關於 GWork",
         "boot_error": "啟動失敗",
         "mode_switch": "切換模式",
         "project_view": "專案檢視",
@@ -190,7 +192,8 @@
             "lsp": "LSP設定",
             "loop": "定時任務",
             "channel": "遠控通道",
-            "acp": "ACP設定"
+            "acp": "ACP設定",
+            "about": "關於與更新"
         },
         "general": {
             "title": "通用",
@@ -622,12 +625,12 @@
         },
         "acp": {
             "title": "編碼工具接入 (ACP)",
-            "desc": "讓 VSCode、JetBrains 等編輯器透過 Agent Client Protocol 直接呼叫 Gourd AI。",
+            "desc": "讓 VSCode、JetBrains 等編輯器透過 Agent Client Protocol 直接呼叫 GWork。",
             "ready": "啟動器已就緒，可在編輯器中設定接入。",
             "not_ready": "啟動器尚未安裝。",
-            "not_ready_desc": "請透過桌面端正式版啟動一次以自動安裝 gourdai 啟動器，然後重新開啟本頁。",
+            "not_ready_desc": "請透過桌面端正式版啟動一次以自動安裝 gwork 啟動器，然後重新開啟本頁。",
             "how_title": "運作原理",
-            "how_desc": "ACP 採用標準 stdio 傳輸：編輯器作為客戶端，會在需要時自動把 gourdai acp 作為子行程拉起並透過標準輸入輸出通訊，無需常駐服務、也無需填寫連接埠或位址。你只需在編輯器裡填入下面的命令即可。",
+            "how_desc": "ACP 採用標準 stdio 傳輸：編輯器作為客戶端，會在需要時自動把 gwork acp 作為子行程拉起並透過標準輸入輸出通訊，無需常駐服務、也無需填寫連接埠或位址。你只需在編輯器裡填入下面的命令即可。",
             "generic_title": "編輯器整合設定",
             "generic_desc": "在支援 ACP 的編輯器/外掛中依下列欄位填寫。",
             "command_label": "命令 (command)",
@@ -638,17 +641,15 @@
             "load_failed": "載入失敗，請重試。",
             "model_title": "ACP 使用的模型",
             "model_desc": "ACP 以獨立子行程執行，不共用對話視窗的選模狀態，請在此預先指定其使用的模型。",
-            "model_label": "模型",
             "model_follow_default": "跟隨預設模型（{0}）",
             "model_follow_default_empty": "跟隨預設模型",
             "model_none": "尚未設定任何模型，請先在「設定 - 模型」中新增並啟用一個模型。",
             "model_saved": "已儲存 ACP 模型",
             "model_save_failed": "儲存失敗，請重試",
-            "thinking_label": "思考深度",
             "thinking_hint": "控制推理力度，關閉則使用模型預設行為",
             "thinking_saved": "已儲存思考深度設定",
             "thinking_save_failed": "儲存失敗，請重試",
-            "zed_integration_desc": "將以下 JSON 配置合併到編輯器的 ACP 設定中，然後在 Agent 面板選擇 Gourd AI。",
+            "zed_integration_desc": "將以下 JSON 配置合併到編輯器的 ACP 設定中，然後在 Agent 面板選擇 GWork。",
             "integration_json": "JSON 配置"
         },
         "save": "儲存",
@@ -660,6 +661,7 @@
         "connect_failed": "連線失敗",
         "common": {
             "back": "返回",
+            "close": "關閉",
             "delete": "刪除",
             "copy": "複製",
             "refresh": "重新整理",
@@ -670,7 +672,34 @@
         },
         "connect_timeout": "連線逾時，請檢查位址是否正確",
         "network_error_retry": "網路錯誤，請重試",
-        "operation_failed": "操作失敗"
+        "operation_failed": "操作失敗",
+        "about": {
+            "title": "關於與更新",
+            "desc": "檢視版本資訊，檢查並取得 GWork 新版本",
+            "version_card": "版本資訊",
+            "desktop_version": "桌面版版本",
+            "backend_version": "後端版本",
+            "web_na": "不適用（瀏覽器環境）",
+            "homepage": "官方網站",
+            "update_card": "檢查更新",
+            "idle_hint": "啟動時將自動檢查更新",
+            "check_update": "檢查更新",
+            "checking": "正在檢查更新…",
+            "up_to_date": "目前已是最新版本",
+            "new_version": "發現新版本 {0}",
+            "auto_downloading": "正在背景下載新版本…",
+            "downloading": "正在下載更新",
+            "downloaded": "新版本 {0} 已下載完成",
+            "install_restart": "安裝並重新啟動",
+            "install_hint": "重新啟動後將完成更新，你的設定與資料不會遺失",
+            "notify_hint": "目前平台暫不支援應用內自動安裝，請下載安裝包後手動更新",
+            "download_update": "下載新版本",
+            "check_failed": "檢查更新失敗",
+            "retry": "重試",
+            "web_mode": "瀏覽器環境不支援應用更新，請使用桌面用戶端",
+            "dev_mode": "開發環境不參與自動更新",
+            "release_notes": "更新說明"
+        }
     },
     "chat": {
         "thinking": "正在思考…",
@@ -776,12 +805,9 @@
         "open_project_where": "專案「{0}」要在哪裡開啟？",
         "open_in_this_window": "本視窗開啟",
         "open_in_new_window": "新視窗開啟",
-        "file_saved": "已儲存 {0}",
         "save_failed": "儲存失敗",
         "expandChat": "展開對話欄",
         "editorEmpty": "從左側檔案樹選擇一個檔案開始編輯\n右側可與 AI 對話協作",
-        "unsaved": "● 未儲存",
-        "save": "儲存 (Ctrl+S)",
         "project": {
             "start": "選擇或新建一個專案開始",
             "openFolder": "打開資料夾",

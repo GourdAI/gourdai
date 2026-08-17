@@ -28,7 +28,7 @@ import java.util.List;
 import java.util.stream.Stream;
 
 /**
- * 从 .gourdai/commands/ 目录加载 Markdown 自定义命令
+ * 从 .gwork/commands/ 目录加载 Markdown 自定义命令
  *
  * @author oisin
  * @since 2026.4.28

@@ -86,8 +86,8 @@ public class Configurator {
         // 对话历史与压缩摘要不受影响；在途（busy）或挂起（HITL）会话不淘汰
         LruSessionCache sessionCache = new LruSessionCache();
 
-        // 会话目录定位器：chat（web-）落安装目录 .gourdai/sessions/（全局、固定不变），
-        // code（code-）落所选项目 <root>/.gourdai/sessions/
+        // 会话目录定位器：chat（web-）落安装目录 .gwork/sessions/（全局、固定不变），
+        // code（code-）落所选项目 <root>/.gwork/sessions/
         this.sessionLocator = new SessionLocator(workspace, AgentFlags.getHarnessSessions());
         final SessionLocator locator = this.sessionLocator;
 

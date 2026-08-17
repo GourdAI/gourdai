@@ -3,6 +3,7 @@
         "describe_images": "Veuillez décrire ces images",
         "process_files": "Veuillez m'aider à traiter ces fichiers",
         "connection_disconnected": "Connexion interrompue, veuillez réessayer ultérieurement",
+        "busy_deferred": "La tâche précédente est encore en cours ; ce message sera envoyé automatiquement à la fin",
         "unknown_error": "Erreur inconnue",
         "backend_start_failed": "Échec du démarrage du backend :",
         "connected": "Connecté",
@@ -72,8 +73,8 @@
         "model_group_other": "Autres",
         "thinking": {
             "off": {
-                "label": "Réflexion désactivée",
-                "desc": "Aucun raisonnement/réflexion activé"
+                "label": "Par défaut",
+                "desc": "Utiliser le comportement par défaut du modèle"
             },
             "minimal": {
                 "label": "Minimal",
@@ -103,7 +104,7 @@
                 "label": "Maximum",
                 "desc": "Raisonnement maximal, sans considération de coût"
             },
-            "default_label": "Réflexion"
+            "default_label": "Par défaut"
         }
     },
     "base": {
@@ -119,12 +120,12 @@
         "review_view": "Revue de code",
         "terminal_shortcut": "Raccourci terminal",
         "menu": "Menu",
-        "title": "Gourd AI",
+        "title": "GWork",
         "new_chat": "Nouveau Chat",
         "placeholder_welcome": "Décrivez votre tâche, les pièces jointes sont supportées…",
         "placeholder_chat": "Tapez un message, Shift+Entrée pour nouvelle ligne…",
         "history_title": "Historique",
-        "welcome_title": "Bonjour, je suis Gourd AI !",
+        "welcome_title": "Bonjour, je suis GWork !",
         "welcome_sub": "De quelle aide avez-vous besoin ?",
         "drop_attach": "Relâchez pour ajouter une pièce jointe",
         "thinking_label": "Réflexion",
@@ -140,6 +141,7 @@
         "subagent": "Sous-agent",
         "loop_task": "Tâche planifiée",
         "history_msg": "Messages historiques",
+        "plus_more": "Plus",
         "voice_input": "Saisie vocale",
         "send": "Envoyer",
         "all_sessions": "Toutes les sessions",
@@ -150,16 +152,16 @@
         "queue": "File d'attente",
         "refresh": "Rafraîchir",
         "welcome_greeting": {
-            "0": "Blessé de créativité ? Laissez Gourd AI faire ~",
-            "1": "Gourd AI, votre partenaire d'apprentissage et de travail, confiez vos questions ~",
-            "2": "Aujourd'hui, de nouvelles idées ? Dites-le à Gourd AI ~",
+            "0": "Blessé de créativité ? Laissez GWork faire ~",
+            "1": "GWork, votre partenaire d'apprentissage et de travail, confiez vos questions ~",
+            "2": "Aujourd'hui, de nouvelles idées ? Dites-le à GWork ~",
             "3": "De quoi voulez-vous parler ? Je suis disponible 24h/24 ~",
             "4": "Un problème difficile ? Résolvons-le ensemble !",
             "5": "Coder, chercher des infos, brainstormer, commencez quand vous voulez ~",
             "6": "Dites-moi vos idées, je m'occupe du reste ~",
             "7": "Bloqué ? Laissez-moi vous aider à clarifier vos pensées ~",
             "8": "Une nouvelle journée, de nouvelles inspirations, partagez-les ?",
-            "9": "Petites ou grandes questions, Gourd AI est là ~",
+            "9": "Petites ou grandes questions, GWork est là ~",
             "10": "Partagez-moi vos idées, je vous aide à les réaliser ~",
             "11": "Posez vos questions sans crainte, ce n'est pas la peine ~",
             "12": "Code, texte, proposition, tout est discutable ~",
@@ -169,17 +171,18 @@
             "16": "N'hésitez pas, venez directement avec vos questions ~",
             "17": "Le secret pour doubler votre productivité : confiez-moi les tâches secondaires ~",
             "18": "Simplifiez les problèmes complexes, essayez de me le dire ?",
-            "19": "Bonjour, je suis Gourd AI !"
+            "19": "Bonjour, je suis GWork !"
         },
         "loading": "Chargement…",
         "search_history": "Rechercher dans l'historique…",
-        "learn_more": "En savoir plus sur Gourd AI",
+        "learn_more": "En savoir plus sur GWork",
         "resize_input": "Glissez pour ajuster la hauteur ; double-clic pour réinitialiser",
         "memory_view": "Mémoire mentale"
     },
     "settings": {
         "common": {
             "back": "Retour",
+            "close": "Fermer",
             "delete": "Supprimer",
             "copy": "Copier",
             "refresh": "Rafraîchir",
@@ -197,7 +200,8 @@
             "lsp": "Configuration LSP",
             "loop": "Planificateur",
             "channel": "À distance",
-            "acp": "ACP"
+            "acp": "ACP",
+            "about": "À propos et mises à jour"
         },
         "general": {
             "title": "Général",
@@ -629,12 +633,12 @@
         },
         "acp": {
             "title": "Intégration d'outils de codage (ACP)",
-            "desc": "Permet à des éditeurs comme VSCode, JetBrains et d'autres d'appeler Gourd AI directement via l'Agent Client Protocol.",
+            "desc": "Permet à des éditeurs comme VSCode, JetBrains et d'autres d'appeler GWork directement via l'Agent Client Protocol.",
             "ready": "Le lanceur est prêt. Vous pouvez maintenant configurer votre éditeur.",
             "not_ready": "Le lanceur n'est pas encore installé.",
-            "not_ready_desc": "Démarrez une fois l'application de bureau packagée pour installer automatiquement le lanceur gourdai, puis rouvrez cette page.",
+            "not_ready_desc": "Démarrez une fois l'application de bureau packagée pour installer automatiquement le lanceur gwork, puis rouvrez cette page.",
             "how_title": "Fonctionnement",
-            "how_desc": "ACP utilise le transport stdio standard : l'éditeur agit comme client et lance gourdai acp comme sous-processus à la demande, en communiquant via stdin/stdout. Aucun service, port ou adresse permanent n'est nécessaire - il suffit de définir la commande ci-dessous dans votre éditeur.",
+            "how_desc": "ACP utilise le transport stdio standard : l'éditeur agit comme client et lance gwork acp comme sous-processus à la demande, en communiquant via stdin/stdout. Aucun service, port ou adresse permanent n'est nécessaire - il suffit de définir la commande ci-dessous dans votre éditeur.",
             "generic_title": "Intégration de l'éditeur",
             "generic_desc": "Remplissez les champs suivants dans n'importe quel éditeur ou plugin compatible ACP.",
             "command_label": "Commande (command)",
@@ -645,17 +649,15 @@
             "load_failed": "Échec du chargement, veuillez réessayer.",
             "model_title": "Modèle utilisé par ACP",
             "model_desc": "ACP s'exécute comme un sous-processus autonome et ne partage pas l'état de sélection du modèle de la fenêtre de discussion. Choisissez donc ici le modèle qu'il doit utiliser.",
-            "model_label": "Modèle",
             "model_follow_default": "Suivre le modèle par défaut ({0})",
             "model_follow_default_empty": "Suivre le modèle par défaut",
             "model_none": "Aucun modèle configuré pour le moment. Veuillez d'abord ajouter et activer un modèle dans Paramètres - Modèles.",
             "model_saved": "Modèle ACP enregistré",
             "model_save_failed": "Échec de l'enregistrement, veuillez réessayer",
-            "thinking_label": "Profondeur de réflexion",
             "thinking_hint": "Contrôle l'effort de raisonnement ; désactivé utilise le comportement par défaut du modèle",
             "thinking_saved": "Paramètres de profondeur de réflexion enregistrés",
             "thinking_save_failed": "Échec de l'enregistrement, veuillez réessayer",
-            "zed_integration_desc": "Fusionnez le JSON ci-dessous dans les paramètres ACP de votre éditeur, puis sélectionnez Gourd AI dans le panneau Agent.",
+            "zed_integration_desc": "Fusionnez le JSON ci-dessous dans les paramètres ACP de votre éditeur, puis sélectionnez GWork dans le panneau Agent.",
             "integration_json": "Configuration JSON"
         },
         "save": "Enregistrer",
@@ -670,7 +672,34 @@
         "code": {
             "remove_no_delete": "Retirer (sans supprimer le dossier du disque)"
         },
-        "operation_failed": "Échec de l’opération"
+        "operation_failed": "Échec de l’opération",
+        "about": {
+            "title": "À propos et mises à jour",
+            "desc": "Consultez les informations de version et obtenez les nouvelles versions de GWork",
+            "version_card": "Informations de version",
+            "desktop_version": "Version de bureau",
+            "backend_version": "Version du backend",
+            "web_na": "N/D (navigateur)",
+            "homepage": "Site officiel",
+            "update_card": "Rechercher les mises à jour",
+            "idle_hint": "Les mises à jour sont vérifiées automatiquement au démarrage",
+            "check_update": "Rechercher les mises à jour",
+            "checking": "Recherche de mises à jour…",
+            "up_to_date": "Vous disposez de la dernière version",
+            "new_version": "Nouvelle version {0} disponible",
+            "auto_downloading": "Téléchargement de la nouvelle version en arrière-plan…",
+            "downloading": "Téléchargement de la mise à jour",
+            "downloaded": "Version {0} téléchargée",
+            "install_restart": "Installer et redémarrer",
+            "install_hint": "La mise à jour s’appliquera au redémarrage ; vos réglages et données sont conservés",
+            "notify_hint": "L’installation automatique n’est pas encore disponible sur cette plateforme. Téléchargez le paquet et mettez à jour manuellement",
+            "download_update": "Télécharger la nouvelle version",
+            "check_failed": "Échec de la recherche de mises à jour",
+            "retry": "Réessayer",
+            "web_mode": "Les mises à jour ne sont pas prises en charge dans le navigateur. Veuillez utiliser le client de bureau",
+            "dev_mode": "Les mises à jour automatiques sont désactivées dans l’environnement de développement",
+            "release_notes": "Notes de version"
+        }
     },
     "chat": {
         "thinking": "Réflexion…",
@@ -777,12 +806,9 @@
         "open_project_where": "Où ouvrir le projet « {0} » ?",
         "open_in_this_window": "Ouvrir dans cette fenêtre",
         "open_in_new_window": "Ouvrir dans une nouvelle fenêtre",
-        "file_saved": "Sauvegardé : {0}",
         "save_failed": "Sauvegarde échouée",
         "expandChat": "Développer le panneau de chat",
         "editorEmpty": "Sélectionnez un fichier dans l'arbre de gauche pour commencer l'édition\nCollaborez avec l'IA à droite",
-        "unsaved": "● Non sauvegardé",
-        "save": "Sauvegarder (Ctrl+S)",
         "project": {
             "start": "Sélectionnez ou créez un projet pour commencer",
             "openFolder": "Ouvrir un dossier",

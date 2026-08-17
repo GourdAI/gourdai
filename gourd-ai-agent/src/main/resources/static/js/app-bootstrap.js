@@ -6,7 +6,7 @@
    - 许多 app-*.js 在“解析期”即抓取 DOM（顶层 getElementById / $('#...')），
      因此所有片段必须在这些脚本执行【之前】注入完成。
    - 应用脚本的加载顺序必须与原 web.html 完全一致（app-base 最先，app-code 最后）。
-   - 第三方库（layui/marked/mermaid/highlight/codemirror）不依赖应用 DOM，
+   - 第三方库（layui/marked/mermaid/highlight/monaco）不依赖应用 DOM，
      已在 index.html 中静态按序加载，这里只负责应用脚本。 */
 (function () {
     'use strict';
@@ -79,6 +79,7 @@
         '/js/app-message.js',
         '/js/app-streaming.js',
         '/js/app-filer.js',
+        '/js/app-monaco.js',
         '/js/app-gitdiff.js',
         '/js/app-todos.js',
     '/js/app-memory.js',
@@ -96,6 +97,7 @@
         '/js/app-loop.js',
         '/js/app-channel-config.js',
         '/js/app-settings-acp.js',
+        '/js/app-settings-about.js',
         '/js/app-code.js',
         '/js/app-terminal.js'
     ];
@@ -103,13 +105,13 @@
     // 欢迎语：从 i18n 语言包 app.welcome_greeting.0~19 读取。
     // ⚠️ 必须延迟到 i18n 就绪后再取值：脚本解析期语言包尚在异步 fetch，
     // 此刻取值会得到 key 字面量。故封装成函数，在 whenReady 回调里调用。
-    function pickWelcomeTitle() {
+    function pickWelcomeTitle(exclude) {
         var arr = [];
         for (var i = 0; i < 20; i++) {
             var v = GourdI18n.t('app.welcome_greeting.' + i);
-            if (v && v.indexOf('app.welcome_greeting') !== 0) arr.push(v);
+            if (v && v.indexOf('app.welcome_greeting') !== 0 && v !== exclude) arr.push(v);
         }
-        if (!arr.length) return '';
+        if (!arr.length) return exclude || '';
         return arr[Math.floor(Math.random() * arr.length)];
     }
 
@@ -152,6 +154,16 @@
             // i18n 就绪后再填欢迎语，避免拿到 key 字面量
             GourdI18n.whenReady(function () {
                 titleEl.textContent = pickWelcomeTitle();
+                // 每 10 秒轮换欢迎语：淡出→换文→淡入，且避免与当前条重复
+                setInterval(function () {
+                    var next = pickWelcomeTitle(titleEl.textContent);
+                    if (!next || next === titleEl.textContent) return;
+                    titleEl.classList.add('welcome-rotating');
+                    setTimeout(function () {
+                        titleEl.textContent = next;
+                        titleEl.classList.remove('welcome-rotating');
+                    }, 260);
+                }, 10000);
             });
         }
 

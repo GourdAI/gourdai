@@ -214,8 +214,7 @@ function deleteSession(idx) {
         if (sess) {
             if (sess.eventSource) sess.eventSource.close();
             if (sess.silenceTimer) clearTimeout(sess.silenceTimer);
-            if (sess.contentRafId) cancelAnimationFrame(sess.contentRafId);
-            if (sess.reasonRafId) cancelAnimationFrame(sess.reasonRafId);
+            if (typeof disposeSessionStreamMd === 'function') disposeSessionStreamMd(sess);
             $(sess.container).remove();
             delete sessionMap[entry.sessionId];
             // 删除会话时清理可能残留的加载按钮
@@ -434,12 +433,10 @@ function replaySession(sess, events, prepend) {
         if (sess.currentBubbleEl || sess.thinkingBlockEl || sess.pendingToolCard || sess.currentBatch) {
             // 回放期间不经过 finishStream（避免空 buffer 产生空气泡和 setAssistantTime 副作用），
             // 手动取消待渲染帧并强刷 buffer，然后清理状态。
-            if (sess.contentRafId) { cancelAnimationFrame(sess.contentRafId); sess.contentRafId = null; }
-            if (sess.reasonRafId) { cancelAnimationFrame(sess.reasonRafId); sess.reasonRafId = null; }
             if (sess.reasonBuffer) {
                 var el = ensureAssistantBubble(sess);
                 el.setAttribute('data-md-raw', sess.reasonBuffer);
-                $(el).html(renderMd(sess.reasonBuffer));
+                getStreamMd(el).finish();
                 if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
             }
             removeThinking(sess);
@@ -1273,7 +1270,6 @@ function loadModels(sessionId, callback) {
             }
 
             renderModelUI();
-            renderThinkingUI();
             if (callback) callback();
         } catch (e) {
             console.error('Failed to parse models:', e);
@@ -1298,13 +1294,11 @@ function refreshSessionModel(sessionId) {
                 sessionModelMap[sessionId] = data.selected || '';
                 sessionThinkingMap[sessionId] = data.thinkingDepth || 'off';
                 renderModelUI();
-                renderThinkingUI();
             } catch (e) {}
         });
     } else {
         // Already cached — just re-render UI
         renderModelUI();
-        renderThinkingUI();
     }
 }
 
@@ -1330,11 +1324,16 @@ function renderModelUI() {
     for (var c = 0; c < modelList.length; c++) {
         if (modelList[c].name === currentModel) { currentEntry = modelList[c]; break; }
     }
-    // 工具栏按钮显示去前缀短名，避免「Gourd AI-xxx」过长截断
+    // 工具栏按钮显示去前缀短名，避免「GWork-xxx」过长截断
     var displaySource = currentEntry ? modelShortName(currentEntry) : currentModel;
     var displayName = displaySource.length > 24 ? displaySource.substring(0, 24) + '...' : displaySource;
     $chatName.text(displayName || GourdI18n.t('history.default_model'));
     $welcomeName.text(displayName || GourdI18n.t('history.default_model'));
+
+    // 按钮内思考档位小标签：非默认（off）档位时显示；默认档位不显示，保持按钮简洁
+    var tagLabel = thinkingButtonTagLabel();
+    $('#chatModelThinkingTag').text(tagLabel).toggle(!!tagLabel);
+    $('#welcomeModelThinkingTag').text(tagLabel).toggle(!!tagLabel);
 
     // 按供应商分组（map 归组，不依赖相邻性：用户改名导致同组 name 不连续时也不会拆组/重复标题）；无 provider 的归入「其他」组
     var groups = [];
@@ -1359,6 +1358,8 @@ function renderModelUI() {
             html += '<div class="model-dropdown-item' + cls + '" data-model="' + escapeHtml(m.name) + '">'
                 + '<span class="model-item-name">' + escapeHtml(shortName) + (ctxLen ? '<span class="model-item-ctx">' + ctxLen + '</span>' : '') + '</span>'
                 + (desc ? '<span class="model-item-desc">' + escapeHtml(desc) + '</span>' : '')
+                // 关联选择：思考档位内嵌在当前选中模型项下，跟随所选模型展示
+                + (m.name === currentModel ? thinkingChipsHtml() : '')
                 + '</div>';
         }
     }
@@ -1376,46 +1377,49 @@ function thinkingShortLabel(value) {
     return GourdI18n.t('history.thinking.default_label');
 }
 
-function renderThinkingUI() {
+// 按钮内思考档位小标签：当前值为默认（off）或不在档位集内时不显示，其余显示短标签
+function thinkingButtonTagLabel() {
+    var current = getSelectedThinking();
+    var opts = currentThinkingOptions();
+    for (var k = 0; k < opts.length; k++) {
+        if (opts[k].value === current && current !== 'off') return thinkingShortLabel(current);
+    }
+    return '';
+}
+
+// 关联思考档位区（内嵌在当前模型项下）：首项为「默认」（off，跟随模型默认行为）
+function thinkingChipsHtml() {
     var current = getSelectedThinking();
     var opts = currentThinkingOptions();
 
-    // 当前档位是否在本接口档位集内（切换模型后旧值可能不适用 → 视作关闭）
-    var validCurrent = 'off';
+    // 当前档位是否在本接口档位集内（切换模型后旧值可能不适用 → 视作默认）
+    var valid = 'off';
     for (var k = 0; k < opts.length; k++) {
-        if (opts[k].value === current) { validCurrent = current; break; }
+        if (opts[k].value === current) { valid = current; break; }
     }
-    var isOn = validCurrent && validCurrent !== 'off';
 
-    var $chatSel = $('#chatThinkingSelector');
-    var $welcomeSel = $('#welcomeThinkingSelector');
-    // 与模型选择器保持一致：选完即恢复常态，不长期保留 active 高亮
-    $chatSel.removeClass('active');
-    $welcomeSel.removeClass('active');
-
-    var shortLabel = thinkingShortLabel(validCurrent);
-    $('#chatThinkingName').text(shortLabel);
-    $('#welcomeThinkingName').text(shortLabel);
-
-    var html = '';
+    var html = '<div class="model-thinking-opts"><span class="model-thinking-label">'
+        + escapeHtml(GourdI18n.t('app.thinking_label')) + '</span>';
     for (var i = 0; i < opts.length; i++) {
         var o = opts[i];
-        var cls = o.value === validCurrent ? ' active' : '';
-        html += '<div class="model-dropdown-item' + cls + '" data-thinking="' + o.value + '">'
-            + '<span class="model-item-name">' + escapeHtml(o.label) + '</span>'
-            + '<span class="model-item-desc">' + escapeHtml(o.desc) + '</span>'
-            + '</div>';
+        var cls = o.value === valid ? ' active' : '';
+        html += '<span class="model-thinking-chip' + cls + '" data-thinking="' + escapeHtml(o.value) + '"'
+            + (o.desc ? ' title="' + escapeHtml(o.desc) + '"' : '')
+            + '>' + escapeHtml(o.label) + '</span>';
     }
-    $('#chatThinkingDropdown').html(html);
-    $('#welcomeThinkingDropdown').html(html);
+    html += '</div>';
+    return html;
+}
+
+// 思考档位已合并进模型下拉（关联选择）：渲染统一走 renderModelUI，此函数保留作兼容入口
+function renderThinkingUI() {
+    renderModelUI();
 }
 
 function selectModel(modelName) {
     var sid = activeSessionId || SESSION_ID;
     sessionModelMap[sid] = modelName;
     renderModelUI();
-    // 模型变了，思考档位集也可能变（接口不同）——刷新思考切换器
-    renderThinkingUI();
 
     // 立即通知服务端绑定模型选择，确保不走 /web/chat/input 的命令（如 /git、循环任务等）也能感知到模型变更
     $.post('/web/chat/models/select', {
@@ -1429,7 +1433,7 @@ function selectModel(modelName) {
 function selectThinking(depth) {
     var sid = activeSessionId || SESSION_ID;
     sessionThinkingMap[sid] = depth;
-    renderThinkingUI();
+    renderModelUI();
 
     // 立即通知服务端绑定档位（与模型选择同理，覆盖不走 /web/chat/input 的场景）
     $.post('/web/chat/thinking/select', {
@@ -1450,67 +1454,49 @@ function initModelSelector(selectorId, currentId, dropdownId) {
     $current.on('click', function(e) {
         e.stopPropagation();
         // Close all other selectors (model + thinking)
-        $('.model-selector.open, .thinking-selector.open').each(function() {
+        $('.model-selector.open').each(function() {
             if (this.id !== selectorId) $(this).removeClass('open');
         });
         $selector.toggleClass('open');
     });
 
     $dropdown.on('click', function(e) {
+        // 关联的思考档位 chip：仅设置档位，不切模型；保持下拉打开便于连续调整
+        var $chip = $(e.target).closest('.model-thinking-chip');
+        if ($chip.length) {
+            e.stopPropagation();
+            var depth = $chip.attr('data-thinking');
+            if (depth != null && depth !== getSelectedThinking()) {
+                selectThinking(depth);
+            }
+            return;
+        }
         var $item = $(e.target).closest('.model-dropdown-item');
         if (!$item.length) return;
         e.stopPropagation();
         var modelName = $item.attr('data-model');
         if (modelName && modelName !== getSelectedModel()) {
             selectModel(modelName);
+            // 切换模型后保持下拉打开：让用户继续在新模型项下选择思考档位（关联选择）
+            return;
         }
-        $selector.removeClass('open');
-    });
-}
-
-// Toggle dropdown open/close for the thinking-depth selector
-function initThinkingSelector(selectorId, currentId, dropdownId) {
-    var $selector = $('#' + selectorId);
-    var $current = $('#' + currentId);
-    var $dropdown = $('#' + dropdownId);
-    if (!$selector.length || !$current.length || !$dropdown.length) return;
-
-    $current.on('click', function(e) {
-        e.stopPropagation();
-        // Close all other open selectors (model + thinking)
-        $('.model-selector.open, .thinking-selector.open').each(function() {
-            if (this.id !== selectorId) $(this).removeClass('open');
-        });
-        $selector.toggleClass('open');
-    });
-
-    $dropdown.on('click', function(e) {
-        var $item = $(e.target).closest('.model-dropdown-item');
-        if (!$item.length) return;
-        e.stopPropagation();
-        var depth = $item.attr('data-thinking');
-        if (depth && depth !== getSelectedThinking()) {
-            selectThinking(depth);
-        }
+        // 点击当前已选模型项：视为「确认/收起」动作，关闭下拉
         $selector.removeClass('open');
     });
 }
 
 // Close all dropdowns on outside click
 $(document).on('click', function() {
-    $('.model-selector.open, .thinking-selector.open').removeClass('open');
+    $('.model-selector.open').removeClass('open');
 });
 
-// 国际化：语言包就绪 / 切换语言后，重新渲染模型与思考档位选择器（档位文案随语言变）
+// 国际化：语言包就绪 / 切换语言后，重新渲染模型选择器（模型 + 关联思考档位文案随语言变）
 document.addEventListener('i18n:localeChanged', function () {
-    if (typeof renderThinkingUI === 'function') { try { renderThinkingUI(); } catch (e) {} }
     if (typeof renderModelUI === 'function') { try { renderModelUI(); } catch (e) {} }
 });
 
 initModelSelector('chatModelSelector', 'chatModelCurrent', 'chatModelDropdown');
 initModelSelector('welcomeModelSelector', 'welcomeModelCurrent', 'welcomeModelDropdown');
-initThinkingSelector('chatThinkingSelector', 'chatThinkingCurrent', 'chatThinkingDropdown');
-initThinkingSelector('welcomeThinkingSelector', 'welcomeThinkingCurrent', 'welcomeThinkingDropdown');
 
 window.reloadModels = reloadModels;
 window.loadModels = loadModels;

@@ -3,6 +3,7 @@
         "describe_images": "画像の説明中",
         "process_files": "ファイル処理中",
         "connection_disconnected": "接続が切断されました",
+        "busy_deferred": "前のタスクがまだ実行中です。このメッセージは完了後に自動送信されます",
         "unknown_error": "不明なエラー",
         "backend_start_failed": "バックエンドの起動に失敗しました",
         "connected": "接続済み",
@@ -72,8 +73,8 @@
         "model_group_other": "その他",
         "thinking": {
             "off": {
-                "label": "思考をオフ",
-                "desc": "推論/思考を有効にしない"
+                "label": "デフォルト",
+                "desc": "モデルのデフォルト動作を使用"
             },
             "minimal": {
                 "label": "最小",
@@ -103,7 +104,7 @@
                 "label": "最大",
                 "desc": "最強の推論、コスト度外視"
             },
-            "default_label": "思考"
+            "default_label": "デフォルト"
         }
     },
     "base": {
@@ -119,12 +120,12 @@
         "review_view": "コードレビュー",
         "terminal_shortcut": "ターミナルショートカット",
         "menu": "メニュー",
-        "title": "Gourd AI",
+        "title": "GWork",
         "new_chat": "新しいチャット",
         "placeholder_welcome": "タスクを説明し、ファイルの添付も可能です…",
         "placeholder_chat": "メッセージを入力、Shift+Enter で改行…",
         "history_title": "履歴",
-        "welcome_title": "こんにちは、Gourd AI です！",
+        "welcome_title": "こんにちは、GWork です！",
         "welcome_sub": "どんなお手伝いが必要ですか？",
         "drop_attach": "離してファイルを添付",
         "thinking_label": "思考",
@@ -140,6 +141,7 @@
         "subagent": "サブエージェント",
         "loop_task": "スケジュールタスク",
         "history_msg": "履歴メッセージ",
+        "plus_more": "その他",
         "voice_input": "音声入力",
         "send": "送信",
         "all_sessions": "すべてのセッション",
@@ -150,16 +152,16 @@
         "queue": "キュー",
         "refresh": "更新",
         "welcome_greeting": {
-            "0": "アイデアが湧かない？ Gourd AI に任せましょう〜",
-            "1": "Gourd AI はあなたの学習・作業の相棒です、問題を相棒に任せて〜",
-            "2": "今日はどんな新しいアイデアがありますか？ Gourd AI に教えてください〜",
+            "0": "アイデアが湧かない？ GWork に任せましょう〜",
+            "1": "GWork はあなたの学習・作業の相棒です、問題を相棒に任せて〜",
+            "2": "今日はどんな新しいアイデアがありますか？ GWork に教えてください〜",
             "3": "何を話しましょうか？ いつでも待機しています〜",
             "4": "難しい問題がありますか？ 一緒に解決しましょう！",
             "5": "コード、資料検索、ブレインストーミング、いつでも始められます〜",
             "6": "あなたのアイデアを教えてください、残りは僕にお任せ〜",
             "7": "行き詰まりましたか？ 僕が考えを整理しましょう〜",
             "8": "新しい一日、新しいインスピレーション、聞かせてください？",
-            "9": "大小問わず、どんな問題でも Gourd AI がいます〜",
+            "9": "大小問わず、どんな問題でも GWork がいます〜",
             "10": "あなたのアイデアを教えて、僕が実現のお手伝いをします〜",
             "11": "気軽に質問してください、遠慮しないで〜",
             "12": "コード、文章、企画、何でも話せます〜",
@@ -169,17 +171,18 @@
             "16": "遠慮せず、質問があれば直接どうぞ〜",
             "17": "効率を2倍にする秘訣：雑用を僕に任せる〜",
             "18": "複雑な問題をシンプルに、教えてみませんか？",
-            "19": "こんにちは、Gourd AI です！"
+            "19": "こんにちは、GWork です！"
         },
         "loading": "読み込み中…",
         "search_history": "履歴を検索…",
-        "learn_more": "Gourd AI についてさらに詳しく",
+        "learn_more": "GWork についてさらに詳しく",
         "resize_input": "ドラッグで入力欄の高さを調整、ダブルクリックで復元",
         "memory_view": "メンタルメモリ"
     },
     "settings": {
         "common": {
             "back": "戻る",
+            "close": "閉じる",
             "delete": "削除",
             "copy": "コピー",
             "refresh": "更新",
@@ -197,7 +200,8 @@
             "lsp": "LSP 設定",
             "loop": "スケジュール",
             "channel": "リモート",
-            "acp": "ACP"
+            "acp": "ACP",
+            "about": "バージョン情報と更新"
         },
         "general": {
             "title": "全般",
@@ -629,12 +633,12 @@
         },
         "acp": {
             "title": "エディター向け ACP 連携",
-            "desc": "VSCode、JetBrains などのエディターが Agent Client Protocol を通じて Gourd AI を直接呼び出せるようにします。",
+            "desc": "VSCode、JetBrains などのエディターが Agent Client Protocol を通じて GWork を直接呼び出せるようにします。",
             "ready": "ランチャーの準備が整いました。エディターを設定できます。",
             "not_ready": "ランチャーはまだインストールされていません。",
-            "not_ready_desc": "パッケージ版デスクトップアプリを一度起動して gourdai ランチャーを自動インストールし、その後このページを再度開いてください。",
+            "not_ready_desc": "パッケージ版デスクトップアプリを一度起動して gwork ランチャーを自動インストールし、その後このページを再度開いてください。",
             "how_title": "仕組み",
-            "how_desc": "ACP は標準の stdio トランスポートを使用します。エディターがクライアントとして動作し、必要に応じて gourdai acp をサブプロセスとして起動し、stdin/stdout を介して通信します。常駐サービス、ポート、アドレスは不要です。エディターに以下のコマンドを設定するだけで済みます。",
+            "how_desc": "ACP は標準の stdio トランスポートを使用します。エディターがクライアントとして動作し、必要に応じて gwork acp をサブプロセスとして起動し、stdin/stdout を介して通信します。常駐サービス、ポート、アドレスは不要です。エディターに以下のコマンドを設定するだけで済みます。",
             "generic_title": "エディター統合設定",
             "generic_desc": "ACP 対応の任意のエディターまたはプラグインで、以下の項目を入力してください。",
             "command_label": "コマンド (command)",
@@ -645,17 +649,15 @@
             "load_failed": "読み込みに失敗しました。もう一度お試しください。",
             "model_title": "ACP が使用するモデル",
             "model_desc": "ACP は独立したサブプロセスとして動作し、チャットウィンドウのモデル選択状態を共有しません。ここで使用するモデルをあらかじめ指定してください。",
-            "model_label": "モデル",
             "model_follow_default": "デフォルトモデルに従う（{0}）",
             "model_follow_default_empty": "デフォルトモデルに従う",
             "model_none": "まだモデルが構成されていません。まず「設定 - モデル」でモデルを追加して有効にしてください。",
             "model_saved": "ACP モデルを保存しました",
             "model_save_failed": "保存に失敗しました。もう一度お試しください",
-            "thinking_label": "思考深度",
             "thinking_hint": "推論の強さを制御します。オフにするとモデルのデフォルト動作を使用",
             "thinking_saved": "思考深度設定を保存しました",
             "thinking_save_failed": "保存に失敗しました。もう一度お試しください",
-            "zed_integration_desc": "以下の JSON 設定をエディターの ACP 設定に統合し、Agent パネルで Gourd AI を選択してください。",
+            "zed_integration_desc": "以下の JSON 設定をエディターの ACP 設定に統合し、Agent パネルで GWork を選択してください。",
             "integration_json": "JSON 設定"
         },
         "save": "保存",
@@ -670,7 +672,34 @@
         "code": {
             "remove_no_delete": "削除（ディスク上のディレクトリは残す）"
         },
-        "operation_failed": "操作に失敗しました"
+        "operation_failed": "操作に失敗しました",
+        "about": {
+            "title": "バージョン情報と更新",
+            "desc": "バージョン情報を確認し、GWork の新バージョンを取得します",
+            "version_card": "バージョン情報",
+            "desktop_version": "デスクトップ版バージョン",
+            "backend_version": "バックエンドバージョン",
+            "web_na": "対象外（ブラウザ環境）",
+            "homepage": "公式サイト",
+            "update_card": "アップデートの確認",
+            "idle_hint": "起動時にアップデートを自動確認します",
+            "check_update": "アップデートを確認",
+            "checking": "アップデートを確認しています…",
+            "up_to_date": "現在ご利用のバージョンが最新です",
+            "new_version": "新バージョン {0} が利用可能です",
+            "auto_downloading": "新バージョンをバックグラウンドでダウンロードしています…",
+            "downloading": "アップデートをダウンロード中",
+            "downloaded": "バージョン {0} のダウンロードが完了しました",
+            "install_restart": "インストールして再起動",
+            "install_hint": "再起動後に更新が適用されます。設定とデータは保持されます",
+            "notify_hint": "このプラットフォームではアプリ内自動インストールに未対応です。パッケージをダウンロードして手動で更新してください",
+            "download_update": "新バージョンをダウンロード",
+            "check_failed": "アップデートの確認に失敗しました",
+            "retry": "再試行",
+            "web_mode": "ブラウザ環境ではアプリの更新に対応していません。デスクトップ版をご利用ください",
+            "dev_mode": "開発環境では自動更新を行いません",
+            "release_notes": "リリースノート"
+        }
     },
     "chat": {
         "thinking": "考え中…",
@@ -777,12 +806,9 @@
         "open_project_where": "プロジェクト「{0}」をどこで開きますか？",
         "open_in_this_window": "このウィンドウで開く",
         "open_in_new_window": "新しいウィンドウで開く",
-        "file_saved": "{0} を保存しました",
         "save_failed": "保存に失敗しました",
         "expandChat": "チャットパネルを展開",
         "editorEmpty": "左側のファイルツリーからファイルを選択して編集を開始\n右側で AI と対話して共同作業",
-        "unsaved": "● 未保存",
-        "save": "保存 (Ctrl+S)",
         "project": {
             "start": "プロジェクトを選択または作成して開始",
             "openFolder": "フォルダを開く",

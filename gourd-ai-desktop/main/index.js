@@ -27,6 +27,7 @@ const {
 } = require('./backend');
 const uiServer = require('./ui-server');
 const { provisionCli } = require('./cli-provision');
+const updater = require('./updater');
 
 // 单实例锁：防止多开
 const gotTheLock = app.requestSingleInstanceLock();
@@ -119,7 +120,7 @@ function createProjectWindow(options) {
 
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   const win = new BrowserWindow({
-    title: 'Gourd AI',
+    title: 'GWork',
     width: Math.min(1440, Math.max(1024, Math.floor(width * 0.8))),
     height: Math.min(900, Math.max(640, Math.floor(height * 0.85))),
     minWidth: 960,
@@ -132,6 +133,9 @@ function createProjectWindow(options) {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // 流式渲染依赖 rAF/定时器；默认 true 会在窗口隐藏/被遮挡时节流，
+      // 表现为"思考不流式、工具卡结尾批量出现"。保持后台全速运行。
+      backgroundThrottling: false,
     },
   });
   win.__projectPath = project;
@@ -183,7 +187,7 @@ function createMainWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
   mainWindow = new BrowserWindow({
-    title: 'Gourd AI',
+    title: 'GWork',
     width: Math.min(1440, width),
     height: Math.min(900, height),
     minWidth: 960,
@@ -196,6 +200,9 @@ function createMainWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // 流式渲染依赖 rAF/定时器；默认 true 会在窗口隐藏/被遮挡时节流，
+      // 表现为"思考不流式、工具卡结尾批量出现"。保持后台全速运行。
+      backgroundThrottling: false,
     },
   });
 
@@ -263,7 +270,7 @@ function createTray() {
     return;
   }
   tray = trayInstance;
-  tray.setToolTip('Gourd AI');
+  tray.setToolTip('GWork');
 
   const menu = Menu.buildFromTemplate([
     {
@@ -383,7 +390,7 @@ ipcMain.handle('get-window-project', (event) => {
 ipcMain.on('window-title-update', (event, title) => {
   const sender = event && event.sender;
   const win = sender && !sender.isDestroyed() ? BrowserWindow.fromWebContents(sender) : null;
-  if (win) win.setTitle(String(title || 'Gourd AI'));
+  if (win) win.setTitle(String(title || 'GWork'));
 });
 
 // 渲染层主动查询后端就绪状态（'pending' | 'ready' | 'failed'）。
@@ -419,10 +426,15 @@ app.whenReady().then(async () => {
   createTray();
   bootstrap();
 
-  // 注册终端命令 `gourdai`（写启动器到安装目录的 .gourdai/bin 并加入 PATH，指向自带 JRE）。
+  // 自动更新：注册 IPC、启动延迟首检与周期复检（仅打包态生效，见 updater.js）。
+  // 状态变化经 updater-state 广播到所有窗口，设置页"关于与更新"实时展示。
+  updater.on('state', (state) => broadcastToRenderer('updater-state', state));
+  updater.init();
+
+  // 注册终端命令 `gwork`（写启动器到安装目录的 .gwork/bin 并加入 PATH，指向自带 JRE）。
   // 非阻塞、幂等、自愈；失败只告警不影响 App。仅打包版执行（dev 态无自带 JRE），
-  // 可用 GOURDAI_PROVISION_CLI=1 在开发时强制启用以便调试。
-  if (app.isPackaged || process.env.GOURDAI_PROVISION_CLI === '1') {
+  // 可用 GWORK_PROVISION_CLI=1（兼容旧名 GOURDAI_PROVISION_CLI）在开发时强制启用以便调试。
+  if (app.isPackaged || process.env.GWORK_PROVISION_CLI === '1' || process.env.GOURDAI_PROVISION_CLI === '1') {
     provisionCli().catch((e) => console.warn('[gourd-ai-desktop] 终端命令注册异常:', e && e.message));
   }
 });
@@ -444,15 +456,28 @@ app.on('window-all-closed', () => {
   // do nothing — 通过托盘菜单"退出"才真正退出
 });
 
-// 退出前清理后端进程
-app.on('before-quit', async (event) => {
+// 退出前清理后端进程。
+// 注意：清理完成后必须重新 app.quit() 走正常退出序列（而不是 app.exit(0)）——
+// app.exit() 不会发出 'quit' 事件，而 electron-updater 恰在 'quit' 事件里
+// 静默安装已下载的更新，绕过会导致"退出时自动安装更新"失效。
+let quitCleanupStarted = false;
+app.on('before-quit', (event) => {
+  if (quitCleanupStarted) return; // 清理已做完，放行正常退出序列（will-quit → quit）
   event.preventDefault();
   isQuitting = true;
-  if (uiServerHandle) {
-    try { uiServerHandle.close(); } catch (e) { /* ignore */ }
-  }
-  await stopBackend();
-  app.exit(0);
+  quitCleanupStarted = true;
+
+  // 兜底：清理卡死时强制退出（unref 使其不阻塞正常退出后的进程终止）
+  const guard = setTimeout(() => app.exit(0), 10000);
+  if (typeof guard.unref === 'function') guard.unref();
+
+  (async () => {
+    if (uiServerHandle) {
+      try { uiServerHandle.close(); } catch (e) { /* ignore */ }
+    }
+    try { await stopBackend(); } catch (e) { /* ignore */ }
+    app.quit();
+  })();
 });
 
 // 第二个实例启动时显示已有窗口（多窗口场景：主窗口 + 项目新窗体整体恢复）

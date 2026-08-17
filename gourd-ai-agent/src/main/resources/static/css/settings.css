@@ -5,12 +5,15 @@
 .settings-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center; animation: settings-fade-in 0.2s ease-out; }
 @keyframes settings-fade-in { from { opacity: 0; } to { opacity: 1; } }
 
-.settings-panel { width: 900px; height: 600px; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 16px; box-shadow: 0 12px 48px rgba(0,0,0,0.25); display: flex; animation: settings-slide-up 0.25s ease-out; overflow: hidden; }
+.settings-panel { position: relative; width: 900px; height: 600px; background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 16px; box-shadow: 0 12px 48px rgba(0,0,0,0.25); display: flex; animation: settings-slide-up 0.25s ease-out; overflow: hidden; }
 @keyframes settings-slide-up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
 
 .settings-content { flex: 1; display: flex; overflow: hidden; }
 .settings-tabs { display: flex; flex-direction: column; border-right: 1px solid var(--border-color); padding: 16px 12px; min-width: 188px; background: var(--bg-secondary); border-radius: 16px 0 0 16px; }
-.settings-tabs-title { padding: 4px 8px 14px; font-size: 17px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.01em; }
+.settings-tabs-title-row { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 14px; }
+.settings-tabs-title { font-size: 17px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.01em; }
+.settings-close-btn { position: absolute; top: 12px; right: 12px; z-index: 20; background: none; border: none; border-radius: 8px; width: 30px; height: 30px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-secondary); transition: all 0.15s; }
+.settings-close-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
 .settings-tab { padding: 9px 12px; background: none; border: none; border-radius: 9px; color: var(--text-secondary); font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.18s; text-align: left; display: flex; align-items: center; gap: 9px; margin-bottom: 2px; }
 .settings-tab:hover { color: var(--text-primary); background: var(--bg-hover); }
 .settings-tab.active { color: var(--accent); background: var(--bg-main); font-weight: 600; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
@@ -20,7 +23,7 @@
 .settings-product-name { font-size: 13px; font-weight: 600; color: var(--text-secondary); opacity: 0.6; letter-spacing: 0.5px; margin-bottom: 2px; }
 .settings-version { font-size: 11px; color: var(--text-secondary); opacity: 0.5; }
 
-.settings-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 28px 28px; }
+.settings-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 44px 28px 28px; }
 .settings-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .settings-section-title { font-size: 20px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.02em; }
 .settings-section-desc { font-size: 12px; font-weight: 400; color: var(--text-secondary); margin-top: 2px; letter-spacing: 0; }
@@ -1764,27 +1767,10 @@ input[type=number] { -moz-appearance: textfield; }
     line-height: 1.5;
 }
 
-/* 模型 & 思考深度：横向并排两个下拉框 */
-.acp-select-row {
-    display: flex;
-    align-items: flex-end;
-    gap: 20px;
-}
-.acp-select-item {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-.acp-select-label {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-primary);
-}
-.acp-select-wrap {
-    width: 100%;
-}
+/* 模型 & 思考深度：合并关联选择器（复用全局 .model-selector 组件，向下展开） */
+.acp-model-selector .model-selector-current { max-width: 340px; }
+.acp-model-selector .model-selector-current .model-name { max-width: 260px; }
+.acp-model-selector .model-dropdown { min-width: 320px; max-width: 340px; }
 .acp-model-empty {
     margin-top: 12px;
     font-size: 12px;
@@ -1862,4 +1848,29 @@ input[type=number] { -moz-appearance: textfield; }
     color: #34a853;
     border-color: #34a853;
 }
+
+/* ===== About & Update Tab（关于与更新） ===== */
+.about-version-row { display: flex; align-items: center; padding: 7px 0; font-size: 13px; }
+.about-version-row + .about-version-row { border-top: 1px solid var(--border-color); }
+.about-version-label { width: 140px; flex: none; color: var(--text-secondary); }
+.about-version-value { color: var(--text-primary); word-break: break-all; }
+.about-version-value a { color: var(--accent); text-decoration: none; }
+.about-version-value a:hover { text-decoration: underline; }
+
+.about-status-line { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.about-status-line.about-status-sub { font-weight: 400; color: var(--text-secondary); }
+.about-status-accent { color: var(--accent); }
+.about-status-error { color: #e5484d; }
+.about-status-sub { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
+.about-status-sub-mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; word-break: break-all; max-height: 60px; overflow: auto; }
+
+.about-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.about-actions .btn-primary[disabled], .about-actions .btn-secondary[disabled] { opacity: .55; cursor: not-allowed; }
+
+.about-progress-track { height: 6px; border-radius: 3px; background: var(--bg-secondary); overflow: hidden; margin-top: 12px; }
+.about-progress-fill { height: 100%; border-radius: 3px; background: var(--accent); transition: width .3s ease; }
+.about-progress-text { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
+
+.about-notes-label { margin-top: 14px; font-size: 12px; color: var(--text-secondary); }
+.about-notes { margin: 6px 0 0; padding: 10px 12px; font-size: 12px; line-height: 1.6; color: var(--text-primary); background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; white-space: pre-wrap; word-break: break-word; max-height: 180px; overflow: auto; font-family: inherit; }
 

@@ -137,7 +137,11 @@
                     var nodes = el.childNodes;
                     for (var i = 0; i < nodes.length; i++) {
                         if (nodes[i].nodeType === 3 && nodes[i].textContent.trim()) {
-                            nodes[i].textContent = text + (nodes[i].textContent.slice(nodes[i].textContent.trim().length));
+                            // 仅保留原文本节点的首尾空白、正文替换为译文。
+                            // 旧实现从 trim().length 处 slice，前导空白比正文长时会把原文再包进来，
+                            // 造成按钮文字重复（如“生成摘要 生成摘要”）。
+                            var raw = nodes[i].textContent;
+                            nodes[i].textContent = raw.match(/^\s*/)[0] + text + raw.match(/\s*$/)[0];
                             break;
                         }
                     }

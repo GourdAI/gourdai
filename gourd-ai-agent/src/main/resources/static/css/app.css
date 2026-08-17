@@ -209,7 +209,8 @@ body.is-electron.is-mac:not(.code-mode) .sidebar-header { padding-top: 40px; }
 .welcome-avatar:hover { transform: scale(1.08); filter: brightness(1.1); }
 .welcome-avatar img { width: 110px; height: 110px; object-fit: contain; border-radius: 24px; }
 @keyframes blob-spin { to { transform: rotate(360deg); } }
-.welcome-title { font-size: 26px; font-weight: 700; margin-bottom: 10px; }
+.welcome-title { font-size: 26px; font-weight: 700; margin-bottom: 10px; transition: opacity .25s ease, transform .25s ease; }
+.welcome-title.welcome-rotating { opacity: 0; transform: translateY(4px); }
 .welcome-sub { color: var(--text-secondary); font-size: 15px; margin-bottom: 36px; }
 .welcome-input-box { width: 100%; max-width: 680px; background: var(--bg-input-box); border: 1px solid var(--border-input); border-radius: 12px; box-shadow: var(--shadow-lg); display: flex; flex-direction: column; transition: all 0.25s; }
 .welcome-input-box:focus-within { border-color: var(--accent); box-shadow: var(--shadow-lg), 0 0 0 4px rgba(79,110,247,0.08); }
@@ -246,6 +247,10 @@ body.is-electron.is-mac:not(.code-mode) .sidebar-header { padding-top: 40px; }
 .md-content { padding: 2px 0; color: var(--text-ai-msg); font-size: 14px; contain: layout style paint; will-change: contents; }
 .md-content > :first-child { margin-top: 0; }
 .md-content > :last-child { margin-bottom: 0; }
+/* 流式增量渲染的尾部包裹层：空 div 无边框/padding，外边距可穿透折叠，间距与平铺渲染一致；
+   流式态下归零首尾外边距，与 finish 后全量渲染的观感保持一致 */
+.md-content > .md-stream-tail > :last-child { margin-bottom: 0; }
+.md-content > .md-stream-tail:first-child > :first-child { margin-top: 0; }
 .md-content p { margin: 7px 0; }
 .md-content h1, .md-content h2, .md-content h3, .md-content h4 { margin: 16px 0 8px; font-weight: 600; color: var(--text-primary); }
 .md-content h1 { font-size: 1.35em; } .md-content h2 { font-size: 1.2em; } .md-content h3 { font-size: 1.08em; }
@@ -324,12 +329,7 @@ body.is-electron.is-mac:not(.code-mode) .sidebar-header { padding-top: 40px; }
 .agent-name { order: 3; color: var(--text-secondary); font-size: 12px; flex-shrink: 0; }
 .agent-card .tool-args { display: inline; order: 4; color: var(--text-tertiary); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
-/* 子代理内部工具列表（默认隐藏，expanded 展开） */
-.agent-tools { display: none; padding: 4px 8px 8px; min-height: 0; }
-.agent-card.expanded .agent-tools { display: block; }
-/* 空工具列表不占空间 */
-.agent-card.expanded .agent-tools:empty { display: none; }
-.agent-tools > .tool-card, .agent-tools > .tool-batch-group { margin: 4px 0; border-color: var(--border-color); border-radius: 8px; }
+
 /* 子智能体块内容体（默认隐藏，展开后显示；复用外部主智能体 md-content 样式） */
 .agent-card-body { display: none; padding: 10px 14px; font-size: 14px; color: var(--text-primary); line-height: 1.7; min-height: 0; }
 .agent-card.expanded .agent-card-body { display: block; }
@@ -406,8 +406,8 @@ body.is-electron.is-mac:not(.code-mode) .sidebar-header { padding-top: 40px; }
 .inline-thinking.hidden-reserve { visibility: hidden; }
 /* 子智能体卡片头部的等待指示器：多智能体并行时各自在卡片头部展示执行中状态。
    头部恒可见（卡片体默认折叠），margin-left:auto 靠右、flex-shrink:0 不被挤压（描述文本自行省略）。 */
-.agent-inline-thinking { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-shrink: 0; color: var(--text-secondary); font-size: 12px; }
-.thinking-timer { font-variant-numeric: tabular-nums; color: var(--text-secondary); opacity: 0.7; font-size: 12px; margin-left: 2px; }
+
+
 .thinking-timer-wrap { font-variant-numeric: tabular-nums; color: var(--text-secondary); opacity: 0.7; font-size: 12px; margin-left: 2px; }
 .thinking-current-timer { color: var(--text-secondary); opacity: 0.9; }
 .thinking-row { display: flex; gap: 0; margin-bottom: 28px; animation: msg-in 0.25s ease-out; }
@@ -464,13 +464,15 @@ body.is-electron.is-mac:not(.code-mode) .sidebar-header { padding-top: 40px; }
 /* Model Selector */
 .model-selector { position: relative; display: flex; align-items: center; }
 .model-selector-current { display: flex; align-items: center; gap: 5px; padding: 4px 10px; border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-input-box); color: var(--text-secondary); font-size: 12px; cursor: pointer; transition: all 0.2s; white-space: nowrap; max-width: 180px; }
-.model-selector-current:hover { border-color: var(--accent); color: var(--text-primary); background: var(--bg-hover); }
+.model-selector-current:hover { color: var(--text-primary); background: var(--bg-hover); }
 .model-selector-current .model-name { overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
 .model-selector-current .model-icon { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.7; display: none; }
 .model-selector-current .model-arrow { font-size: 11px; transition: transform 0.2s; opacity: 0.5; }
 .model-selector.open .model-arrow { transform: rotate(180deg); }
 .model-dropdown { position: absolute; bottom: 100%; left: 0; margin-bottom: 6px; background: var(--bg-input-box); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: var(--shadow-lg); min-width: 220px; max-height: 280px; overflow-y: auto; display: none; z-index: 100; animation: drop-up 0.15s ease-out; }
 .model-selector.open .model-dropdown { display: block; }
+/* 向下展开变体（设置页等面板中部场景，向上会被面板顶部裁切） */
+.model-selector.dropdown-down .model-dropdown { top: 100%; bottom: auto; margin-top: 6px; margin-bottom: 0; }
 /* 仅保留淡入，不做位移：面板基态带 translateX(-50%) 居中，若动画关键帧写 transform，
    会覆盖居中位移，导致面板从右侧滑入并在动画结束时跳位（任务/队列悬浮面板） */
 @keyframes drop-up { from { opacity: 0; } to { opacity: 1; } }
@@ -484,15 +486,15 @@ body.is-electron.is-mac:not(.code-mode) .sidebar-header { padding-top: 40px; }
 .model-dropdown-item .model-item-desc { font-size: 11px; color: var(--text-secondary); }
 .model-dropdown-item.active .model-item-desc { color: var(--accent); opacity: 0.7; }
 
-/* Thinking Depth Selector (reuses .model-dropdown for the popup panel) */
-.thinking-selector { position: relative; display: flex; align-items: center; }
-.thinking-selector-current { display: flex; align-items: center; gap: 4px; padding: 4px 9px; border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-input-box); color: var(--text-secondary); font-size: 12px; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
-.thinking-selector-current:hover { border-color: var(--accent); color: var(--text-primary); background: var(--bg-hover); }
-.thinking-selector-current .thinking-icon { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.7; }
-.thinking-selector-current .model-arrow { font-size: 11px; transition: transform 0.2s; opacity: 0.5; }
-.thinking-selector.open .model-arrow { transform: rotate(180deg); }
-.thinking-selector.open .thinking-dropdown { display: block; }
-.thinking-dropdown { min-width: 180px; }
+/* 按钮内思考档位小标签（非默认档位时显示在模型名旁） */
+.model-selector-current .model-thinking-tag { font-size: 11px; color: var(--accent); background: var(--accent-light); padding: 0 6px; border-radius: 4px; flex-shrink: 0; }
+
+/* 关联思考档位区：内嵌在当前模型项下，随所选模型展示 */
+.model-thinking-opts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 6px; padding-top: 7px; border-top: 1px dashed var(--border-color); }
+.model-thinking-label { font-size: 11px; color: var(--text-secondary); margin-right: 2px; user-select: none; }
+.model-thinking-chip { font-size: 11px; padding: 2px 9px; border: 1px solid var(--border-color); border-radius: 12px; color: var(--text-secondary); cursor: pointer; transition: all 0.15s; white-space: nowrap; }
+.model-thinking-chip:hover { background: var(--bg-hover); color: var(--text-primary); }
+.model-thinking-chip.active { background: var(--accent-light); color: var(--accent); }
 
 /* Attachments Preview */
 .attachments-wrap { padding: 8px 14px 0; display: none; }
@@ -505,12 +507,23 @@ body.is-electron.is-mac:not(.code-mode) .sidebar-header { padding-top: 40px; }
 .attachment-item-remove { position: absolute; top: -5px; right: -5px; width: 18px; height: 18px; border-radius: 50%; background: var(--color-danger); color: #fff; border: 2px solid var(--bg-input-box); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 11px; line-height: 1; }
 .attachment-item-remove:hover { background: var(--color-danger-hover); }
 
-/* Attach Button */
-.attach-btn { width: 34px; height: 34px; border-radius: 50%; border: none; background: transparent; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; flex-shrink: 0; }
-.attach-btn:hover { background: var(--bg-hover); color: var(--accent); }
-.attach-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.attach-btn[disabled] { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
 .attach-input { display: none; }
+/* Plus 聚合菜单：原一排圆钮（附加文件/图片/快捷命令/技能/子代理/定时任务/历史消息）
+   收敛为“+”按钮弹出的菜单（参考主流 AI 产品的“+”交互）；菜单项沿用原按钮 ID，JS 绑定不变。 */
+.plus-menu-wrap { position: relative; flex-shrink: 0; }
+.plus-btn { width: 34px; height: 34px; border-radius: 50%; border: none; background: transparent; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; flex-shrink: 0; }
+.plus-btn:hover { background: var(--bg-hover); color: var(--accent); }
+.plus-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.2s ease; }
+.plus-menu-wrap.open .plus-btn { background: var(--bg-hover); color: var(--accent); }
+.plus-menu-wrap.open .plus-btn svg { transform: rotate(45deg); } /* 展开时“+”旋转为“×” */
+.plus-menu { position: absolute; bottom: 100%; left: 0; margin-bottom: 6px; background: var(--bg-input-box); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: var(--shadow-lg); min-width: 170px; display: none; z-index: 100; animation: drop-up 0.15s ease-out; padding: 4px; }
+.plus-menu-wrap.open .plus-menu { display: block; }
+.plus-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: none; background: transparent; border-radius: 7px; color: var(--text-primary); font-size: 13px; cursor: pointer; transition: background 0.15s; text-align: left; }
+.plus-menu-item:hover { background: var(--bg-hover); color: var(--accent); }
+.plus-menu-item svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; color: var(--text-secondary); }
+.plus-menu-item:hover svg { color: var(--accent); }
+.plus-menu-item[disabled] { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
+.plus-menu-sep { height: 1px; background: var(--border-color); margin: 4px 6px; }
 
 /* Drop Overlay (drag & drop file upload) */
 .drop-overlay { display: none; position: absolute; inset: 0; z-index: 50; background: var(--bg-input-box); border: 2.5px dashed var(--accent); border-radius: 14px; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.2s ease; pointer-events: none; }
@@ -1018,6 +1031,12 @@ body:not(.code-mode) .sidebar-memory-btn { display: none !important; }
     text-overflow: ellipsis;
 }
 
+/* 文件树 git 状态着色：复用 Git 审查面板语义色（theme.css 亮/暗双套变量），
+   修改=黄、新增/未跟踪=绿、删除=红，与 IDEA 的“文件名颜色标识变更”一致 */
+.filer-node-name.filer-git-modified { color: var(--git-status-modified); }
+.filer-node-name.filer-git-added { color: var(--git-status-added); }
+.filer-node-name.filer-git-deleted { color: var(--git-status-deleted); }
+
 /* 行首槽位：目录箭头与文件图标共用同一列宽（16px + 5px margin），
    保证同层级的文件图标/名称与目录箭头/名称纵向对齐。 */
 .filer-arrow {
@@ -1244,24 +1263,33 @@ body:not(.code-mode) .filer-view-btn { display: none !important; }
 }
 .git-file-item:hover { background: var(--bg-hover); }
 
-.git-status-letter {
-    width: 18px;
-    height: 18px;
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: 700;
+/* 变更状态图标：轮廓风格（VS Code 风格），按变更类型区分颜色与符号 */
+.git-status-icon {
+    width: 16px;
+    height: 16px;
+    border: 1px solid currentColor;
+    border-radius: 3px;
     display: flex;
     align-items: center;
     justify-content: center;
     margin-right: 8px;
     flex-shrink: 0;
-    color: #fff;
+    background: transparent;
 }
-.git-status-letter.S { background: var(--git-status-staged); }
-.git-status-letter.M { background: var(--git-status-modified); }
-.git-status-letter.A { background: var(--git-status-added); }
-.git-status-letter.D { background: var(--git-status-deleted); }
-.git-status-letter.\? { background: var(--git-status-untracked); }
+.git-status-icon::before {
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+/* 修改：黄色圆点 */
+.git-status-icon.M { color: var(--git-status-modified); }
+.git-status-icon.M::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+/* 新增 / 未跟踪：绿色加号 */
+.git-status-icon.A, .git-status-icon.U { color: var(--git-status-added); }
+.git-status-icon.A::before, .git-status-icon.U::before { content: '+'; }
+/* 删除：红色减号 */
+.git-status-icon.D { color: var(--git-status-deleted); }
+.git-status-icon.D::before { content: '\2212'; }
 
 .git-file-path {
     flex: 1;
@@ -1368,74 +1396,8 @@ body:not(.code-mode) .filer-view-btn { display: none !important; }
     min-width: 0;
 }
 
-/* ===== 并排 Diff（基础版本 | 本地修改）===== */
-/* viewer content 默认 white-space:pre，渲染并排 diff 时复位为普通块布局 */
-.git-viewer-content.git-viewer-split { white-space: normal; padding: 0; }
-.git-split-head {
-    display: flex;
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    background: var(--bg-sidebar);
-    border-bottom: 1px solid var(--border-color);
-    font-family: var(--font-sans);
-    font-size: 11.5px;
-    color: var(--text-secondary);
-}
-.git-split-head-cell {
-    flex: 1 1 50%;
-    width: 50%;
-    padding: 6px 12px;
-    font-weight: 600;
-}
-.git-split-head-cell:first-child { border-right: 1px solid var(--border-color); }
-.git-split-body {
-    font-family: var(--font-mono);
-    font-size: 12.5px;
-    line-height: 1.6;
-}
-.git-split-hunk {
-    padding: 3px 12px;
-    color: var(--git-line-hunk-text);
-    background: var(--bg-hover);
-    font-weight: 500;
-    white-space: pre;
-    overflow-x: auto;
-    border-top: 1px solid var(--border-color);
-    border-bottom: 1px solid var(--border-color);
-}
-.git-split-row { display: flex; }
-.git-split-side {
-    flex: 1 1 50%;
-    width: 50%;
-    min-width: 0;
-    display: flex;
-    align-items: flex-start;
-}
-.git-split-side:first-child { border-right: 1px solid var(--border-color); }
-.git-split-num {
-    width: 44px;
-    min-width: 44px;
-    text-align: right;
-    padding-right: 8px;
-    color: var(--text-secondary);
-    opacity: 0.45;
-    user-select: none;
-    font-variant-numeric: tabular-nums;
-    flex-shrink: 0;
-}
-.git-split-text {
-    flex: 1;
-    min-width: 0;
-    padding-right: 8px;
-    white-space: pre-wrap;
-    word-break: break-word;
-    overflow-wrap: anywhere;
-}
-.git-split-del { background: var(--git-line-del-bg); color: var(--git-line-del-text); }
-.git-split-add { background: var(--git-line-add-bg); color: var(--git-line-add-text); }
-.git-split-ctx { color: var(--text-primary); }
-.git-split-empty { background: var(--bg-code, rgba(128,128,128,0.04)); }
+
+
 
 /* ===== 工具结果专用渲染：grep / glob / ls / bash ===== */
 .tool-summary, .grep-summary {
@@ -1534,6 +1496,7 @@ body:not(.code-mode) .filer-view-btn { display: none !important; }
 
 /* Git 提交按钮 */
 .git-commit-bar {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -1542,6 +1505,7 @@ body:not(.code-mode) .filer-view-btn { display: none !important; }
     flex-shrink: 0;
     background: var(--bg-secondary);
 }
+.git-commit-bar.resizing .git-commit-input { transition: border-color 0.2s; }
 .git-commit-input {
     width: 100%;
     min-height: 30px;
@@ -1698,14 +1662,38 @@ body:not(.code-mode) .filer-view-btn { display: none !important; }
 }
 .git-viewer-content {
     flex: 1;
-    overflow: auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     margin: 0;
-    padding: 8px 0;
-    font-family: var(--font-mono);
-    font-size: 12.5px;
-    line-height: 1.6;
-    white-space: pre;
+    padding: 0;
+    overflow: hidden;
     background: none;
+}
+
+/* 文件查看器信息栏（文件名 | 行数 | 大小 | 语言 + 复制按钮） */
+.git-viewer-info-bar {
+    flex-shrink: 0;
+}
+
+/* 提示/错误消息占位 */
+.git-viewer-msg {
+    flex: 1;
+    overflow: auto;
+    padding: 20px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-family: var(--font-sans);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Monaco 编辑器宿主（文件查看器 / DiffEditor），内部自行滚动 */
+.git-viewer-host {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
 }
 
 /* Diff Viewer 操作栏 */
@@ -1780,30 +1768,6 @@ body:not(.code-mode) .filer-view-btn { display: none !important; }
 }
 .file-view-copy-btn:hover {
     background: var(--bg-hover);
-}
-.file-view-code {
-    font-family: var(--font-mono);
-    font-size: 12.5px;
-    line-height: 1.65;
-}
-.file-view-line {
-    display: flex;
-    line-height: inherit;
-}
-.file-view-num {
-    width: 52px;
-    min-width: 52px;
-    text-align: right;
-    padding-right: 12px;
-    color: var(--text-secondary);
-    opacity: 0.32;
-    user-select: none;
-    font-variant-numeric: tabular-nums;
-}
-.file-view-text {
-    flex: 1;
-    min-width: 0;
-    white-space: pre;
 }
 
 /* 工作区干净 */
