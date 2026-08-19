@@ -23,12 +23,15 @@
     {
       "from": "build/ui/",
       "to": "ui"
+    },
+    {
+      "from": "build/icons/",
+      "to": "icons"
     }
   ],
   "linux": {
     "icon": "build/icons/",
     "executableName": "gwork",
-    "packageName": "gwork",
     "artifactName": "GWork-${version}-${arch}.${ext}",
     "target": [
       {
