@@ -3,13 +3,14 @@
 
 (function() {
     // ---- DOM 元素 ----
-    // 视图切换按钮现位于左侧主侧边栏（.sidebar-header-actions），data-view = files | gitdiff
+    // 视图切换按钮现位于左侧主侧边栏底部（.sidebar-footer-icons），data-view = files | gitdiff
     var tabs = document.querySelectorAll('.filer-view-btn');
     var tabContents = document.querySelectorAll('.filer-tab-content');
     var gitUnavailable = document.getElementById('gitUnavailable');
     var gitUninitialized = document.getElementById('gitUninitialized');
     var gitDiffPanel = document.getElementById('gitDiffPanel');
-    var gitBadge = document.getElementById('gitBadge');
+    // Git 变更计数角标：入口按钮可能有多处（专注模式文件树面板头部），统一按类查询同步更新
+    var gitBadges = document.querySelectorAll('.git-badge');
     var gitBranch = document.getElementById('gitBranch');
     var gitDiffFileList = document.getElementById('gitDiffFileList');
     var gitDiffEmpty = document.getElementById('gitDiffEmpty');
@@ -966,13 +967,14 @@
 
     // ---- Badge 更新 ----
     function updateBadge(count) {
-        if (!gitBadge) return;
-        if (count > 0) {
-            gitBadge.textContent = count > 99 ? '99+' : count;
-            gitBadge.style.display = 'inline';
-        } else {
-            gitBadge.style.display = 'none';
-        }
+        gitBadges.forEach(function (b) {
+            if (count > 0) {
+                b.textContent = count > 99 ? '99+' : count;
+                b.style.display = 'inline';
+            } else {
+                b.style.display = 'none';
+            }
+        });
     }
 
     // ---- WebSocket 联动：文件变更时刷新 git status ----

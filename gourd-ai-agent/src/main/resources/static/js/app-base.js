@@ -58,18 +58,22 @@ var appMode = 'chat';
 window.appMode = appMode;
 /* Code 模式当前所选项目根目录绝对路径（chat 模式为空） */
 window.currentProjectRoot = '';
+/* Chat 模式当前所选工作空间根目录绝对路径（'' 表示默认工作区；会话按工作空间隔离存储） */
+window.currentChatWorkspace = '';
 
-/* 生成新会话 ID：code 模式用 code- 前缀（落所选项目），否则 chat- 前缀（落全局） */
+/* 生成新会话 ID：统一 work- 前缀；落盘位置由发送时的 X-Session-Cwd 决定
+   （有所属根→该根下=项目会话；无→安装目录=全局会话） */
 function newSessionId() {
-    var prefix = (window.appMode === 'code') ? 'code-' : 'chat-';
-    return prefix + Date.now().toString(36);
+    return 'work-' + Date.now().toString(36);
 }
 window.newSessionId = newSessionId;
 
-/* Code 模式下，发送消息时随请求头带上的工作目录（重定向 AI 工具到所选项目）。
-   chat 模式返回空串（后端使用默认工作区）。 */
+/* 发送消息时随请求头带上的工作目录（重定向 AI 工具到所选工作空间/项目）。
+   code 模式取所选项目；chat 模式取所选工作空间；未选择返回空串（后端使用默认工作区）。 */
 function getSessionCwd() {
-    return (window.appMode === 'code' && window.currentProjectRoot) ? window.currentProjectRoot : '';
+    if (window.appMode === 'code' && window.currentProjectRoot) return window.currentProjectRoot;
+    if (window.appMode !== 'code' && window.currentChatWorkspace) return window.currentChatWorkspace;
+    return '';
 }
 window.getSessionCwd = getSessionCwd;
 
@@ -111,10 +115,9 @@ function setActiveSession(sessionId) {
     // 清除 messagesWrap 中所有残留的加载按钮（按钮是 messagesWrap 直接子元素，不属于 sess.container，
     // 切会话时不会被 hide，需主动清除；后续 updateLoadMoreBtn 按需重建当前会话的按钮）
     $(messagesWrap).find('.chat-load-more-wrapper').remove();
-    // 仅当 sessionId 前缀与当前模式匹配时才刷新模型选择器，避免 code 模式切标签时误建 chat- 目录
+    // 仅统一前缀（work-）的会话才刷新模型选择器（旧前缀残留 id 跳过，避免误建会话目录）
     if (typeof modelsLoaded !== 'undefined' && modelsLoaded) {
-        var prefix = (window.appMode === 'code') ? 'code-' : 'chat-';
-        if (sessionId && sessionId.indexOf(prefix) === 0) {
+        if (sessionId && sessionId.indexOf('work-') === 0) {
             refreshSessionModel(sessionId);
         }
     }
@@ -170,11 +173,6 @@ function resetStreamState(sess) {
     if (sess._replayRafId) { cancelAnimationFrame(sess._replayRafId); sess._replayRafId = null; }
     // 清除智能体输出标记
     if (typeof clearAgentState === 'function') clearAgentState(sess);
-    else {
-        sess._agentBodyMd = null;
-        sess._agentBodyText = '';
-        if (sess._agentBodyRafId) { cancelAnimationFrame(sess._agentBodyRafId); sess._agentBodyRafId = null; }
-    }
 }
 
 function setBtnStopMode() {

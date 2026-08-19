@@ -41,9 +41,9 @@ Write-Host ""
 # =============================================
 # When install.ps1 is executed via Get-Content | Invoke-Expression (from setup.ps1),
 # $MyInvocation.MyCommand.Definition doesn't return the correct file path.
-# In that case, setup.ps1 sets $env:SOLONCODE_INSTALL_DIR to the correct directory.
-if ($env:SOLONCODE_INSTALL_DIR -and (Test-Path $env:SOLONCODE_INSTALL_DIR)) {
-    $SOURCE_DIR = $env:SOLONCODE_INSTALL_DIR
+# In that case, setup.ps1 sets $env:GOURDWORK_INSTALL_DIR to the correct directory.
+if ($env:GOURDWORK_INSTALL_DIR -and (Test-Path $env:GOURDWORK_INSTALL_DIR)) {
+    $SOURCE_DIR = $env:GOURDWORK_INSTALL_DIR
 } else {
     $SOURCE_DIR = Split-Path -Parent $MyInvocation.MyCommand.Definition
     if (-not $SOURCE_DIR -or -not (Test-Path $SOURCE_DIR)) { $SOURCE_DIR = $PWD.Path }
@@ -303,6 +303,6 @@ Write-Host "  [Tip] To use gourdai immediately in current terminal:" -Foreground
 Write-Host "    PowerShell: `$env:Path = [Environment]::GetEnvironmentVariable('Path','User')"
 Write-Host ""
 # If not called from setup.ps1, wait for user input
-if (-not $env:SOLONCODE_SETUP) {
+if (-not $env:GOURDWORK_SETUP) {
     Read-Host "Press Enter to exit"
 }

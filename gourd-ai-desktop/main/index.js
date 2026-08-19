@@ -37,8 +37,6 @@ if (!gotTheLock) {
 }
 
 let mainWindow = null;
-// Code 模式项目新窗体列表（与 mainWindow 分离：主窗口关闭是隐藏到托盘，项目窗口关闭则销毁）
-const projectWindows = new Set();
 let tray = null;
 let backendPort = 0;
 let uiOrigin = '';        // 本地 UI 服务器 origin：http://localhost:{uiPort}
@@ -62,7 +60,7 @@ function settleBackendReady(ok) {
 
   if (ok) {
     // 通知渲染层：后端已就绪（前端据此重连 WebSocket / 触发数据刷新 / 放行启动请求）。
-    // 广播到所有窗口（主窗口 + 项目新窗体）；页面可能尚未加载完成，
+    // 广播到主窗口；页面可能尚未加载完成，
     // sendToWindow 内部用 did-finish-load 兜底，避免事件丢失导致前端一直等待。
     broadcastToRenderer('backend-ready', { port: backendPort });
   }
@@ -87,78 +85,11 @@ function sendToWindow(win, channel, payload) {
   }
 }
 
-/** 广播到所有窗口（主窗口 + 项目新窗体），供 backend-ready/failed 等全局事件使用。 */
+/** 广播到主窗口，供 backend-ready/failed 等全局事件使用。 */
 function broadcastToRenderer(channel, payload) {
-  const wins = [mainWindow].concat(Array.from(projectWindows));
-  for (const w of wins) sendToWindow(w, channel, payload);
+  sendToWindow(mainWindow, channel, payload);
 }
 
-/** 解析窗口要加载的本地 UI 地址；options 作为 URL hash 传给前端。 */
-function buildUiUrl(options) {
-  if (!uiOrigin) return uiOrigin;
-  return (options && options.project) ? `${uiOrigin}#project=${encodeURIComponent(options.project)}` : uiOrigin;
-}
-
-/**
- * 新建一个「项目窗体」（原生 BrowserWindow，非浏览器窗口）：
- * 加载同一本地 UI 服务器地址，并以 #project=<路径> 携带项目根，
- * 前端据此直达 code 模式并打开该项目。后端/UI 服务器为多窗口共享，无需重复启动。
- * 同一项目已开窗时聚焦该窗口，不重复开。
- * @param {{project: string}} options
- * @returns {BrowserWindow}
- */
-function createProjectWindow(options) {
-  const project = String((options && options.project) || '');
-  for (const w of projectWindows) {
-    if (!w.isDestroyed() && w.__projectPath === project) {
-      if (w.isMinimized()) w.restore();
-      w.show();
-      w.focus();
-      return w;
-    }
-  }
-
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  const win = new BrowserWindow({
-    title: 'GWork',
-    width: Math.min(1440, Math.max(1024, Math.floor(width * 0.8))),
-    height: Math.min(900, Math.max(640, Math.floor(height * 0.85))),
-    minWidth: 960,
-    minHeight: 600,
-    show: false,
-    icon: getIconPath(),
-    titleBarStyle: 'hidden',
-    titleBarOverlay: THEME_COLORS.dark,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      // 流式渲染依赖 rAF/定时器；默认 true 会在窗口隐藏/被遮挡时节流，
-      // 表现为"思考不流式、工具卡结尾批量出现"。保持后台全速运行。
-      backgroundThrottling: false,
-    },
-  });
-  win.__projectPath = project;
-  projectWindows.add(win);
-
-  // 禁止页面 <title> 覆盖窗口标题（标题由前端经 window-title-update 定制）
-  win.on('page-title-updated', (e) => e.preventDefault());
-  win.loadURL(buildUiUrl({ project }));
-  win.once('ready-to-show', () => win.show());
-
-  // 后端若尚未就绪（极早触发的场景），就绪后补通知，确保前端门闸放行
-  if (backendReadyState === 'ready') {
-    sendToWindow(win, 'backend-ready', { port: backendPort });
-  } else if (backendReadyState === 'failed') {
-    sendToWindow(win, 'backend-failed', { message: 'backend failed' });
-  }
-
-  // 项目窗口关闭即销毁（不隐藏到托盘；主窗口仍在托盘逻辑里）
-  win.on('close', () => {
-    projectWindows.delete(win);
-  });
-  return win;
-}
 
 /**
  * 等待后端就绪。已定局立即返回；否则挂起直至 settle 或超时。
@@ -225,7 +156,7 @@ function createMainWindow() {
 }
 
 /**
- * 显示所有窗口（主窗口 + 项目新窗体）。
+ * 显示主窗口。
  */
 function showAllWindows() {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -233,22 +164,13 @@ function showAllWindows() {
     mainWindow.show();
     mainWindow.focus();
   }
-  for (const w of projectWindows) {
-    if (!w.isDestroyed()) {
-      if (w.isMinimized()) w.restore();
-      w.show();
-    }
-  }
 }
 
 /**
- * 隐藏所有窗口（主窗口 + 项目新窗体），应用仍驻留托盘。
+ * 隐藏主窗口，应用仍驻留托盘。
  */
 function hideAllWindows() {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide();
-  for (const w of projectWindows) {
-    if (!w.isDestroyed()) w.hide();
-  }
 }
 
 /**
@@ -290,7 +212,7 @@ function createTray() {
   ]);
   tray.setContextMenu(menu);
 
-  // 单击托盘图标显示/隐藏窗口（多窗口场景下整体显示/隐藏）
+  // 单击托盘图标显示/隐藏窗口
   tray.on('click', () => {
     if (mainWindow && mainWindow.isVisible()) {
       hideAllWindows();
@@ -360,7 +282,7 @@ const THEME_COLORS = {
 };
 
 ipcMain.on('theme-changed', (event, theme) => {
-  // 同步发送方窗口的标题栏颜色（主窗口与项目新窗体都跟随主题）
+  // 同步发送方窗口的标题栏颜色
   const sender = event && event.sender;
   const win = sender && !sender.isDestroyed() ? BrowserWindow.fromWebContents(sender) : mainWindow;
   // setTitleBarOverlay 仅 Windows 支持；macOS 上该方法不存在，
@@ -371,20 +293,6 @@ ipcMain.on('theme-changed', (event, theme) => {
   }
 });
 
-// Code 模式：请求在新窗体中打开项目空间（原生 BrowserWindow，非浏览器窗口）
-ipcMain.handle('open-project-window', (_event, options) => {
-  const project = String((options && options.project) || '');
-  if (!project) return false;
-  createProjectWindow({ project });
-  return true;
-});
-
-// 窗口启动时查询自己承载的项目根（主进程权威来源，避免 hash 被页面逻辑意外改写）
-ipcMain.handle('get-window-project', (event) => {
-  const sender = event && event.sender;
-  const win = sender && !sender.isDestroyed() ? BrowserWindow.fromWebContents(sender) : null;
-  return (win && win.__projectPath) || '';
-});
 
 // 渲染层定制窗口标题（如显示当前项目名；Electron 禁用了页面 title 覆盖）
 ipcMain.on('window-title-update', (event, title) => {
@@ -480,7 +388,7 @@ app.on('before-quit', (event) => {
   })();
 });
 
-// 第二个实例启动时显示已有窗口（多窗口场景：主窗口 + 项目新窗体整体恢复）
+// 第二个实例启动时显示已有窗口
 app.on('second-instance', () => {
   showAllWindows();
 });

@@ -38,10 +38,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>维护 channelName -> {@link ChannelRoute}（活跃会话 + 项目根）的映射关系，
  * 支持持久化到本地文件，重启后自动恢复路由状态。</p>
  *
- * <p><b>为什么要记 projectRoot：</b>code 模式会话（{@code code-} 前缀）落盘在
+ * <p><b>为什么要记 projectRoot：</b>项目会话（统一 {@code work-} 前缀，有所属根）落盘在
  * <b>所选项目目录</b> {@code <projectRoot>/.gwork/sessions/} 下，且 AI 工具需要以该目录为
  * 工作根。IM 消息流入时并不带请求头，只能靠路由表把 projectRoot 一并存下来，
- * 才能在重启后仍正确定位 code 会话的落盘目录与工具 cwd。chat 会话该字段为空。</p>
+ * 才能在重启后仍正确定位项目会话的落盘目录与工具 cwd。全局会话该字段为空。</p>
  *
  * @author oisin
  */

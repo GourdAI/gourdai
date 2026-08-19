@@ -10,8 +10,9 @@
  *   发现新版后提示并引导浏览器下载安装包（downloadUrl 从 latest-*.yml 产物解析）。
  * - 开发态（app.isPackaged === false）→ mode='none'：完全不启用。
  *
- * 更新源：generic provider —— https://www.gourd-ai.cn/desktop/latest/
- * 该目录需托管 latest.yml / latest-mac.yml / latest-linux.yml + 安装包 + *.blockmap。
+ * 更新源：generic provider —— https://www.gourdwork.com/downloads/
+ * 与官网下载目录同址，需托管 latest.yml / latest-mac.yml / latest-linux.yml + 安装包 + *.blockmap。
+ * 发新版在打包机跑 npm run publish:downloads 后上传 downloads/ 目录即可（官网与更新源一次同步）。
  * 可用环境变量 GWORK_UPDATE_URL 覆盖（换源/内网灰度无需改代码）。
  *
  * 状态机 status: idle | checking | available | not-available | downloading | downloaded | error
@@ -28,8 +29,8 @@
 const { app, ipcMain, shell } = require('electron');
 const EventEmitter = require('events');
 
-const DEFAULT_FEED_URL = 'https://www.gourd-ai.cn/desktop/latest/';
-const HOMEPAGE_URL = 'https://www.gourd-ai.cn/';
+const DEFAULT_FEED_URL = 'https://www.gourdwork.com/downloads/';
+const HOMEPAGE_URL = 'https://www.gourdwork.com/';
 // 启动后延迟首检（避免与后端启动抢带宽），之后周期性复检
 const STARTUP_CHECK_DELAY_MS = 15 * 1000;
 const RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;

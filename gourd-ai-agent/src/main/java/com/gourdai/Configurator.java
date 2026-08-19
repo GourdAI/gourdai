@@ -36,8 +36,12 @@ import com.gourdai.core.portal.desktop.WsGate;
 import com.gourdai.core.portal.desktop.provider.ModelProviderFactory;
 import org.noear.solon.core.AppContext;
 import org.noear.solon.core.BeanWrap;
+import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.JavaUtil;
 import org.noear.solon.core.util.RunUtil;
+import org.noear.solon.net.http.HttpConfiguration;
+import org.noear.solon.net.http.HttpExtension;
+import org.noear.solon.net.http.HttpUtils;
 import org.noear.solon.net.websocket.WebSocketRouter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,18 +84,33 @@ public class Configurator {
 
     @Bean
     public HarnessEngine agentRuntime(AgentSettings settings) throws Exception {
+        // 全局 HTTP 出站 UA 兜底（对齐 soloncode v2026.8.7 同源修复）：
+        // 所有 HttpUtils 实例（含 MCP 客户端、市场下载等库代码内部创建的）在构造期
+        // 自动带上设置里的 userAgent，避免默认 UA（如 Java/17）被 CDN/WAF 拦截导致
+        // websearch 等出站请求失败。onInit 先于业务代码执行，显式设置的 UA 仍可覆盖。
+        // 每次实时读取 settings，用户在设置页改 UA 后即时生效，无需重启。
+        HttpConfiguration.addExtension(new HttpExtension() {
+            @Override
+            public void onInit(HttpUtils http, String url) {
+                String ua = settings.getGeneral().getUserAgent();
+                if (Assert.isNotEmpty(ua)) {
+                    http.userAgent(ua);
+                }
+            }
+        });
+
         String workspace = AgentFlags.getUserDir();
         // LRU 会话缓存：容量上限 100，超限按最近访问时间淘汰最老的非活跃会话；
         // 淘汰仅摘除内存引用（磁盘文件保留），下次访问自动从磁盘重载，
         // 对话历史与压缩摘要不受影响；在途（busy）或挂起（HITL）会话不淘汰
         LruSessionCache sessionCache = new LruSessionCache();
 
-        // 会话目录定位器：chat（web-）落安装目录 .gwork/sessions/（全局、固定不变），
-        // code（code-）落所选项目 <root>/.gwork/sessions/
+        // 会话目录定位器：统一 work- 会话，按有无所属根划分——
+        // 项目会话（绑根）落 <root>/.gwork/sessions/，全局会话（无根）落安装目录
         this.sessionLocator = new SessionLocator(workspace, AgentFlags.getHarnessSessions());
         final SessionLocator locator = this.sessionLocator;
 
-        // 按会话模式解析落盘目录（旧版 web- 会话就地回退，避免历史丢失）
+        // 按会话所属根解析落盘目录（未登记根的全局会话回退安装目录）
         AgentSessionProvider sessionProvider = new AgentSessionProvider() {
             @Override
             public AgentSession getSession(String sessionId) {

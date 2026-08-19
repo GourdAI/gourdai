@@ -25,9 +25,11 @@ import com.gourdai.agent.react.intercept.HITLTask;
 import com.gourdai.agent.react.task.ActionChunk;
 import com.gourdai.agent.react.task.ObservationChunk;
 import com.gourdai.agent.react.task.ReasonChunk;
+import com.gourdai.agent.react.task.ReasonTask;
 import com.gourdai.agent.react.task.ThoughtChunk;
 import com.gourdai.agent.util.AgentUtil;
 import org.noear.solon.ai.chat.ChatModel;
+import org.noear.solon.ai.chat.ChatResponseDefault;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import com.gourdai.harness.HarnessEngine;
 import com.gourdai.harness.talents.cli.TerminalTalent;
@@ -556,7 +558,12 @@ public class WebStreamBuilder {
      */
     private WebChunk onThoughtChunk(AgentSession session, ThoughtChunk chunk) {
         String sessionId = session.getSessionId();
-        String resultContent = chunk.getAssistantMessage().getResultContent();
+        // responses 等接口聚合时可能把推理混入 content，IM 转发前剥离，避免与思考通道重复；
+        // 优先用流式累积的思考前缀精确剥离（思考内引用 </think> 字面量时启发式会切错位置）
+        String streamedReasoningPrefix = (chunk.getResponse() instanceof ChatResponseDefault)
+                ? ((ChatResponseDefault) chunk.getResponse()).attrAs(ReasonTask.ATTR_STREAMED_REASONING)
+                : null;
+        String resultContent = AgentUtil.getResultContentWithoutReasoning(chunk.getAssistantMessage(), streamedReasoningPrefix);
 
         if (Assert.isNotEmpty(resultContent)) {
             if (chunk.isToolCalls()) {

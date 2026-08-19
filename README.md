@@ -1,12 +1,12 @@
 <div align="center">
 
-# 🎃 Gourd AI
+# GWork
 
 **Your AI Agent, Living on Your Desktop.**
 
 一个真正能干活的开源桌面智能体 —— 给它一个目标，它还你一份结果。
 
-基于 [Solon AI](https://github.com/opensolon/solon-ai) 构建 · Java Agent内核 · 100% 开源
+基于 [Solon AI](https://github.com/opensolon/solon-ai) 构建 · 纯 Java · 100% 开源
 
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 [![Java](https://img.shields.io/badge/Java-8%20~%2026-orange.svg)](#)
@@ -22,9 +22,9 @@
 
 ---
 
-## 🚀 什么是 Gourd AI？
+## 🚀 什么是 GWork？
 
-Gourd AI 不是又一个聊天机器人，而是一套完整的 **桌面智能体操作系统（Agent OS）**。
+GWork 不是又一个聊天机器人，而是一套完整的 **桌面智能体操作系统（Agent OS）**。
 
 你下达一个目标，它会自主**规划任务 → 拆解步骤 → 读写文件 → 执行命令 → 联网检索 → 调用工具与模型 → 持续迭代**，直到把事情真正做完。从写周报、做 PPT、调研分析，到开发一个完整的项目 —— 它都能胜任。
 
@@ -53,7 +53,7 @@ Gourd AI 不是又一个聊天机器人，而是一套完整的 **桌面智能�
 
 ## 🏗️ 基于 Solon AI 构建
 
-Gourd AI 的智能体内核完全构建于 [Solon AI](https://github.com/opensolon/solon-ai) 生态之上，纯 Java 实现，兼容毕昇 JDK（华为）与鸿蒙 PC 环境：
+GWork 的智能体内核完全构建于 [Solon AI](https://github.com/opensolon/solon-ai) 生态之上，纯 Java 实现，兼容毕昇 JDK（华为）与鸿蒙 PC 环境：
 
 ```
 ┌─────────────────────────────────────────────────────────┐

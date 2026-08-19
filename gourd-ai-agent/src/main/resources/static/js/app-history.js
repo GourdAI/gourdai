@@ -26,40 +26,163 @@ function restoreActiveSession() {
             return;
         }
     }
-    /* 保存的会话已不存在：可能是跨模式加载（如 code 模式下保存了 code-xxx，
-       但当前加载的是 chat 全局列表），此时不清除，等正确模式的列表加载后再恢复。 */
-    // 若保存的是 code 会话但当前列表中没有（可能是 chat 模式的全局列表），保留不删
-    if (saved.indexOf('code-') === 0) {
-        // 不删除，等 code 模式列表加载后由 restoreActiveSession 再次尝试
-        return;
-    }
-    forgetActiveSession();
+    /* 保存的会话不在当前视图列表（可能在另一视图/所属根下，如全局会话正显示项目视图）：
+       保留记录不删，切换全局/项目视图或工作空间后列表重载时会再次尝试恢复。 */
 }
 
-/* 单调递增的请求令牌：会话列表按模式/项目分区加载，且请求是异步的。
-   页面启动时 app-history.js 末尾会先发一次 chat 模式加载，而恢复 code 模式又会再发一次；
-   两个请求竞态，若旧的（chat 全局）后到就会覆盖成全局会话列表。用令牌丢弃过期响应。 */
+/* ===== 历史会话视图（tab：项目 / 对话）===== */
+/* 统一 work- 会话按有无所属根分两类：全局会话（安装目录，无根）/ 项目会话（项目根下）。
+   侧栏提供两个 tab：
+   - 项目 tab（'project'）：已登记项目为文件夹节点嵌套各自会话，其后「任务」区展示定时任务（loop）。
+   - 对话 tab（'global'）：仅全局会话（非工作空间下），按时间倒序平铺。
+   手动切换 tab 持久化；项目树不依赖工作空间选择。code 模式恒为项目视图（当前项目根平铺），tab 行隐藏。 */
+var LS_HISTORY_SCOPE = 'gourdai-history-scope';
+try { window.chatHistoryScope = localStorage.getItem(LS_HISTORY_SCOPE) || ''; } catch (e) { window.chatHistoryScope = ''; }
+
+/* 默认视图恒为项目 tab（项目树不依赖工作空间选择，始终可渲染） */
+function defaultHistoryScope() {
+    return 'project';
+}
+/* 有效视图：code 恒项目；chat 取持久化值，缺省项目 */
+function effectiveHistoryScope() {
+    if (window.appMode === 'code') return 'project';
+    return window.chatHistoryScope || defaultHistoryScope();
+}
+/* 切换视图（reload=false 供工作空间切换后由调用方统一重载列表） */
+function setHistoryScope(scope, reload) {
+    window.chatHistoryScope = scope;
+    try { localStorage.setItem(LS_HISTORY_SCOPE, scope); } catch (e) {}
+    updateHistoryScopeBar();
+    if (reload !== false) loadSessionHistory();
+}
+window.setHistoryScope = setHistoryScope;
+
+function historyScopeBaseName(p) {
+    var t = (p || '').replace(/[\\\/]+$/, '');
+    var i = Math.max(t.lastIndexOf('\\'), t.lastIndexOf('/'));
+    return i >= 0 ? t.substring(i + 1) : t;
+}
+/* 渲染 tab 行：按有效视图切换两个 tab 的 .active */
+function updateHistoryScopeBar() {
+    var gBtn = document.getElementById('scopeGlobalBtn');
+    var pBtn = document.getElementById('scopeProjectBtn');
+    var scope = effectiveHistoryScope();
+    if (gBtn) gBtn.classList.toggle('active', scope === 'global');
+    if (pBtn) pBtn.classList.toggle('active', scope === 'project');
+}
+/* tab 切换委托（新 tab 按钮保留 data-scope，选择器随类名更新） */
+$(document).on('click', '#historyScopeBar .history-tab', function () {
+    var scope = this.getAttribute('data-scope');
+    if (scope && scope !== effectiveHistoryScope()) setHistoryScope(scope);
+});
+
+/* 侧栏聚合数据（chat 模式）：{ projects: [{name,path,sessions:[entry]}], global: [entry] }。
+   entry = { label, sessionId, projectRoot, time }；后端各列表已按 time 倒序。 */
+var _sidebarData = null;
+/* 单调递增的请求令牌：页面启动与 tab/工作空间切换都可能发请求，旧请求后到会覆盖新列表。用令牌丢弃过期响应。 */
+var _sidebarReqToken = 0;
+/* 项目节点展开状态：{ path: bool }；首次加载 undefined 时有会话默认展开 */
+var _projExpanded = {};
+/* code 模式单根加载令牌（防竞态，原逻辑） */
 var _sessionsReqToken = 0;
-function loadSessionHistory() {
-    var q = '';
-    if (window.appMode === 'code') {
-        q = '?mode=code' + (window.currentProjectRoot ? '&root=' + encodeURIComponent(window.currentProjectRoot) : '');
+
+/* 定时任务列表（项目 tab「任务」区）：/web/chat/loop/list 全局返回所有任务（sessionId 仅做校验）。
+   设置浮层关闭（settings:closed）时刷新，保证侧栏与设置页「自动化」数据一致。 */
+var _loopTasks = [];
+function loadLoopTasks() {
+    if (window.appMode === 'code') return;
+    var sid = activeSessionId || SESSION_ID;
+    if (!sid) return;
+    $.get('/web/chat/loop/list', { sessionId: sid }, function (resp) {
+        var list = (resp && resp.data) ? resp.data : [];
+        var arr = [];
+        for (var i = 0; i < list.length; i++) if (!list[i].cancelled) arr.push(list[i]);
+        _loopTasks = arr;
+        updateHistoryUI();
+    });
+}
+document.addEventListener('settings:closed', function () { loadLoopTasks(); });
+
+/* 后端会话列表 → 本地条目（projectRoot 由后端回填，切换历史会话时据此恢复所属根，
+   保证发送时 X-Session-Cwd 指向该会话真实目录） */
+function toSessionEntries(list) {
+    var arr = [];
+    for (var i = 0; i < (list || []).length; i++) {
+        arr.push({ label: list[i].label, sessionId: list[i].sessionId, projectRoot: list[i].projectRoot || '', time: list[i].time || 0 });
     }
-    var myToken = ++_sessionsReqToken;
-    $.get('/web/chat/sessions' + q, function(resp) {
-        try {
-            // 已有更新的加载请求发出 → 本次响应过期，丢弃（避免全局/项目会话互相覆盖）
-            if (myToken !== _sessionsReqToken) return;
-            var list = resp.data;
-            chatHistory = [];
-            for (var i = 0; i < list.length; i++) {
-                // projectRoot：仅 code 会话由后端回填，切换历史会话时据此恢复 window.currentProjectRoot，
-                // 保证发送时 X-Session-Cwd 指向该会话真实项目目录（否则回退安装目录 → 会话定位错乱、报网关错误）。
-                chatHistory.push({ label: list[i].label, sessionId: list[i].sessionId, projectRoot: list[i].projectRoot || '' });
-            }
-            updateHistoryUI();
-            restoreActiveSession();
-        } catch (e) {}
+    return arr;
+}
+
+/* 汇总完成：写入 _sidebarData，重建平铺（chatHistory），再尝试恢复活动会话 */
+function finalizeSidebar(myToken, projects, globalSessions) {
+    if (myToken !== _sidebarReqToken) return;
+    for (var j = 0; j < projects.length; j++) {
+        var p = projects[j].path;
+        if (_projExpanded[p] === undefined) _projExpanded[p] = projects[j].sessions.length > 0;
+    }
+    _sidebarData = { projects: projects, global: globalSessions };
+    chatHistory = []; // 由渲染重建
+    buildSidebar();   // 同步重建 chatHistory/currentChatIndex，供下方 restoreActiveSession 遍历
+    updateHistoryUI();
+    updateHistoryScopeBar();
+    restoreActiveSession();
+}
+
+function loadSessionHistory() {
+    if (window.appMode === 'code') {
+        // code 模式保持原单根逻辑：扫当前项目根
+        var root = window.currentProjectRoot || '';
+        var q = root ? ('?root=' + encodeURIComponent(root)) : '';
+        var myToken = ++_sessionsReqToken;
+        $.get('/web/chat/sessions' + q, function(resp) {
+            try {
+                // 已有更新的加载请求发出 → 本次响应过期，丢弃
+                if (myToken !== _sessionsReqToken) return;
+                chatHistory = toSessionEntries(resp.data);
+                updateHistoryUI();
+                updateHistoryScopeBar();
+                restoreActiveSession();
+            } catch (e) {}
+        });
+        return;
+    }
+    // chat 模式：先拉已登记项目列表，再对 global（不带 root）与每个 project.path 并行发会话请求，
+    // 全部完成后汇总（任一路失败记为空数组，不阻塞其它路）。定时任务列表并行拉取供「任务」区渲染。
+    var myToken2 = ++_sidebarReqToken;
+    loadLoopTasks();
+    $.get('/web/chat/projects', function (resp) {
+        if (myToken2 !== _sidebarReqToken) return;
+        var plist = (resp && resp.data) ? resp.data : [];
+        var projects = [];
+        for (var i = 0; i < plist.length; i++) {
+            projects.push({ name: plist[i].name || historyScopeBaseName(plist[i].path || ''), path: plist[i].path || '', sessions: [] });
+        }
+        var globalSessions = [];
+        var pending = 1 + projects.length; // global 一路 + 每项目一路
+        var onOneDone = function () {
+            if (--pending === 0) finalizeSidebar(myToken2, projects, globalSessions);
+        };
+        // 全局会话（不带 root，后端扫安装目录）
+        $.get('/web/chat/sessions', function (resp) {
+            if (myToken2 === _sidebarReqToken) globalSessions = toSessionEntries(resp && resp.data);
+            onOneDone();
+        }).fail(onOneDone);
+        for (var pi = 0; pi < projects.length; pi++) {
+            (function (proj) {
+                $.get('/web/chat/sessions?root=' + encodeURIComponent(proj.path), function (resp) {
+                    if (myToken2 === _sidebarReqToken) proj.sessions = toSessionEntries(resp && resp.data);
+                    onOneDone();
+                }).fail(onOneDone);
+            })(projects[pi]);
+        }
+    }).fail(function () {
+        // 项目列表获取失败：降级为仅渲染全局会话
+        if (myToken2 !== _sidebarReqToken) return;
+        $.get('/web/chat/sessions', function (resp) {
+            finalizeSidebar(myToken2, [], toSessionEntries(resp && resp.data));
+        }).fail(function () {
+            finalizeSidebar(myToken2, [], []);
+        });
     });
 }
 
@@ -68,11 +191,76 @@ function saveChatToHistory(firstMsg) {
     rememberActiveSession(SESSION_ID);
 }
 
+/* chat 聚合视图的侧栏条目助手：按 sessionId / 所属根定位条目与所属项目 */
+function findSidebarEntry(sessionId) {
+    if (!_sidebarData) return null;
+    var g = _sidebarData.global || [];
+    for (var i = 0; i < g.length; i++) {
+        if (g[i].sessionId === sessionId) return g[i];
+    }
+    var ps = _sidebarData.projects || [];
+    for (var p = 0; p < ps.length; p++) {
+        var ss = ps[p].sessions || [];
+        for (var k = 0; k < ss.length; k++) {
+            if (ss[k].sessionId === sessionId) return ss[k];
+        }
+    }
+    return null;
+}
+function findSidebarProject(path) {
+    if (!_sidebarData || !path) return null;
+    var ps = _sidebarData.projects || [];
+    for (var i = 0; i < ps.length; i++) {
+        if (ps[i].path === path) return ps[i];
+    }
+    return null;
+}
+function removeSidebarEntry(sessionId) {
+    if (!_sidebarData) return;
+    var g = _sidebarData.global || [];
+    for (var i = g.length - 1; i >= 0; i--) {
+        if (g[i].sessionId === sessionId) g.splice(i, 1);
+    }
+    var ps = _sidebarData.projects || [];
+    for (var p = 0; p < ps.length; p++) {
+        var ss = ps[p].sessions || [];
+        for (var k = ss.length - 1; k >= 0; k--) {
+            if (ss[k].sessionId === sessionId) ss.splice(k, 1);
+        }
+    }
+}
+
 function ensureChatInHistory(sessionId, firstMsg, makeCurrent) {
     if (!sessionId) return;
     var label = (firstMsg || GourdI18n.t('history.new_chat')).toString();
     label = label.length > 30 ? label.substring(0, 30) + '...' : label;
     var shouldMakeCurrent = (makeCurrent !== false) && (sessionId === SESSION_ID || sessionId === activeSessionId || currentChatIndex === -1);
+
+    if (window.appMode !== 'code' && _sidebarData) {
+        // chat 聚合视图：直接登记进 _sidebarData（不再 unshift chatHistory）；渲染会重建平铺
+        // 并按 sessionId 修正 currentChatIndex，shouldMakeCurrent 的语义（SESSION_ID/activeSession）随之天然满足。
+        var exist = findSidebarEntry(sessionId);
+        if (exist) {
+            exist.label = label;
+            exist.time = Date.now();
+        } else {
+            // 新会话所属根 = 当前所选工作空间；匹配已登记项目则归入该项目，否则归全局
+            var pr = window.currentChatWorkspace || '';
+            var entry = { label: label, sessionId: sessionId, projectRoot: pr, time: Date.now() };
+            var owner = findSidebarProject(pr);
+            if (owner) {
+                owner.sessions.unshift(entry);
+            } else {
+                _sidebarData.global.unshift(entry);
+                // 新会话归全局而当前停在项目 tab：联动切「对话」tab 保证新建会话可见（与欢迎页视图联动同一语义）
+                if (effectiveHistoryScope() === 'project') setHistoryScope('global', false);
+            }
+        }
+        updateHistoryUI();
+        return;
+    }
+
+    // code 模式（或聚合数据未到达时）保持原平铺登记逻辑
     for (var i = 0; i < chatHistory.length; i++) {
         if (chatHistory[i].sessionId === sessionId) {
             if (shouldMakeCurrent) currentChatIndex = i;
@@ -80,10 +268,10 @@ function ensureChatInHistory(sessionId, firstMsg, makeCurrent) {
             return;
         }
     }
-    // 新会话在本地登记：code 模式下其项目根即当前所选项目（新会话正是在该项目下创建的）。
-    // 记入 chatHistory，使后续切走再切回时也能恢复出正确的 currentProjectRoot。
-    var pr = (window.appMode === 'code' && window.currentProjectRoot) ? window.currentProjectRoot : '';
-    chatHistory.unshift({ label: label, sessionId: sessionId, projectRoot: pr });
+    // 新会话在本地登记：其所属根即当前所选（code=项目 / chat=工作空间，新会话正是在其下创建的）。
+    // 记入 chatHistory，使后续切走再切回时也能恢复出正确的工作空间上下文。
+    var pr2 = (window.appMode === 'code') ? (window.currentProjectRoot || '') : (window.currentChatWorkspace || '');
+    chatHistory.unshift({ label: label, sessionId: sessionId, projectRoot: pr2 });
     if (chatHistory.length > 50) chatHistory.pop();
     if (shouldMakeCurrent) {
         currentChatIndex = 0;
@@ -94,9 +282,129 @@ function ensureChatInHistory(sessionId, firstMsg, makeCurrent) {
     updateHistoryUI();
 }
 
+/* 会话条目所属的工作空间根（rename/delete/replay 等定位用）。
+   code 模式取当前所选项目；chat 模式取条目自身的 projectRoot：
+   '' = 全局会话（后端对全局扫描不回填 projectRoot，本地登记也如此），语义唯一、不可回退——
+   若回退到当前所选工作空间，会在选中其它工作空间时把全局会话删/改名定位到错误根
+   （后端删错目录、真目录残留 → 会话“删除后复活”；改名则 404）。 */
+function sessionRootOf(entry) {
+    if (window.appMode === 'code') return window.currentProjectRoot || '';
+    return (entry && entry.projectRoot) || '';
+}
+function sessionRootQ(entry) {
+    var r = sessionRootOf(entry);
+    return r ? '&root=' + encodeURIComponent(r) : '';
+}
+
+/* ===== Chat 侧栏条目渲染（tab 视图：项目树 / 对话平铺；code 模式平铺）===== */
+
+function escAttr(s) {
+    return escapeHtml(s == null ? '' : String(s)).replace(/"/g, '&quot;');
+}
+
+/* 相对时间（会话行右侧小字）：1 分钟内「刚刚」，其后按 分/时/天 粒度。
+   注意：GourdI18n.t 仅在 params 为数组/对象时替换 {0} 占位符，故传数组。 */
+function formatRelTime(ts) {
+    if (!ts) return GourdI18n.t('app.sidebar.time_now');
+    var m = Math.floor((Date.now() - ts) / 60000);
+    if (m < 1) return GourdI18n.t('app.sidebar.time_now');
+    if (m < 60) return GourdI18n.t('app.sidebar.time_m', [m]);
+    var h = Math.floor(m / 60);
+    if (h < 24) return GourdI18n.t('app.sidebar.time_h', [h]);
+    return GourdI18n.t('app.sidebar.time_d', [Math.floor(h / 24)]);
+}
+
+function sidebarItemHtml(i) {
+    var sess = sessionMap[chatHistory[i].sessionId];
+    var streaming = sess && sess.isStreaming;
+    var cls = 'sidebar-item' + (i === currentChatIndex ? ' active' : '') + (streaming ? ' streaming' : '');
+
+    var html = '<div class="' + cls + '" data-idx="' + i + '">'
+        + '<span class="sidebar-item-label">' + escapeHtml(chatHistory[i].label) + '</span>';
+    // 任务进度 badge
+    var todoInfo = window.sessionTodoMap && window.sessionTodoMap[chatHistory[i].sessionId];
+    if (todoInfo && todoInfo.total > 0) {
+        var doneClass = todoInfo.done === todoInfo.total ? ' done' : '';
+        html += '<span class="sidebar-item-todo' + doneClass + '">' + todoInfo.done + '/' + todoInfo.total + '</span>';
+    }
+    if (streaming) {
+        html += '<span class="sidebar-item-spinner" title="' + escAttr(GourdI18n.t('history.streaming')) + '"></span>';
+    }
+    // 相对时间小字（标签左、时间右）
+    if (chatHistory[i].time) {
+        html += '<span class="sidebar-item-time">' + formatRelTime(chatHistory[i].time) + '</span>';
+    }
+    html += '<button class="sidebar-item-rename" title="' + escAttr(GourdI18n.t('history.rename')) + '"><i class="layui-icon layui-icon-edit"></i></button>'
+        + '<button class="sidebar-item-del" title="' + escAttr(GourdI18n.t('history.delete_session')) + '"><i class="layui-icon layui-icon-close"></i></button>'
+        + '</div>';
+    return html;
+}
+
+/* 定时任务行：clock 图标 + 名称/prompt 截断 + 右侧周期文案；停用置灰、运行中转圈。
+   整行点击跳转设置页「自动化」tab（见列表点击委托）。周期文案复用设置页 settings.loop.* 语言键。 */
+function loopTaskHtml(t) {
+    var label = t.name || t.prompt || '';
+    if (label.length > 30) label = label.substring(0, 30) + '...';
+    var schedule = t.cron ? GourdI18n.t('settings.loop.cron_format', [t.cron])
+                          : GourdI18n.t('settings.loop.interval_format', [t.intervalMinutes]);
+    var cls = 'loop-item' + (t.enabled ? '' : ' disabled');
+    var html = '<div class="' + cls + '" title="' + escAttr(t.prompt || label) + '">'
+        + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
+        + '<span class="loop-item-label">' + escapeHtml(label) + '</span>';
+    if (t.running) {
+        html += '<span class="sidebar-item-spinner" title="' + escAttr(GourdI18n.t('history.streaming')) + '"></span>';
+    }
+    html += '<span class="loop-item-schedule">' + escapeHtml(t.enabled ? schedule : GourdI18n.t('app.sidebar.task_paused')) + '</span>'
+        + '</div>';
+    return html;
+}
+
+/* 项目文件夹行：chevron + folder 图标 + 名称（点击切换展开，见列表点击委托） */
+function projNodeHtml(path, name, expanded) {
+    return '<div class="proj-node' + (expanded ? ' expanded' : '') + '" data-proj="' + escAttr(path) + '" title="' + escAttr(path) + '">'
+        + '<svg class="proj-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>'
+        + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
+        + '<span class="proj-name">' + escapeHtml(name || '') + '</span>'
+        + '<button class="proj-open-code" title="' + escAttr(GourdI18n.t('app.sidebar.open_in_code')) + '">'
+        + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>'
+        + '</button>'
+        + '<button class="proj-remove" title="' + escAttr(GourdI18n.t('app.sidebar.remove_project')) + '">'
+        + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
+        + '</button>'
+        + '</div>';
+}
+
 /* Sidebar event delegation — single listener instead of per-item binding */
 $(historyList).on('click', function(e) {
     var $target = $(e.target);
+    // 定时任务行：整行点击 → 设置页「自动化」tab（置于其它分支之前）
+    var $loop = $target.closest('.loop-item');
+    if ($loop.length) {
+        if (typeof openSettingsToTab === 'function') openSettingsToTab('loop');
+        return;
+    }
+    // 项目行「在代码模式中打开」图标：进入 code 模式并定位到该项目（须置于 proj-node 分支之前，避免被展开/收起吸收）
+    var $openCode = $target.closest('.proj-open-code');
+    if ($openCode.length) {
+        var op = $openCode.closest('.proj-node').attr('data-proj');
+        if (typeof window.openProjectInCodeMode === 'function') window.openProjectInCodeMode(op);
+        return;
+    }
+    // 项目行「从列表移除」：仅解除登记，不删除磁盘目录（须置于 proj-node 分支之前）
+    var $projDel = $target.closest('.proj-remove');
+    if ($projDel.length) {
+        var dp = $projDel.closest('.proj-node').attr('data-proj');
+        if (typeof window.removeProjectFromList === 'function') window.removeProjectFromList(dp);
+        return;
+    }
+    // 项目文件夹节点：切换展开/收起（置于 del/rename/item 分支之前）
+    var $proj = $target.closest('.proj-node');
+    if ($proj.length) {
+        var p = $proj.attr('data-proj');
+        _projExpanded[p] = !_projExpanded[p];
+        updateHistoryUI();
+        return;
+    }
     var $delBtn = $target.closest('.sidebar-item-del');
     if ($delBtn.length) {
         e.stopPropagation();
@@ -125,36 +433,88 @@ function updateHistoryUI() {
     requestAnimationFrame(function() {
         _updateHistoryUIPending = false;
         var html = '';
-        for (var i = 0; i < chatHistory.length; i++) {
-            var sess = sessionMap[chatHistory[i].sessionId];
-            var streaming = sess && sess.isStreaming;
-            var cls = 'sidebar-item' + (i === currentChatIndex ? ' active' : '') + (streaming ? ' streaming' : '');
-
-            html += '<div class="' + cls + '" data-idx="' + i + '">'
-                + '<span class="sidebar-item-label">' + escapeHtml(chatHistory[i].label) + '</span>';
-            // 任务进度 badge
-            var todoInfo = window.sessionTodoMap && window.sessionTodoMap[chatHistory[i].sessionId];
-            if (todoInfo && todoInfo.total > 0) {
-                var doneClass = todoInfo.done === todoInfo.total ? ' done' : '';
-                html += '<span class="sidebar-item-todo' + doneClass + '">' + todoInfo.done + '/' + todoInfo.total + '</span>';
-            }
-            if (streaming) {
-                html += '<span class="sidebar-item-spinner" title="${GourdI18n.t(\'history.streaming\')}"></span>';
-            }
-            html += '<button class="sidebar-item-rename" title="${GourdI18n.t(\'history.rename\')}"><i class="layui-icon layui-icon-edit"></i></button>'
-                + '<button class="sidebar-item-del" title="${GourdI18n.t(\'history.delete_session\')}"><i class="layui-icon layui-icon-close"></i></button>'
-                + '</div>';
+        if (window.appMode !== 'code' && _sidebarData) {
+            // chat 聚合视图：按 tab 渲染（项目树 / 对话平铺），内部重建 chatHistory/currentChatIndex
+            html = buildSidebar();
+        } else {
+            // code 模式或聚合数据未到达：原平铺列表
+            for (var i = 0; i < chatHistory.length; i++) html += sidebarItemHtml(i);
         }
         var $list = $(historyList);
         // 仅当 HTML 真正变化时才写入 DOM，避免无效重排
         if ($list.html() !== html) {
             $list.html(html);
+            // 列表重建后按当前搜索关键字重新过滤，避免过滤态丢失
+            if (typeof window.reapplySidebarFilter === 'function') window.reapplySidebarFilter();
         }
         // Code 模式：同步右栏会话下拉
         if (window.appMode === 'code' && typeof window.renderCodeSessions === 'function') {
             window.renderCodeSessions();
         }
     });
+}
+
+/* 构建 chat 聚合视图，返回 html 字符串。
+   副作用：按渲染顺序重建 chatHistory 平铺并按 sessionId 修正 currentChatIndex——
+   必须先于 HTML 生成完成，sidebarItemHtml 依赖 currentChatIndex 判定 active 样式
+   （deleteSession/selectSession 等均依赖这两个全局量）。 */
+function buildSidebar() {
+    var flat = [];
+    var scope = effectiveHistoryScope();
+    var projects = (_sidebarData && _sidebarData.projects) || [];
+    var global = (_sidebarData && _sidebarData.global) || [];
+    var projMeta = [];
+    var i, j;
+
+    // —— 第一遍：按渲染顺序构建平铺（仅会话条目；定时任务行不入 chatHistory）——
+    if (scope === 'project') {
+        // 项目 tab：文件夹节点嵌套项目会话（全局会话不在本 tab 展示，见「对话」tab）
+        for (i = 0; i < projects.length; i++) {
+            var start = flat.length;
+            var ss = projects[i].sessions || [];
+            for (j = 0; j < ss.length; j++) flat.push(ss[j]);
+            projMeta.push({ path: projects[i].path, name: projects[i].name, start: start, count: ss.length });
+        }
+    } else {
+        // 对话 tab：仅全局会话（非工作空间下），按 time 倒序（time 缺省按 Date.now()）
+        for (i = 0; i < global.length; i++) flat.push(global[i]);
+        flat.sort(function (a, b) { return (b.time || Date.now()) - (a.time || Date.now()); });
+    }
+
+    // —— 重建全局量并修正激活下标 ——
+    chatHistory = flat;
+    var curId = activeSessionId || SESSION_ID;
+    currentChatIndex = -1;
+    for (i = 0; i < flat.length; i++) {
+        if (flat[i].sessionId === curId) { currentChatIndex = i; break; }
+    }
+
+    // —— 第二遍：生成 HTML ——
+    var html = '';
+    if (scope === 'project') {
+        html += '<div class="sidebar-section-title">' + GourdI18n.t('app.sidebar.section_projects') + '</div>';
+        for (i = 0; i < projMeta.length; i++) {
+            var pm = projMeta[i];
+            var expanded = !!_projExpanded[pm.path];
+            html += projNodeHtml(pm.path, pm.name, expanded);
+            // 子会话列表始终入 DOM（收起态由 CSS 控制），保证搜索可过滤折叠项目的会话
+            if (pm.count > 0) {
+                html += '<div class="proj-sessions">';
+                for (j = pm.start; j < pm.start + pm.count; j++) html += sidebarItemHtml(j);
+                html += '</div>';
+            }
+        }
+        // 「任务」区：定时任务（loop），点击行跳转设置页「自动化」tab
+        html += '<div class="sidebar-section-title">' + GourdI18n.t('app.tasks') + '</div>';
+        if (_loopTasks.length === 0) {
+            html += '<div class="sidebar-empty-hint">' + GourdI18n.t('app.sidebar.no_tasks') + '</div>';
+        } else {
+            for (i = 0; i < _loopTasks.length; i++) html += loopTaskHtml(_loopTasks[i]);
+        }
+    } else {
+        for (i = 0; i < flat.length; i++) html += sidebarItemHtml(i);
+    }
+    return html;
 }
 
 function startRename(idx) {
@@ -186,7 +546,7 @@ function startRename(idx) {
             $.post('/web/chat/sessions/rename', {
                 sessionId: chatHistory[idx].sessionId,
                 label: newLabel,
-                root: (window.appMode === 'code' && window.currentProjectRoot) ? window.currentProjectRoot : ''
+                root: sessionRootOf(chatHistory[idx])
             });
         }
         $input.remove();
@@ -207,7 +567,7 @@ function deleteSession(idx) {
     if (!entry) return;
 
     layConfirm(GourdI18n.t('history.confirm_delete') + ' "' + (entry.label || GourdI18n.t('history.untitled')) + '"', function() {
-    var rootQ = (window.appMode === 'code' && window.currentProjectRoot) ? '&root=' + encodeURIComponent(window.currentProjectRoot) : '';
+    var rootQ = sessionRootQ(entry);
     $.post('/web/chat/sessions/delete?sessionId=' + encodeURIComponent(entry.sessionId) + rootQ, function() {
         /* Clean up session state after server confirms */
         var sess = sessionMap[entry.sessionId];
@@ -219,6 +579,17 @@ function deleteSession(idx) {
             delete sessionMap[entry.sessionId];
             // 删除会话时清理可能残留的加载按钮
             $(messagesWrap).find('.chat-load-more-wrapper').remove();
+        }
+
+        if (window.appMode !== 'code' && _sidebarData) {
+            // chat 聚合视图：从 _sidebarData 移除，chatHistory/currentChatIndex 交由渲染重建修正
+            removeSidebarEntry(entry.sessionId);
+            if (entry.sessionId === SESSION_ID) {
+                currentChatIndex = -1;
+                switchToWelcomeMode();
+            }
+            updateHistoryUI();
+            return;
         }
 
         chatHistory.splice(idx, 1);
@@ -273,32 +644,104 @@ function selectSession(idx) {
         // 名称/下拉/文件树/Git/终端 + 持久化项目根，均由 syncProjectContext 统一处理（DRY，键名不在此重复）
         if (typeof window.syncProjectContext === 'function') window.syncProjectContext(entry.projectRoot);
     }
+    // Chat 模式：切换到历史会话时恢复其所属工作空间（选择器 + X-Session-Cwd 随之），
+    // 避免后续发送把消息绑到错误工作空间目录。silent 只同步状态/UI，不重载列表、不回欢迎页。
+    if (window.appMode !== 'code' && typeof window.applyChatWorkspace === 'function') {
+        window.applyChatWorkspace(entry.projectRoot || '', true);
+    }
     // code 模式：中间 diff 与右栏对话正交，切换会话只换右栏，不能把中间 diff 顶掉重置；
     // 仅 chat 模式（diff 全屏覆盖）切会话才需先关掉 diff 露出对话。
     if (window.appMode !== 'code' && typeof closeDiffViewer === 'function') closeDiffViewer();
     if (!inChatMode) switchToChatMode();
     setActiveSession(entry.sessionId);
+    // 记录会话所属工作空间根，供回放/删除/重命名/HITL 补发定位用
+    if (sessionMap[entry.sessionId]) sessionMap[entry.sessionId].projectRoot = entry.projectRoot || '';
     updateHistoryUI();
 
     var sess = sessionMap[entry.sessionId];
-    /* Only load from server if not streaming, not mid-replay, and container has no content */
-    if (!sess.isStreaming && !sess._replaying && sess.container.children.length === 0) {
+    /* Only load from server if not streaming, not mid-replay, and container has no content
+       (_gateBuffering = 等待回放响应期间，同样不得重复发起 loadMessages) */
+    if (!sess.isStreaming && !sess._replaying && !sess._gateBuffering && sess.container.children.length === 0) {
         loadMessages(sess);
     } else {
         scrollToBottom(true);
-        // 切回已有内容（或回放中）的会话时，setActiveSession 清除了旧按钮，需重建。
-        // 已加载完且不在回放中：立即重建；回放中：replayDone 会处理，此处不调。
-        if (!sess._replaying) {
+        // 切回已有内容（或回放/缓冲中）的会话时，setActiveSession 清除了旧按钮，需重建。
+        // 已加载完且不在回放/缓冲中：立即重建；回放/缓冲中：replayDone/drain 会处理，此处不调。
+        if (!sess._replaying && !sess._gateBuffering) {
             if (typeof updateLoadMoreBtn === 'function') updateLoadMoreBtn(sess);
         }
     }
 }
 
+/* tab 行三操作按钮：展开全部/收起全部、搜索（tab 行下方展开搜索条）、清空所有会话 */
+$(document).on('click', '#expandAllBtn', function () {
+    if (!_sidebarData) return;
+    var ps = _sidebarData.projects || [];
+    var anyCollapsed = false;
+    for (var i = 0; i < ps.length; i++) {
+        if (!_projExpanded[ps[i].path]) { anyCollapsed = true; break; }
+    }
+    // 存在未展开 → 全展开；否则全收起
+    for (var j = 0; j < ps.length; j++) _projExpanded[ps[j].path] = anyCollapsed;
+    updateHistoryUI();
+});
+$(document).on('click', '#clearAllBtn', function () {
+    if (!_sidebarData) return;
+    var entries = [];
+    var i;
+    var g = _sidebarData.global || [];
+    for (i = 0; i < g.length; i++) entries.push(g[i]);
+    var ps = _sidebarData.projects || [];
+    for (i = 0; i < ps.length; i++) {
+        var ss = ps[i].sessions || [];
+        for (var k = 0; k < ss.length; k++) entries.push(ss[k]);
+    }
+    if (entries.length === 0) return;
+    layConfirm(GourdI18n.t('app.sidebar.confirm_clear'), function () {
+        var remaining = entries.length;
+        var currentDeleted = false;
+        var onOne = function (entry) {
+            if (entry.sessionId === SESSION_ID) currentDeleted = true;
+            if (--remaining === 0) {
+                // 清理被清空会话的本地状态（对齐 deleteSession），避免残留孤儿容器
+                for (var c = 0; c < entries.length; c++) {
+                    var cs = sessionMap[entries[c].sessionId];
+                    if (cs) {
+                        if (cs.eventSource) cs.eventSource.close();
+                        if (cs.silenceTimer) clearTimeout(cs.silenceTimer);
+                        if (typeof disposeSessionStreamMd === 'function') disposeSessionStreamMd(cs);
+                        $(cs.container).remove();
+                        delete sessionMap[entries[c].sessionId];
+                    }
+                }
+                $(messagesWrap).find('.chat-load-more-wrapper').remove();
+                _sidebarData = null;
+                if (currentDeleted) {
+                    currentChatIndex = -1;
+                    switchToWelcomeMode();
+                }
+                loadSessionHistory();
+            }
+        };
+        for (var d = 0; d < entries.length; d++) {
+            (function (entry) {
+                var rootQ = entry.projectRoot ? '&root=' + encodeURIComponent(entry.projectRoot) : '';
+                $.post('/web/chat/sessions/delete?sessionId=' + encodeURIComponent(entry.sessionId) + rootQ)
+                    .always(function () { onOne(entry); });
+            })(entries[d]);
+        }
+    });
+});
+
 /* 尾部加载配置：初始加载最后 N 条事件（约 30 轮对话），避免长对话一次性加载过慢 */
 var REPLAY_TAIL_SIZE = 150;
 
 function loadMessages(sess) {
-    var rootQ = (window.appMode === 'code' && window.currentProjectRoot) ? '&root=' + encodeURIComponent(window.currentProjectRoot) : '';
+    var rootQ = sessionRootQ(sess);
+    // 发请求前即开启回放/实时互斥门禁：期间到达的同会话实时帧先入缓冲，
+    // 回放完成后由 drainGateBuffer 统一去重喂入，避免「后端任务未结束 + UI 发起回放」
+    // 竞态窗口内同一事件被两条管线各渲染一次。
+    beginGateBuffer(sess);
     // 优先尝试「流式过程回放」：若该会话已落盘完整过程事件（工具卡片/思考/正文/trace），
     // 原样重建，历史里也能看到「做了哪些操作」。无回放数据时回退到旧的纯文本加载。
     // 为优化长对话加载性能，初始只加载尾部 REPLAY_TAIL_SIZE 条事件。
@@ -309,6 +752,8 @@ function loadMessages(sess) {
                 sess._replayTotalCount = rpData.totalCount || 0;
                 sess._replayHasMore = rpData.hasMore || false;
                 sess._replayLoadedCount = rpData.events.length;
+                // 快照覆盖集：标识「回放已渲染的事件」，供缓冲/迟到的实时帧去重（本轮 done 时清除）
+                sess._replayCoverage = buildReplayCoverage(rpData.events);
                 replaySession(sess, rpData.events, false);
                 return;
             } catch (e) {
@@ -316,7 +761,7 @@ function loadMessages(sess) {
                 try { $(sess.container).html(''); } catch (e2) {}
             }
         }
-        // replay 无事件（新对话）或异常：走纯文本加载路径
+        // replay 无事件（新对话）或异常：走纯文本加载路径（缓冲在 legacy 加载完成时统一排空）
         loadMessagesLegacy(sess, rootQ);
     }).fail(function() {
         loadMessagesLegacy(sess, rootQ);
@@ -329,34 +774,49 @@ function loadMessages(sess) {
 function loadMoreMessages(sess) {
     if (!sess || sess._replayLoadingMore || sess.sessionId !== activeSessionId) return;
     sess._replayLoadingMore = true;
+    // prepend 回放期间缓冲实时帧，避免混入临时容器（replayDone 后排空）
+    beginGateBuffer(sess);
 
-    var rootQ = (window.appMode === 'code' && window.currentProjectRoot) ? '&root=' + encodeURIComponent(window.currentProjectRoot) : '';
+    var rootQ = sessionRootQ(sess);
     // 需要加载的总数量 = 已加载 + 更多
     var needTotal = sess._replayLoadedCount + REPLAY_TAIL_SIZE;
     // tail 参数：从尾部取 needTotal 条，但我们只要其中最早的那 REPLAY_TAIL_SIZE 条
-    var tail = Math.min(needTotal, sess._replayTotalCount);
+    var prevTotal = sess._replayTotalCount || 0;
+    var tail = Math.min(needTotal, prevTotal);
 
     // 移除加载按钮（稍后由 replayDone→updateLoadMoreBtn 重建）
     $(sess.container).prev('.chat-load-more-wrapper').remove();
 
     $.get('/web/chat/replay?sessionId=' + encodeURIComponent(sess.sessionId) + rootQ + '&tail=' + tail, function(rp) {
         // 请求返回后，如果用户已切换会话，丢弃结果 — 不污染新会话的滚动和 DOM
-        if (sess.sessionId !== activeSessionId) { sess._replayLoadingMore = false; return; }
+        if (sess.sessionId !== activeSessionId) { sess._replayLoadingMore = false; drainGateBuffer(sess); return; }
         var rpData = rp && rp.data;
         if (rpData && rpData.events && rpData.events.length > 0) {
-            // 只取未加载的部分（前 N 条是重复的）
-            var newCount = rpData.events.length - sess._replayLoadedCount;
+            // 会话可能仍在流式：totalCount 相对发请求时已增长，tail 窗口尾部是
+            // 「比已加载区间更新的事件」，不能当作更老历史 prepend（旧版直接
+            // newCount=events-loaded，假设 totalCount 不增长，导致重叠区间渲染两次）。
+            var grown = (rpData.totalCount || 0) - prevTotal;
+            if (grown < 0) grown = 0;
+            var newCount = rpData.events.length - sess._replayLoadedCount - grown;
+            if (newCount < 0) newCount = 0;
+            sess._replayTotalCount = rpData.totalCount || prevTotal;
+            sess._replayHasMore = rpData.hasMore || (sess._replayLoadedCount + newCount < sess._replayTotalCount);
             if (newCount > 0) {
                 var olderEvents = rpData.events.slice(0, newCount);
-                sess._replayLoadedCount = rpData.events.length;
-                sess._replayHasMore = rpData.hasMore || (rpData.events.length < rpData.totalCount);
-                // 标记为 prepend 模式，replayDone 会根据 scrollHeight 差值自动恢复滚动位置
+                sess._replayLoadedCount += newCount;
+                // 标记为 prepend 模式，replayDone 会根据 scrollHeight 差值自动恢复滚动位置（缓冲在 replayDone 排空）
                 replaySession(sess, olderEvents, true);
+            } else {
+                drainGateBuffer(sess);
+                if (typeof updateLoadMoreBtn === 'function') updateLoadMoreBtn(sess);
             }
+        } else {
+            drainGateBuffer(sess);
         }
         sess._replayLoadingMore = false;
     }).fail(function() {
         sess._replayLoadingMore = false;
+        drainGateBuffer(sess);
         // 请求失败时恢复按钮，避免用户永久丢失加载入口
         if (typeof updateLoadMoreBtn === 'function') updateLoadMoreBtn(sess);
     });
@@ -409,6 +869,56 @@ function updateLoadMoreBtn(sess) {
     }
 }
 
+/* ===== 回放/实时流互斥门禁 =====
+   历史回放期间（含等待回放响应窗口），同会话实时 WS 帧先入缓冲（beginGateBuffer），
+   回放完成/legacy 加载完成后由 drainGateBuffer 统一排空；快照覆盖集（_replayCoverage）
+   标识「回放已渲染的事件」：
+   - 非文本块（工具卡片/trace/user/done 等）后端逐块落盘，按指纹或 createdAt<=快照最大时间戳 命中；
+   - text/reason 后端按 (type,runId) 合并落盘（与实时逐 token 帧粒度不同），按 (type,runId) 命中；
+   缓冲或迟到的帧命中覆盖集即丢弃，其余喂入实时管线，保证不重不漏。
+   覆盖集在本轮 done 到达时清除（dispatchGateChunk），不误拦后续轮次。 */
+function beginGateBuffer(sess) {
+    if (!sess._gateBuffer) sess._gateBuffer = [];
+    sess._gateBuffering = true;
+}
+function gateChunkFp(c) {
+    return (c.type || '') + '\u0001' + (c.createdAt || 0) + '\u0001' + (c.text || '') + '\u0001' + (c.toolName || '') + '\u0001' + (c.actionId || '');
+}
+function buildReplayCoverage(events) {
+    var cov = { fps: {}, runs: {}, maxCreatedAt: 0 };
+    for (var i = 0; i < events.length; i++) {
+        var e = events[i];
+        if (!e || !e.type) continue;
+        if ((e.createdAt || 0) > cov.maxCreatedAt) cov.maxCreatedAt = e.createdAt;
+        if (e.type === 'text' || e.type === 'reason') {
+            cov.runs[e.type + '\u0001' + (e.runId || '')] = true;
+        } else {
+            cov.fps[gateChunkFp(e)] = true;
+        }
+    }
+    return cov;
+}
+function replayCoverageHas(cov, c) {
+    if (!cov || !c || !c.type) return false;
+    if (c.type === 'text' || c.type === 'reason') {
+        return !!cov.runs[c.type + '\u0001' + (c.runId || '')];
+    }
+    if (c.createdAt && c.createdAt <= cov.maxCreatedAt) return true;
+    return !!cov.fps[gateChunkFp(c)];
+}
+function drainGateBuffer(sess) {
+    sess._gateBuffering = false;
+    var buf = sess._gateBuffer || [];
+    sess._gateBuffer = [];
+    for (var i = 0; i < buf.length; i++) {
+        var c = buf[i];
+        try {
+            if (sess._replayCoverage && replayCoverageHas(sess._replayCoverage, c)) continue;
+            dispatchGateChunk(c);
+        } catch (e) {}
+    }
+}
+
 /* 流式过程回放：把 replay 事件序列喂给与实时流完全相同的渲染管线（onWebChunk + finishStream），
    在临时容器中批量重建 DOM，再一次性移入真实容器。以持久化的 createdAt 作为 _replayClock 还原
    并行批量分组的时序；user 事件独立渲染用户气泡；trace 为一轮结束边界，触发 finishStream 收尾。
@@ -424,6 +934,7 @@ function replaySession(sess, events, prepend) {
     var tempDiv = document.createElement('div');
     sess.container = tempDiv;
     sess._replaying = true;
+    if (!sess._gateBuffer) sess._gateBuffer = [];
     sess.isStreaming = false;
     // 回放期间禁止 finishStream 和渲染管线触发滚动，滚动在 replayDone 统一处理
     sess._skipScroll = true;
@@ -540,6 +1051,10 @@ function replaySession(sess, events, prepend) {
 
         resetStreamState(sess);
 
+        // 排空回放期间累积的实时帧缓冲：命中快照覆盖集（回放已渲染）的丢弃，
+        // 其余喂入实时管线（此时容器已恢复为真实容器）
+        drainGateBuffer(sess);
+
         if (!prepend) {
             // 初始加载：滚动到底部，然后显示/隐藏加载按钮
             if (sess.sessionId === activeSessionId) scrollToBottom(true);
@@ -612,18 +1127,25 @@ function loadMessagesLegacy(sess, rootQ) {
                 if (sess.sessionId === activeSessionId) scrollToBottom(true);
                 // 清理可能从上一会话残留的按钮
                 if (typeof updateLoadMoreBtn === 'function') updateLoadMoreBtn(sess);
+                // legacy 加载完成后统一排空回放缓冲（此路径无覆盖集，全部喂入）
+                drainGateBuffer(sess);
             }
 
             loadChunk();
         } catch (e) {
             // 异常时确保容器恢复
             if (realContainer) sess.container = realContainer;
+            drainGateBuffer(sess);
         }
     });
 }
 
-/* Load on startup（桌面端等后端就绪再拉，避免冷启动占用连接；浏览器端立即执行） */
-__whenBackendReady(loadSessionHistory);
+/* Load on startup（桌面端等后端就绪再拉，避免冷启动占用连接；浏览器端立即执行）。
+   先渲染全局/项目切换条（默认跟随工作空间选择），再拉会话列表。 */
+__whenBackendReady(function () {
+    updateHistoryScopeBar();
+    loadSessionHistory();
+});
 
 /* ===== Command System ===== */
 var commandList = []; // [{name, description, type}, ...]
@@ -1493,6 +2015,8 @@ $(document).on('click', function() {
 // 国际化：语言包就绪 / 切换语言后，重新渲染模型选择器（模型 + 关联思考档位文案随语言变）
 document.addEventListener('i18n:localeChanged', function () {
     if (typeof renderModelUI === 'function') { try { renderModelUI(); } catch (e) {} }
+    updateHistoryUI();
+    updateHistoryScopeBar();
 });
 
 initModelSelector('chatModelSelector', 'chatModelCurrent', 'chatModelDropdown');

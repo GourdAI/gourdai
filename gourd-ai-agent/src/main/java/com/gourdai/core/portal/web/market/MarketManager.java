@@ -1,6 +1,7 @@
 package com.gourdai.core.portal.web.market;
 
 import com.gourdai.core.portal.web.market.impl.ClawhubMarket;
+import com.gourdai.core.portal.web.market.impl.ModelscopeMarket;
 import com.gourdai.core.portal.web.market.impl.SkillhubMarket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,7 +11,7 @@ import java.util.*;
 /**
  * 技能市场管理器 — 管理多个 Market 适配器，根据前端传入的 marketName 选择对应的市场。
  *
- * <p>默认注册 ClawHub 和 Skills.sh 两个市场，支持运行时动态添加。</p>
+ * <p>默认注册 ClawHub、Skills.sh 和魔搭 ModelScope 三个市场，支持运行时动态添加。</p>
  *
  * @author oisin
  */
@@ -26,6 +27,9 @@ public class MarketManager {
 
         Market clawhub = new ClawhubMarket();
         register(clawhub);
+
+        Market modelscope = new ModelscopeMarket();
+        register(modelscope);
 
 //        Market skillsSh = new SkillsShMarket();
 //        register(skillsSh);

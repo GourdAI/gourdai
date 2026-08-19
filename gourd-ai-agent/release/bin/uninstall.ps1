@@ -79,13 +79,13 @@ Write-Host ""
 Write-Host "[2/4] Removing environment variables..." -ForegroundColor Yellow
 
 # 用户级
-[Environment]::SetEnvironmentVariable("SOLONCODE_HOME", $null, "User")
-Write-Host "      Removed User SOLONCODE_HOME" -ForegroundColor Gray
+[Environment]::SetEnvironmentVariable("GOURDWORK_HOME", $null, "User")
+Write-Host "      Removed User GOURDWORK_HOME" -ForegroundColor Gray
 
 # 系统级（如果是管理员）
 if ($IS_ADMIN) {
-    [Environment]::SetEnvironmentVariable("SOLONCODE_HOME", $null, "Machine")
-    Write-Host "      Removed System SOLONCODE_HOME" -ForegroundColor Gray
+    [Environment]::SetEnvironmentVariable("GOURDWORK_HOME", $null, "Machine")
+    Write-Host "      Removed System GOURDWORK_HOME" -ForegroundColor Gray
 }
 
 # ============================================

@@ -20,7 +20,7 @@ target/
 *.log
 *.flattened-pom.xml
 *.md
-!soloncode-cli/docs/*.md
+!gourdwork-cli/docs/*.md
 # 内置子代理定义属于运行时必需资源，绝不能被 *.md 规则吞掉
 !gourd-ai-agent/src/main/resources/META-INF/gourdai/agents/*.md
 
@@ -38,7 +38,7 @@ nbdist/
 node_modules/
 CLAUDE.md
 TODO.md
-/soloncode-cli/src/main/resources/config.yml
+/gourdwork-cli/src/main/resources/config.yml
 work
 
 .gourdai/

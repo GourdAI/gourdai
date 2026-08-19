@@ -105,6 +105,8 @@ function sendMessage() {
     setActiveSession(SESSION_ID);
 
     var sess = sessionMap[SESSION_ID];
+    // 记录会话所属工作空间根（code=项目 / chat=所选工作空间），供回放/删除/HITL 补发定位用
+    sess.projectRoot = (window.appMode === 'code') ? (window.currentProjectRoot || '') : (window.currentChatWorkspace || '');
 
     // Show user message with attachment previews
     var imageDataUrls = [];
@@ -428,8 +430,18 @@ function finishStream(sess) {
 var webGateSocket = null;
 var webGateReconnectAttempts = 0;
 var webGateHeartbeatTimer = null;
-// 最近一条已处理 gate 帧的指纹（重复推送连串去重兜底用）
-var lastGateFp = null;
+// 重复推送去重的指纹滑窗（最近 N 条；相邻与交错到达的重复帧均可命中；
+// 旧版单变量 lastGateFp 仅能去重相邻同帧，双连接非相邻送达的重复帧会漏网）
+var GATE_FP_WINDOW = 200;
+var gateFpQueue = [];
+var gateFpSet = {};
+function gateFpSeen(fp) {
+    if (gateFpSet[fp]) return true;
+    gateFpSet[fp] = true;
+    gateFpQueue.push(fp);
+    if (gateFpQueue.length > GATE_FP_WINDOW) delete gateFpSet[gateFpQueue.shift()];
+    return false;
+}
 var WEBGATE_MAX_RECONNECT = 10;
 
 // 用户主动发起会话时确保连接就绪：若连接已断且退避已停止，则重置计数并立即重连。
@@ -506,84 +518,24 @@ function connectWebGate() {
         try {
             var chunk = JSON.parse(raw);
 
-            // 重复推送兜底去重：多连接并存时同一事件可能相邻送达两次（payload 完全一致），
-            // 连续重复帧丢弃；仅带 createdAt 的业务帧参与，心跳/系统帧原样放行。
+            // 重复推送兜底去重：多连接并存时同一事件可能送达两次（payload 完全一致），
+            // 滑窗内重复帧丢弃（相邻与交错重复均覆盖）；仅带 createdAt 的业务帧参与，心跳/系统帧原样放行。
             if (chunk && chunk.createdAt) {
                 var fp = (chunk.type || '') + '\u0001' + (chunk.sessionId || '') + '\u0001' + chunk.createdAt + '\u0001' + raw;
-                if (fp === lastGateFp) return;
-                lastGateFp = fp;
+                if (gateFpSeen(fp)) return;
             }
 
-            // 正常处理 WebSocket 消息
-
-            var sid = chunk.sessionId;
-
-            // WebSocket 流结束信号
-            if (chunk.type === 'done') {
-                if (!sid) return;
-                var sess = sessionMap[sid];
-                if (!sess) return;
-                // 保存 done 消息的时间戳，用于 finishStream 显示
-                if (chunk.createdAt) sess._lastCreatedAt = chunk.createdAt;
-                finishStream(sess);
-                // busy 暂存的消息：当前任务已结束，延迟补发（不重复渲染用户气泡）。
-                // 延迟 300ms 避开 finishStream 内部的队列处理时序；若期间用户已手动发送则跳过。
-                if (sess._pendingResend) {
-                    var pr = sess._pendingResend;
-                    sess._pendingResend = null;
-                    setTimeout(function() {
-                        var s2 = sessionMap[sid];
-                        if (!s2 || s2.isStreaming) return;
-                        sendWithFormDataGrouped(s2, pr, []);
-                    }, 300);
-                }
+            // 回放/实时互斥门禁：会话处于历史回放中或等待回放响应期间，同会话实时帧（含 user/done）
+            // 先入缓冲队列，由 replayDone/加载完成统一去重喂入（drainGateBuffer），避免同一事件被
+            // 回放快照与实时流两条管线各渲染一次；回放结束后快照覆盖集继续生效（至本轮 done），拦截迟到的快照内帧。
+            var gateSess = chunk.sessionId ? sessionMap[chunk.sessionId] : null;
+            if (gateSess && (gateSess._replaying || gateSess._gateBuffering)) {
+                gateSess._gateBuffer.push(chunk);
                 return;
             }
+            if (gateSess && gateSess._replayCoverage && replayCoverageHas(gateSess._replayCoverage, chunk)) return;
 
-            // 文件变更通知（无 sessionId，系统级广播）
-            if (chunk.type === 'filer_change') {
-                if (typeof onFilerChange === 'function') {
-                    onFilerChange(chunk);
-                }
-                return;
-            }
-
-            if (!sid) return; // 无 sessionId 的消息丢弃
-
-            // 即使 sess2 不存在，也优先处理 todowrite 动作（用于更新左侧 Sidebar 的 todo 进度）
-            if (chunk.type === 'action_end' && chunk.toolName === 'todowrite') {
-                if (window._todoChunkHandlers) {
-                    window._todoChunkHandlers.forEach(function(h) { h(chunk); });
-                }
-            }
-
-            // Loop/微信 等后端推送的用户提示词，先渲染用户消息气泡
-            if (chunk.type === 'user_input' || chunk.type === 'user') {
-                if (!sid) return;
-                var userSess = getOrCreateSession(sid);
-                if (typeof ensureChatInHistory === 'function') {
-                    ensureChatInHistory(sid, chunk.text, true);
-                }
-                appendUserMessage(userSess, chunk.text, null, null, chunk.createdAt);
-                if (userSess.sessionId === activeSessionId) {
-                    if (!inChatMode) switchToChatMode();
-                    scrollToBottom(true);
-                }
-                return;
-            }
-
-            var sess2 = getOrCreateSession(sid);
-            if (!sess2.isStreaming) {
-                sess2.isStreaming = true;
-                if (sess2.sessionId === activeSessionId) {
-                    isStreaming = true;
-                    setBtnStopMode();
-                    if (!inChatMode) switchToChatMode();
-                }
-                resetStreamState(sess2);
-                showThinking(sess2);
-            }
-            onWebChunk(sess2, chunk);
+            dispatchGateChunk(chunk);
         } catch(e) {
             // 非 JSON 消息忽略
         }
@@ -600,6 +552,80 @@ function connectWebGate() {
     webGateSocket.onerror = function(err) {
         console.error('[WebGate] error:', err);
     };
+}
+
+/* gate 帧业务分发体（模块级全局：onmessage 与 app-history.js 的 drainGateBuffer 回放缓冲排空共用） */
+function dispatchGateChunk(chunk) {
+    var sid = chunk.sessionId;
+
+    // WebSocket 流结束信号
+    if (chunk.type === 'done') {
+        if (!sid) return;
+        var sess = sessionMap[sid];
+        if (!sess) return;
+        // 保存 done 消息的时间戳，用于 finishStream 显示
+        if (chunk.createdAt) sess._lastCreatedAt = chunk.createdAt;
+        // 本轮结束：清除回放快照覆盖集（使命完成，避免误拦后续轮次帧）
+        sess._replayCoverage = null;
+        finishStream(sess);
+        // busy 暂存的消息：当前任务已结束，延迟补发（不重复渲染用户气泡）。
+        // 延迟 300ms 避开 finishStream 内部的队列处理时序；若期间用户已手动发送则跳过。
+        if (sess._pendingResend) {
+            var pr = sess._pendingResend;
+            sess._pendingResend = null;
+            setTimeout(function() {
+                var s2 = sessionMap[sid];
+                if (!s2 || s2.isStreaming) return;
+                sendWithFormDataGrouped(s2, pr, []);
+            }, 300);
+        }
+        return;
+    }
+
+    // 文件变更通知（无 sessionId，系统级广播）
+    if (chunk.type === 'filer_change') {
+        if (typeof onFilerChange === 'function') {
+            onFilerChange(chunk);
+        }
+        return;
+    }
+
+    if (!sid) return; // 无 sessionId 的消息丢弃
+
+    // 即使 sess2 不存在，也优先处理 todowrite 动作（用于更新左侧 Sidebar 的 todo 进度）
+    if (chunk.type === 'action_end' && chunk.toolName === 'todowrite') {
+        if (window._todoChunkHandlers) {
+            window._todoChunkHandlers.forEach(function(h) { h(chunk); });
+        }
+    }
+
+    // Loop/微信 等后端推送的用户提示词，先渲染用户消息气泡
+    if (chunk.type === 'user_input' || chunk.type === 'user') {
+        if (!sid) return;
+        var userSess = getOrCreateSession(sid);
+        if (typeof ensureChatInHistory === 'function') {
+            ensureChatInHistory(sid, chunk.text, true);
+        }
+        appendUserMessage(userSess, chunk.text, null, null, chunk.createdAt);
+        if (userSess.sessionId === activeSessionId) {
+            if (!inChatMode) switchToChatMode();
+            scrollToBottom(true);
+        }
+        return;
+    }
+
+    var sess2 = getOrCreateSession(sid);
+    if (!sess2.isStreaming) {
+        sess2.isStreaming = true;
+        if (sess2.sessionId === activeSessionId) {
+            isStreaming = true;
+            setBtnStopMode();
+            if (!inChatMode) switchToChatMode();
+        }
+        resetStreamState(sess2);
+        showThinking(sess2);
+    }
+    onWebChunk(sess2, chunk);
 }
 
 function startWebGateHeartbeat() {

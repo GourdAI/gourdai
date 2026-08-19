@@ -76,6 +76,7 @@
         '/js/message-queue.js',
         '/js/app-ui.js',
         '/js/app-history.js',
+        '/js/app-workspace.js',
         '/js/app-message.js',
         '/js/app-streaming.js',
         '/js/app-filer.js',
@@ -171,6 +172,7 @@
             fetch('/web/chat/meta').then(function (r) { return r.json(); }).then(function (res) {
                 var meta = (res && res.data) ? res.data : res;
                 if (!meta) return;
+                window.__appMeta = meta; // 缓存供 chat 工作空间选择器（默认工作区项）复用
                 if (meta.workname || meta.workspace) {
                     document.title = GourdI18n.t('app.title') + ' - ' + (meta.workname || '') + ' (' + (meta.workspace || '') + ')';
                 }

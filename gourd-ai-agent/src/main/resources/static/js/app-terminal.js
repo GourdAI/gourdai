@@ -7,7 +7,7 @@
    - 常驻 shell 子进程由后端按连接维持，cd 等状态天然保留。
    - 输出块原样追加到 #codeTerminalOutput（做 HTML 转义，保留换行）。
    - 命令输入走单行 input（回车发送），支持 ↑↓ 历史。
-    - 未开终端时通过左侧活动栏入口切换；Ctrl+` 快捷切换。 */
+    - 未开终端时通过文件树面板顶部入口切换；Ctrl+` 快捷切换。 */
 (function () {
     'use strict';
 
@@ -25,7 +25,7 @@
     var clearBtn = document.getElementById('codeTerminalClearBtn');
     var restartBtn = document.getElementById('codeTerminalRestartBtn');
     var closeBtn = document.getElementById('codeTerminalCloseBtn');
-    var sidebarBtn = document.getElementById('sidebarTerminalBtn');
+    var filerTerminalBtn = document.getElementById('filerTerminalBtn');
 
     if (!pane) return; // code.html 片段未注入则跳过
 
@@ -273,7 +273,7 @@
 
     // ---------- 按钮 ----------
 
-    if (sidebarBtn) sidebarBtn.addEventListener('click', function () { toggleTerminal(); });
+    if (filerTerminalBtn) filerTerminalBtn.addEventListener('click', function () { toggleTerminal(); });
     if (closeBtn) closeBtn.addEventListener('click', closeTerminal);
     if (clearBtn) clearBtn.addEventListener('click', function () { output.innerHTML = ''; if (input) input.focus(); });
     if (restartBtn) restartBtn.addEventListener('click', restartTerminal);

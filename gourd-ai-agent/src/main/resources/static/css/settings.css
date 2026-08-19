@@ -1849,7 +1849,7 @@ input[type=number] { -moz-appearance: textfield; }
     border-color: #34a853;
 }
 
-/* ===== About & Update Tab（关于与更新） ===== */
+/* ===== About Tab（关于） ===== */
 .about-version-row { display: flex; align-items: center; padding: 7px 0; font-size: 13px; }
 .about-version-row + .about-version-row { border-top: 1px solid var(--border-color); }
 .about-version-label { width: 140px; flex: none; color: var(--text-secondary); }

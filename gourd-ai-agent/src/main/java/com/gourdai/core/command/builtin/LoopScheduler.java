@@ -21,6 +21,7 @@ import org.noear.snack4.Options;
 import com.gourdai.harness.HarnessEngine;
 import com.gourdai.core.channel.Channel;
 import com.gourdai.core.channel.ChannelRoutingTable;
+import com.gourdai.core.portal.web.SessionLocator;
 import org.noear.solon.scheduling.ScheduledAnno;
 import org.noear.solon.scheduling.scheduled.manager.IJobManager;
 import org.noear.solon.scheduling.simple.JobManager;
@@ -622,8 +623,8 @@ public class LoopScheduler {
             LOG.info("Reusing runtime sessionId: {}", runtimeSession);
             return runtimeSession;
         }
-        // 第一次执行，创建新的会话ID（loop 运行时会话为全局 chat 会话）
-        String newSessionId = "chat-" + java.util.UUID.randomUUID().toString().substring(0, 8);
+        // 第一次执行，创建新的会话ID（loop 运行时会话为全局会话，无所属根）
+        String newSessionId = SessionLocator.PREFIX_WORK + java.util.UUID.randomUUID().toString().substring(0, 8);
         task.setRuntimeSessionId(newSessionId);
         LOG.info("Created new runtime sessionId: {}", newSessionId);
         if (workspace != null && harnessSessions != null) {

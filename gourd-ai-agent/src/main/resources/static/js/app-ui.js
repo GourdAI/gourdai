@@ -624,7 +624,7 @@ function disposeSessionStreamMd(sess) {
     if (sess.agentStates) {
         for (var k in sess.agentStates) {
             var st = sess.agentStates[k];
-            if (st && st.bodyMd && st.bodyMd._streamMd) st.bodyMd._streamMd.dispose();
+            if (st && st.currentBubbleEl && st.currentBubbleEl._streamMd) st.currentBubbleEl._streamMd.dispose();
             if (st && st.thinkingBodyMdEl && st.thinkingBodyMdEl._streamMd) st.thinkingBodyMdEl._streamMd.dispose();
         }
     }
@@ -761,6 +761,19 @@ $(document).on('click', '#settingsBtn', function() {
     }, 50);
 });
 
+/* 打开设置浮层并跳转到指定 tab（侧边栏主导航「自动化 / 技能」入口）。
+   app-settings.js 整体包裹在 IIFE 内，openSettings 未必挂到全局——取不到时退回
+   点击 #settingsBtn（其 click 已绑定 openSettings）。tab 点击走 .settings-tabs 上
+   已注册的委托，trigger('click') 可命中。 */
+function openSettingsToTab(tab) {
+    if (typeof openSettings === 'function') openSettings();
+    else $('#settingsBtn').trigger('click');
+    var $t = $('.settings-tab[data-tab="' + tab + '"]');
+    if ($t.length) $t.trigger('click');
+}
+$(document).on('click', '#automationNavBtn', function() { openSettingsToTab('loop'); });
+$(document).on('click', '#skillsNavBtn', function() { openSettingsToTab('skills'); });
+
 /* ===== View Switch ===== */
 function switchToChatMode() {
     if (inChatMode) return;
@@ -774,7 +787,16 @@ function switchToChatMode() {
 function switchToWelcomeMode() {
     inChatMode = false;
     if (typeof forgetActiveSession === 'function') forgetActiveSession();
-    SESSION_ID = (typeof newSessionId === 'function') ? newSessionId() : ('chat-' + Date.now().toString(36));
+    SESSION_ID = (typeof newSessionId === 'function') ? newSessionId() : ('work-' + Date.now().toString(36));
+    // 新会话落盘跟随工作空间选择（getSessionCwd→X-Session-Cwd）：选了工作空间即落该项目区。
+    // 此时若历史视图停在「全局」，新会话发完首条消息不会出现在当前列表（全局视图只扫安装目录），
+    // 须联动切回「项目」视图保证新建会话可见。无工作空间时视图恒为全局（effective 回退），无需处理。
+    if (window.appMode !== 'code' && window.currentChatWorkspace
+            && typeof effectiveHistoryScope === 'function'
+            && effectiveHistoryScope() !== 'project'
+            && typeof setHistoryScope === 'function') {
+        setHistoryScope('project'); // 内部会重载列表，保证侧栏内容与视图一致
+    }
     // 先把当前对话已选的模型/思考档位继承给新会话（写缓存），再激活，
     // 否则 setActiveSession→refreshSessionModel 会拉后端默认把选择冲掉。
     if (typeof inheritSelectionToSession === 'function') inheritSelectionToSession(SESSION_ID);
@@ -1027,23 +1049,48 @@ initVoice();
     sidebar.removeClass('collapsed');
     try { localStorage.removeItem('sidebar-collapsed'); } catch (e) {}
 
-    var searchBtn = $('#sidebarSearchBtn');
+    var searchBtn = $('#filterListBtn');
     var searchBar = $('#sidebarSearchBar');
     var searchInput = $('#sidebarSearchInput');
     var searchClear = $('#sidebarSearchClear');
     var historyList = $('#historyList');
+
+    /* 清空搜索时统一恢复各行可见性：会话/定时任务/项目行恢复显示（清除 filter-hit 标记），
+       .proj-sessions 仅清除内联样式（是否展示交还给展开态 CSS），小节标题与空态提示恢复显示。 */
+    function restoreSidebarFilter() {
+        historyList.find('.filter-hit').removeClass('filter-hit');
+        historyList.find('.sidebar-item, .loop-item, .proj-node').show();
+        historyList.find('.proj-sessions').css('display', '');
+        historyList.find('.sidebar-section-title, .sidebar-empty-hint').show();
+    }
+
+    /* 过滤时同步小节标题：其下无可见条目时整体隐藏，避免只剩空壳。 */
+    function syncHistoryFilterGroups() {
+        historyList.find('.sidebar-section-title').each(function() {
+            var $title = $(this);
+            var hasVisible = false;
+            var $el = $title.next();
+            while ($el.length && !$el.hasClass('sidebar-section-title')) {
+                if ($el.is(':visible')) { hasVisible = true; break; }
+                $el = $el.next();
+            }
+            $title.toggle(hasVisible);
+        });
+    }
 
     if (searchBtn.length) {
         searchBtn.on('click', function() {
             var visible = searchBar.is(':visible');
             if (visible) {
                 searchBar.hide();
+                searchBtn.removeClass('active');
                 searchInput.val('');
                 searchClear.hide();
                 // Restore full history list
-                historyList.find('.sidebar-item').show();
+                restoreSidebarFilter();
             } else {
                 searchBar.show();
+                searchBtn.addClass('active');
                 searchInput.focus();
             }
         });
@@ -1053,11 +1100,40 @@ initVoice();
         searchInput.on('input', function() {
             var val = this.value.toLowerCase().trim();
             searchClear.toggle(val.length > 0);
-            historyList.find('.sidebar-item').each(function() {
-                var label = $(this).find('.sidebar-item-label').text().toLowerCase();
-                $(this).toggle(val === '' || label.indexOf(val) >= 0);
+            if (val === '') {
+                restoreSidebarFilter();
+                return;
+            }
+            // 逐项按标签过滤（会话行 + 定时任务行），filter-hit 记录命中供分组统计
+            historyList.find('.sidebar-item, .loop-item').each(function() {
+                var label = $(this).find('.sidebar-item-label, .loop-item-label').text().toLowerCase();
+                var hit = label.indexOf(val) >= 0;
+                $(this).toggleClass('filter-hit', hit).toggle(hit);
             });
+            // 项目文件夹行：文件夹名命中或子会话命中则显示；折叠的项目在搜索时也露出命中会话
+            historyList.find('.proj-node').each(function() {
+                var $node = $(this);
+                var nameHit = $node.find('.proj-name').text().toLowerCase().indexOf(val) >= 0;
+                var $group = $node.next('.proj-sessions');
+                var hasHit = $group.length > 0 && $group.find('.sidebar-item.filter-hit').length > 0;
+                if ($group.length) {
+                    if (nameHit && !hasHit) {
+                        // 文件夹名命中：展示其下全部会话
+                        $group.find('.sidebar-item').addClass('filter-hit').show();
+                        hasHit = true;
+                    }
+                    $group.toggle(hasHit);
+                }
+                $node.toggle(nameHit || hasHit);
+            });
+            // 过滤时隐藏空态提示；空分组的小节标题同步隐藏
+            historyList.find('.sidebar-empty-hint').hide();
+            syncHistoryFilterGroups();
         });
+        // 列表重建（updateHistoryUI）后按当前关键字重新过滤，避免过滤态丢失
+        window.reapplySidebarFilter = function() {
+            if (searchBar.is(':visible')) searchInput.trigger('input');
+        };
     }
 
     if (searchClear.length) {
@@ -1158,6 +1234,16 @@ $(document).on('keydown', function(e) {
     if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
         e.preventDefault();
         if (typeof newChatBtn !== 'undefined') newChatBtn.click();
+    }
+    // Ctrl/Cmd + K: 侧边栏搜索（搜索条已开则聚焦输入框，否则经 tab 行搜索图标展开）
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        var $bar = $('#sidebarSearchBar');
+        if ($bar.is(':visible')) {
+            $('#sidebarSearchInput').trigger('focus');
+        } else {
+            $('#filterListBtn').trigger('click');
+        }
     }
     // Escape: close modals, lightbox
     if (e.key === 'Escape') {

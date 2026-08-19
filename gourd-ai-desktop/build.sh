@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# gourd-ai-desktop 构建脚本（Linux / macOS）
+# GWork 构建脚本（Linux / macOS）
 # 用法：
 #   ./build.sh                    # 完整构建
 #   SKIP_MAVEN=true ./build.sh    # 跳过 Maven
@@ -14,7 +14,7 @@ JAR_SOURCE="${PROJECT_ROOT}/gourd-ai-agent/target/gourd-ai-agent.jar"
 UI_SOURCE="${PROJECT_ROOT}/gourd-ai-agent/src/main/resources/static"
 UI_DEST="${SCRIPT_DIR}/build/ui"
 
-echo "=== gourd-ai-desktop 构建（Electron）==="
+echo "=== GWork 构建（Electron）==="
 echo "平台: $(uname -s)/$(uname -m)"
 
 # 1. Maven 构建 JAR

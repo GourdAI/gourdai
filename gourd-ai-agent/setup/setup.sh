@@ -66,7 +66,7 @@ fi
 info "Running installer..."
 
 # Set environment variable to tell install.sh not to wait
-export SOLONCODE_SETUP=1
+export GOURDWORK_SETUP=1
 
 # Run installer
 bash "$INSTALL_SCRIPT"

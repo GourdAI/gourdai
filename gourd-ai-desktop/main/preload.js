@@ -20,10 +20,6 @@ contextBridge.exposeInMainWorld('__GOURD_IPC__', {
   // 主动查询后端就绪状态（'pending' | 'ready' | 'failed'）。
   // 消除“就绪事件早于渲染层注册监听器”的竞态：渲染层可在任意时刻拉取当前状态。
   getBackendState: () => ipcRenderer.invoke('get-backend-state'),
-  // Code 模式：请求主进程新开一个原生窗体打开指定项目空间（非浏览器窗口）。
-  openProjectWindow: (project) => ipcRenderer.invoke('open-project-window', { project: String(project || '') }),
-  // 查询当前窗口承载的项目根（主进程按窗口记录；主窗口返回空串）。
-  getWindowProject: () => ipcRenderer.invoke('get-window-project'),
   // 定制窗口标题（如 Code 模式显示当前项目名）。
   setWindowTitle: (title) => ipcRenderer.send('window-title-update', String(title || '')),
 

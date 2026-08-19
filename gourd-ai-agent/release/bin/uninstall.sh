@@ -52,12 +52,12 @@ clean_shell_config() {
         if [[ "$OS_TYPE" == "Darwin" ]]; then
             # macOS sed
             sed -i '' '/# Solon Code/d' "$config_file" 2>/dev/null
-            sed -i '' '/SOLONCODE_HOME/d' "$config_file" 2>/dev/null
+            sed -i '' '/GOURDWORK_HOME/d' "$config_file" 2>/dev/null
             sed -i '' '/\.gourdai\/bin/d' "$config_file" 2>/dev/null
         else
             # Linux sed
             sed -i '/# Solon Code/d' "$config_file" 2>/dev/null
-            sed -i '/SOLONCODE_HOME/d' "$config_file" 2>/dev/null
+            sed -i '/GOURDWORK_HOME/d' "$config_file" 2>/dev/null
             sed -i '/\.gourdai\/bin/d' "$config_file" 2>/dev/null
         fi
         echo "      Cleaned: $config_file"
@@ -79,11 +79,11 @@ if [ -f "$FISH_CONFIG" ]; then
     cp "$FISH_CONFIG" "${FISH_CONFIG}.bak" 2>/dev/null
     if [[ "$OS_TYPE" == "Darwin" ]]; then
         sed -i '' '/# Solon Code/d' "$FISH_CONFIG" 2>/dev/null
-        sed -i '' '/SOLONCODE_HOME/d' "$FISH_CONFIG" 2>/dev/null
+        sed -i '' '/GOURDWORK_HOME/d' "$FISH_CONFIG" 2>/dev/null
         sed -i '' '/set -gx PATH.*gourdai/d' "$FISH_CONFIG" 2>/dev/null
     else
         sed -i '/# Solon Code/d' "$FISH_CONFIG" 2>/dev/null
-        sed -i '/SOLONCODE_HOME/d' "$FISH_CONFIG" 2>/dev/null
+        sed -i '/GOURDWORK_HOME/d' "$FISH_CONFIG" 2>/dev/null
         sed -i '/set -gx PATH.*gourdai/d' "$FISH_CONFIG" 2>/dev/null
     fi
     echo "      Cleaned: $FISH_CONFIG"

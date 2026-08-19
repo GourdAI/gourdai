@@ -122,6 +122,8 @@
 
     function closeSettings() {
         $overlay.hide();
+        // 广播设置关闭：侧栏「任务」区等依赖设置页数据的视图据此刷新
+        document.dispatchEvent(new Event('settings:closed'));
         if (window.settingsProviders) window.settingsProviders.showList();
         if (mod('_settingsMcp')) mod('_settingsMcp').showList();
         if (mod('_settingsOpenapi')) mod('_settingsOpenapi').showList();

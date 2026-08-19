@@ -178,65 +178,171 @@ function ensureAssistantBubble(sess) {
     return sess.currentBubbleEl;
 }
 
-function ensureThinkingBlock(sess) {
-    if (!sess.thinkingBlockEl) {
-        ensureAssistantBubble(sess);
-        // 若当前气泡已渲染过正文（上一段 text/agent 答复），新思考块必须落在这段正文之后，
-        // 而非之前（否则多个思考块会堆叠到消息顶部，把正文顶到下方）。
-        // 做法与 appendActionEndChunk 一致：在底部新建空 .md-content 并让 currentBubbleEl 指向它，
-        // 随后 before(空气泡) 使思考块落到旧正文之后；该空气泡承接本思考块之后的正文。
-        var cur = sess.currentBubbleEl;
-        // 「已有正文」不能只看 DOM：正文经 requestAnimationFrame 异步落盘，chunk 密集到达时
-        // text 的内容可能仍缓存在 reasonBuffer 里、contentRafId 尚未触发，此刻 md-content 还是空的。
-        // 若此时仅凭 children/textContent 判空，会把思考块插到空气泡之前，随后待渲染的正文落进该气泡，
-        // 造成「先到的正文反被顶到后到的思考块之下」（思考块错误置顶）。故把待渲染缓冲一并计入。
-        var hasPendingText = !!(sess.reasonBuffer && sess.reasonBuffer.trim().length > 0);
-        var hasContent = cur && ((cur.children && cur.children.length > 0) || (cur.textContent || '').trim().length > 0 || hasPendingText);
-        if (hasContent) {
-            // 先把增量渲染器挂起的尾部刷进旧气泡（finish 内部取消 rAF 并全量收敛），避免其稍后写入新（错误）气泡
-            if (hasPendingText) {
-                getStreamMd(cur).finish();
-                if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(cur);
-                if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(cur);
-            }
-            sess.reasonBuffer = '';
-            var freshMd = $('<div>').addClass('md-content')[0];
-            insertBeforeActions(sess, freshMd);
-            sess.currentBubbleEl = freshMd;
-        }
-        var block = $('<div>').addClass('thinking-block streaming')[0];
-        // 存储当前 runId，用于后续删除同一运行的消息
-        if (sess.currentRunId) {
-            block.setAttribute('data-run-id', sess.currentRunId);
-        }
-        // 与工具卡片保持一致：简洁展示关闭时才默认展开
-        if (window.cliPrintSimplified === false) $(block).addClass('expanded');
-        block.innerHTML = '<div class="thinking-block-header">'
-            + '<span class="tool-type-icon">🧠</span>'
-            + '<span class="thinking-block-label" data-i18n-thinking="progress">' + GourdI18n.t('chat.thinking_in_progress') + '</span>'
-            + '<span class="thinking-timer-wrap" style="margin-left:4px">'
-            + '<span class="thinking-current-timer">0s</span>'
-            + '</span>'
-            + '<span class="thinking-status-dot"></span>'
-            + '</div>'
-            + '<div class="thinking-block-body"><div class="md-content"></div></div>';
-        $(sess.currentBubbleEl).before(block);
-        $(block).find('.thinking-block-header').on('click', function() {
-            $(block).toggleClass('expanded');
-        });
-        sess.thinkingBlockEl = block;
-        sess.thinkingBodyMdEl = $(block).find('.thinking-block-body .md-content')[0];
-        sess.thinkingBodyWrapEl = $(block).find('.thinking-block-body')[0];
-        // 监听思考区域滚动：判断用户是否主动向上翻看
-        $(sess.thinkingBodyWrapEl).on('scroll', function() {
-            var gap = sess.thinkingBodyWrapEl.scrollHeight - sess.thinkingBodyWrapEl.scrollTop - sess.thinkingBodyWrapEl.clientHeight;
-            sess.thinkingUserScrolledUp = gap > 60;
-        });
-        sess.thinkingBuffer = '';
-        var currentTimerSpan = $(block).find('.thinking-current-timer')[0];
-        startThinkingTimer(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime', currentTimerSpan);
+/* ===== 共享流式渲染核心（主线路与智能体卡片共用） =====
+   holder 抽象：主线路以 sess 自身为 holder（currentBubbleEl/thinkingBlockEl 等字段直接挂在 sess 上），
+   智能体卡片以每个智能体独立的状态对象 st 为 holder（字段同名、按智能体隔离、并行互不串）。
+   两条线路走同一套 ensure/finish/append/advance 函数，从结构、样式到时序完全一致。 */
+
+/* 构建 thinking-block DOM（头部 + 体），主线路与智能体卡片共用，保证结构/样式一致 */
+function createThinkingBlockEl(sess) {
+    var block = $('<div>').addClass('thinking-block streaming')[0];
+    // 存储当前 runId，用于后续删除同一运行的消息
+    if (sess.currentRunId) {
+        block.setAttribute('data-run-id', sess.currentRunId);
     }
-    return sess.thinkingBlockEl;
+    // 与工具卡片保持一致：简洁展示关闭时才默认展开
+    if (window.cliPrintSimplified === false) $(block).addClass('expanded');
+    block.innerHTML = '<div class="thinking-block-header">'
+        + '<span class="tool-type-icon">🧠</span>'
+        + '<span class="thinking-block-label" data-i18n-thinking="progress">' + GourdI18n.t('chat.thinking_in_progress') + '</span>'
+        + '<span class="thinking-timer-wrap" style="margin-left:4px">'
+        + '<span class="thinking-current-timer">0s</span>'
+        + '</span>'
+        + '<span class="thinking-status-dot"></span>'
+        + '</div>'
+        + '<div class="thinking-block-body"><div class="md-content"></div></div>';
+    $(block).find('.thinking-block-header').on('click', function() {
+        $(block).toggleClass('expanded');
+    });
+    return block;
+}
+
+/* 在 holder 上确保 thinking-block。正文指针推进逻辑（主线路与智能体一致）：
+   当前正文容器已有内容（含缓冲中待渲染内容）时先收敛并新开正文容器，新思考块落在旧正文之后、
+   后续正文落在思考块之后；无内容时思考块就当前位置、复用当前正文容器。
+   opts.placeFresh(freshMd)：新正文容器落点；opts.placeBlock(block, pointerEl)：思考块落点
+   （pointerEl 为当前正文容器，可能为 null）。 */
+function ensureThinkingBlockCore(sess, h, opts) {
+    if (h.thinkingBlockEl) return h.thinkingBlockEl;
+    var cur = h.currentBubbleEl;
+    // 「已有正文」不能只看 DOM：正文经 requestAnimationFrame 异步落盘，chunk 密集到达时
+    // text 的内容可能仍缓存在 reasonBuffer 里、渲染帧尚未触发，此刻 md-content 还是空的。
+    // 若此时仅凭 children/textContent 判空，会把思考块插到空气泡之前，随后待渲染的正文落进该气泡，
+    // 造成「先到的正文反被顶到后到的思考块之下」（思考块错误置顶）。故把待渲染缓冲一并计入。
+    var hasPendingText = !!(h.reasonBuffer && h.reasonBuffer.trim().length > 0);
+    var hasContent = cur && ((cur.children && cur.children.length > 0) || (cur.textContent || '').trim().length > 0 || hasPendingText);
+    if (hasContent) {
+        // 先把增量渲染器挂起的尾部刷进旧气泡（finish 内部取消 rAF 并全量收敛），避免其稍后写入新（错误）气泡
+        if (hasPendingText) {
+            getStreamMd(cur).finish();
+            if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(cur);
+            if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(cur);
+        }
+        h.reasonBuffer = '';
+        var freshMd = $('<div>').addClass('md-content')[0];
+        opts.placeFresh(freshMd);
+        h.currentBubbleEl = freshMd;
+        cur = freshMd;
+    }
+    var block = createThinkingBlockEl(sess);
+    opts.placeBlock(block, cur);
+    h.thinkingBlockEl = block;
+    h.thinkingBodyMdEl = $(block).find('.thinking-block-body .md-content')[0];
+    h.thinkingBodyWrapEl = $(block).find('.thinking-block-body')[0];
+    // 监听思考区域滚动：判断用户是否主动向上翻看（写入 holder 自身，主线路与各智能体独立、互不污染）
+    $(h.thinkingBodyWrapEl).on('scroll', function() {
+        var gap = h.thinkingBodyWrapEl.scrollHeight - h.thinkingBodyWrapEl.scrollTop - h.thinkingBodyWrapEl.clientHeight;
+        h.thinkingUserScrolledUp = gap > 60;
+    });
+    h.thinkingBuffer = '';
+    var currentTimerSpan = $(block).find('.thinking-current-timer')[0];
+    startThinkingTimer(h, 'thinkingBlockTimerId', 'thinkingBlockStartTime', currentTimerSpan);
+    return h.thinkingBlockEl;
+}
+
+/* 收敛 holder 的 thinking-block（主线路与智能体卡片共用） */
+function finishThinkingBlockCore(sess, h) {
+    if (!h.thinkingBlockEl) return;
+    stopThinkingTimer(h, 'thinkingBlockTimerId', 'thinkingBlockStartTime');
+    if (h.thinkingBodyMdEl) {
+        getStreamMd(h.thinkingBodyMdEl).finish();
+    }
+    if (h.thinkingBodyMdEl && typeof processMermaidBlocks === 'function') processMermaidBlocks(h.thinkingBodyMdEl);
+    $(h.thinkingBlockEl).removeClass('streaming');
+    var elapsed = '';
+    if (h.thinkingBlockStartTime) {
+        elapsed = ' (' + Math.floor((Date.now() - h.thinkingBlockStartTime) / 1000) + 's)';
+    }
+    var label = $(h.thinkingBlockEl).find('.thinking-block-label')[0];
+    if (label) {
+        $(label).text(GourdI18n.t('chat.thinking_finished') + elapsed);
+        label.setAttribute('data-i18n-thinking', 'finished');
+        label.setAttribute('data-i18n-elapsed', elapsed);
+    }
+    $(h.thinkingBlockEl).find('.thinking-block-dots').remove();
+    $(h.thinkingBlockEl).find('.thinking-timer-wrap').remove();
+    h.thinkingBlockEl = null;
+    h.thinkingBodyMdEl = null;
+    h.thinkingBodyWrapEl = null;
+    h.thinkingBuffer = '';
+}
+
+/* 思考 chunk 增量渲染（holder 的思考块体），主线路与智能体卡片共用 */
+function appendReasonChunkCore(sess, h, text) {
+    var clean = clearThinkTags(text);
+    h.thinkingBuffer += clean;
+    var mdEl = h.thinkingBodyMdEl;
+    if (!mdEl) return;
+    // 增量渲染：stable 块只追加一次，tail 每帧重建（极小），消除逐帧全量 innerHTML 重建引起的闪烁
+    var r = getStreamMd(mdEl);
+    r.afterRender = function() {
+        if (!h.thinkingBlockEl) return;
+        if (h.thinkingBodyWrapEl) {
+            // 仅当用户未主动向上滚动时才自动跟随底部
+            if (!h.thinkingUserScrolledUp) {
+                h.thinkingBodyWrapEl.scrollTop = h.thinkingBodyWrapEl.scrollHeight;
+            }
+        }
+        if (sess.sessionId === activeSessionId) {
+            if (!userScrolledUp && messagesWrap) {
+                // 同步赋值减少跳帧
+                messagesWrap.scrollTop = messagesWrap.scrollHeight;
+            }
+        }
+    };
+    r.append(clean);
+}
+
+/* 正文 chunk 增量渲染：reasonBuffer 同步记录待渲染文本（供思考块防置顶判定），
+   afterRender 统一负责代码块按钮与滚动跟随。ensureEl 返回 holder 当前正文容器。 */
+function appendBodyContentCore(sess, h, text, append, ensureEl) {
+    var clean = clearThinkTags(text);
+    h.reasonBuffer = append ? (h.reasonBuffer || '') + clean : clean;
+    var el = ensureEl();
+    // 增量渲染：stable 块只追加一次，tail 每帧重建（极小），消除逐帧全量 innerHTML 重建引起的闪烁
+    var r = getStreamMd(el);
+    r.afterRender = function() {
+        // 流式接收过程中不写 data-md-raw（该属性是复制源，仅由 finishStream 后后端最终答案写入）；
+        // 避免复制到被工具调用切开的中间片段。
+        // 按钮仅添加一次（通过 data-hljs-collected 标记跳过已有按钮的 pre）
+        if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
+        // 流式过程中不实时高亮，等 finishStream 时再一次性处理，避免高亮引起的布局跳动
+        if (sess.sessionId === activeSessionId) {
+            if (!userScrolledUp && messagesWrap && !sess._skipScroll) {
+                // 直接用同步赋值减少跳帧；scrollToBottom 的 rAF 在这里已经太晚
+                messagesWrap.scrollTop = messagesWrap.scrollHeight;
+            }
+        }
+    };
+    if (append) r.append(clean); else r.replace(clean);
+}
+
+/* 推进正文指针：工具卡/思考块产出后新开空 .md-content，让后续到达的正文写入卡片下方，
+   而非停留在旧气泡里被卡片顶到上方。主线路与智能体卡片共用。 */
+function advanceBodyPointer(sess, h, insertFresh) {
+    if (!h) return;
+    h.reasonBuffer = '';
+    var freshMd = $('<div>').addClass('md-content')[0];
+    insertFresh(freshMd);
+    h.currentBubbleEl = freshMd;
+}
+
+function ensureThinkingBlock(sess) {
+    ensureAssistantBubble(sess);
+    return ensureThinkingBlockCore(sess, sess, {
+        placeFresh: function(el) { insertBeforeActions(sess, el); },
+        placeBlock: function(block, pointerEl) { $(pointerEl).before(block); }
+    });
 }
 
 function setAssistantTime(sess, ts) {
@@ -260,30 +366,7 @@ function insertBeforeActions(sess, el) {
 }
 
 function finishThinkingBlock(sess) {
-    if (sess.thinkingBlockEl) {
-        stopThinkingTimer(sess, 'thinkingBlockTimerId', 'thinkingBlockStartTime');
-        if (sess.thinkingBodyMdEl) {
-            getStreamMd(sess.thinkingBodyMdEl).finish();
-        }
-        if (sess.thinkingBodyMdEl && typeof processMermaidBlocks === 'function') processMermaidBlocks(sess.thinkingBodyMdEl);
-        $(sess.thinkingBlockEl).removeClass('streaming');
-        var elapsed = '';
-        if (sess.thinkingBlockStartTime) {
-            elapsed = ' (' + Math.floor((Date.now() - sess.thinkingBlockStartTime) / 1000) + 's)';
-        }
-        var label = $(sess.thinkingBlockEl).find('.thinking-block-label')[0];
-        if (label) {
-            $(label).text(GourdI18n.t('chat.thinking_finished') + elapsed);
-            label.setAttribute('data-i18n-thinking', 'finished');
-            label.setAttribute('data-i18n-elapsed', elapsed);
-        }
-        $(sess.thinkingBlockEl).find('.thinking-block-dots').remove();
-        $(sess.thinkingBlockEl).find('.thinking-timer-wrap').remove();
-        sess.thinkingBlockEl = null;
-        sess.thinkingBodyMdEl = null;
-        sess.thinkingBodyWrapEl = null;
-        sess.thinkingBuffer = '';
-    }
+    finishThinkingBlockCore(sess, sess);
 }
 
 function clearThinkTags(text) {
@@ -293,28 +376,7 @@ function clearThinkTags(text) {
 function appendReasonChunk(sess, text) {
     removeThinking(sess);
     ensureThinkingBlock(sess);
-    var clean = clearThinkTags(text);
-    sess.thinkingBuffer += clean;
-    var mdEl = sess.thinkingBodyMdEl;
-    if (!mdEl) return;
-    // 增量渲染：stable 块只追加一次，tail 每帧重建（极小），消除逐帧全量 innerHTML 重建引起的闪烁
-    var r = getStreamMd(mdEl);
-    r.afterRender = function() {
-        if (!sess.thinkingBlockEl) return;
-        if (sess.thinkingBodyWrapEl) {
-            // 仅当用户未主动向上滚动时才自动跟随底部
-            if (!sess.thinkingUserScrolledUp) {
-                sess.thinkingBodyWrapEl.scrollTop = sess.thinkingBodyWrapEl.scrollHeight;
-            }
-        }
-        if (sess.sessionId === activeSessionId) {
-            if (!userScrolledUp && messagesWrap) {
-                // 同步赋值减少跳帧
-                messagesWrap.scrollTop = messagesWrap.scrollHeight;
-            }
-        }
-    };
-    r.append(clean);
+    appendReasonChunkCore(sess, sess, text);
 }
 
 function finishPendingTool(sess) {
@@ -935,11 +997,9 @@ function appendActionEndChunk(sess, toolName, text, args, toolTitle, actionId, m
         }
         var idBody = $(idCard).find('.tool-card-body')[0];
         if (idBody) {
-            if (idBody) {
-                idBody.removeAttribute('style');
-                idBody.innerHTML = '';
-                fillToolBody(sess, idBody, toolName, text, args, meta);
-            }
+            idBody.removeAttribute('style');
+            idBody.innerHTML = '';
+            fillToolBody(sess, idBody, toolName, text, args, meta);
         }
         setToolCardStatus(idCard, text);
 
@@ -957,12 +1017,12 @@ function appendActionEndChunk(sess, toolName, text, args, toolTitle, actionId, m
         // 推进正文指针：新建空 .md-content 落在工具卡/分组「之后」，让工具执行完后到达的
         // text/agent 正文写入卡片下方，而非停留在旧气泡里被卡片顶到上方。
         // （与无 actionId 旧路径一致；缺此步会导致正文在上、工具卡垫底的错序渲染。）
-        // 归属守卫：本卡属于智能体卡片内部时不动主对话正文指针，避免打断主气泡渲染
+        // 归属守卫：本卡属于智能体卡片内部时不动主对话正文指针，避免打断主气泡渲染；
+        // 但智能体卡内部的正文指针同样要推进，让后续正文落在本卡之后（与主线路一致）
         if (!idOwner) {
-            sess.reasonBuffer = '';
-            var idMd = $('<div>').addClass('md-content')[0];
-            insertBeforeActions(sess, idMd);
-            sess.currentBubbleEl = idMd;
+            advanceBodyPointer(sess, sess, function(el) { insertBeforeActions(sess, el); });
+        } else {
+            advanceAgentBodyPointer(sess, findAgentStateByBody(sess, idOwner) || resolveAgentState(sess, args));
         }
         if (sess.sessionId === activeSessionId) scrollToBottom();
         return;
@@ -990,12 +1050,11 @@ function appendActionEndChunk(sess, toolName, text, args, toolTitle, actionId, m
         finishPendingTool(sess);
         setToolCardStatus(pc, text);
         if (window._todoChunkHandlers) { /* todo 由 streaming 层单独处理，这里不重复 */ }
-        // 归属守卫：该卡属于智能体卡片内部时不动主对话正文指针
+        // 归属守卫：该卡属于智能体卡片内部时不动主对话正文指针；卡内正文指针同样推进
         if (!$(pc).closest('.agent-card').length) {
-            sess.reasonBuffer = '';
-            var pcMd = $('<div>').addClass('md-content')[0];
-            insertBeforeActions(sess, pcMd);
-            sess.currentBubbleEl = pcMd;
+            advanceBodyPointer(sess, sess, function(el) { insertBeforeActions(sess, el); });
+        } else {
+            advanceAgentBodyPointer(sess, findAgentStateByCard(sess, $(pc).closest('.agent-card')[0]));
         }
         if (sess.sessionId === activeSessionId) scrollToBottom();
         return;
@@ -1055,10 +1114,7 @@ function appendActionEndChunk(sess, toolName, text, args, toolTitle, actionId, m
         if (window.cliPrintSimplified === false) $(rc).addClass('expanded');
         else $(rc).removeClass('expanded');
         sess.pendingToolCard = rc;
-        sess.reasonBuffer = '';
-        var rcMd = $('<div>').addClass('md-content')[0];
-        insertBeforeActions(sess, rcMd);
-        sess.currentBubbleEl = rcMd;
+        advanceBodyPointer(sess, sess, function(el) { insertBeforeActions(sess, el); });
         if (sess.sessionId === activeSessionId) scrollToBottom();
         return;
     }
@@ -1091,6 +1147,7 @@ function appendActionEndChunk(sess, toolName, text, args, toolTitle, actionId, m
     // 归属守卫：子代理的工具结果（无 action_start 前置建卡时）同样插入智能体卡片内部
     if (agentBody) {
         $(agentBody).append(card);
+        advanceAgentBodyPointer(sess, findAgentStateByBody(sess, agentBody));
         sess.pendingToolCard = card;
         if (sess.sessionId === activeSessionId) scrollToBottom();
         return;
@@ -1099,33 +1156,14 @@ function appendActionEndChunk(sess, toolName, text, args, toolTitle, actionId, m
     insertBeforeActions(sess, card);
     sess.pendingToolCard = card;
 
-    sess.reasonBuffer = '';
-    var newMd = $('<div>').addClass('md-content')[0];
-    insertBeforeActions(sess, newMd);
-    sess.currentBubbleEl = newMd;
+    advanceBodyPointer(sess, sess, function(el) { insertBeforeActions(sess, el); });
     if (sess.sessionId === activeSessionId) scrollToBottom();
 }
 
 function appendContentChunk(sess, text, append) {
-    var clean = clearThinkTags(text);
-    sess.reasonBuffer = append ? sess.reasonBuffer + clean : clean;
-    var el = ensureAssistantBubble(sess);
-    // 增量渲染：stable 块只追加一次，tail 每帧重建（极小），消除逐帧全量 innerHTML 重建引起的闪烁
-    var r = getStreamMd(el);
-    r.afterRender = function() {
-        // 流式接收过程中不写 data-md-raw（该属性是复制源，仅由 finishStream 后后端最终答案写入）；
-        // 避免复制到被工具调用切开的中间片段。
-        // 按钮仅添加一次（通过 data-hljs-collected 标记跳过已有按钮的 pre）
-        if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
-        // 流式过程中不实时高亮，等 finishStream 时再一次性处理，避免高亮引起的布局跳动
-        if (sess.sessionId === activeSessionId) {
-            if (!userScrolledUp && messagesWrap && !sess._skipScroll) {
-                // 直接用同步赋值减少跳帧；scrollToBottom 的 rAF 在这里已经太晚
-                messagesWrap.scrollTop = messagesWrap.scrollHeight;
-            }
-        }
-    };
-    if (append) r.append(clean); else r.replace(clean);
+    appendBodyContentCore(sess, sess, text, append, function() {
+        return ensureAssistantBubble(sess);
+    });
 }
 
 function appendErrorChunk(sess, text) {
@@ -1243,20 +1281,20 @@ function appendTraceBadge(sess, chunk) {
             // 强刷：确保该智能体 pending 的正文/思考都先渲染（按各自独立状态，支持并行）
             var endState = (sess.agentStates && sess.agentStates[agentId]) || null;
             if (endState) {
-                if (endState.thinkingBlockEl && endState.thinkingBuffer) {
-                    if (endState.thinkingBodyMdEl) {
-                        getStreamMd(endState.thinkingBodyMdEl).finish();
-                        if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(endState.thinkingBodyMdEl);
-                        if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(endState.thinkingBodyMdEl);
-                        if (typeof processMermaidBlocks === 'function') processMermaidBlocks(endState.thinkingBodyMdEl);
+                if (endState.thinkingBlockEl) {
+                    var endThinkingMd = endState.thinkingBodyMdEl;
+                    if (endThinkingMd) {
+                        getStreamMd(endThinkingMd).finish();
+                        if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(endThinkingMd);
+                        if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(endThinkingMd);
                     }
                     finishAgentThinkingBlock(sess, endState);
                 }
-                if (endState.bodyMd && endState.bodyText) {
-                    getStreamMd(endState.bodyMd).finish();
-                    if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(endState.bodyMd);
-                    if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(endState.bodyMd);
-                    if (typeof processMermaidBlocks === 'function') processMermaidBlocks(endState.bodyMd);
+                if (endState.currentBubbleEl && endState.bodyText) {
+                    getStreamMd(endState.currentBubbleEl).finish();
+                    if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(endState.currentBubbleEl);
+                    if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(endState.currentBubbleEl);
+                    if (typeof processMermaidBlocks === 'function') processMermaidBlocks(endState.currentBubbleEl);
                 }
             }
 
@@ -1322,36 +1360,29 @@ function appendTraceBadge(sess, chunk) {
         
     insertBeforeActions(sess, card);
 
-    // 创建正文输出容器，子代理的 text/agent chunk 写入这里
     var agentCardBody = $(card).find('.agent-card-body')[0];
-    var bodyMd = $('<div>').addClass('md-content')[0];
-    agentCardBody.appendChild(bodyMd);
 
-    // 每个智能体一份独立输出状态（支持并行 multitask，避免多卡片内容互串）
+    // 每个智能体一份独立输出状态（支持并行 multitask，避免多卡片内容互串）。
+    // 字段名与主线路 sess 完全同名（currentBubbleEl=正文指针、thinkingBlockEl/thinkingBlockTimerId 等），
+    // 智能体卡片内部 thus 直接复用主线路的共享渲染核心，保证两条线路渲染一致。
     var agentState = {
         id: agentId,
         card: card,
         bodyEl: agentCardBody,
-        bodyMd: bodyMd,
+        currentBubbleEl: null,
         bodyText: '',
-        bodyRafId: null,
+        reasonBuffer: '',
         thinkingBlockEl: null,
         thinkingBodyMdEl: null,
         thinkingBodyWrapEl: null,
         thinkingBuffer: '',
-        thinkingRafId: null,
-        thinkingTimerId: null,
-        thinkingStartTime: null
+        thinkingUserScrolledUp: false,
+        thinkingBlockTimerId: null,
+        thinkingBlockStartTime: null
     };
     if (!sess.agentStates) sess.agentStates = {};
     sess.agentStates[agentId] = agentState;
     sess._agentStateLast = agentState;
-
-    // 旧单例标记（兼容 'agent' 型 chunk 等不携带 agentName 的旧路径）
-    sess._agentCardBody = agentCardBody;
-    sess._agentBodyMd = bodyMd;
-    sess._agentBodyText = '';
-    sess._agentBodyRafId = null;
 
     // 登记到 sess.agentCards 供后续工具调用嵌套
     if (isStart) {
@@ -1367,83 +1398,59 @@ function appendTraceBadge(sess, chunk) {
 /* 清理子智能体相关状态。传入 st 时仅清理该智能体（并行场景互不影响）；不传则全量清理。 */
 function clearAgentState(sess, st) {
     if (st) {
-        if (st.bodyMd && st.bodyMd._streamMd) st.bodyMd._streamMd.dispose();
+        if (st.currentBubbleEl && st.currentBubbleEl._streamMd) st.currentBubbleEl._streamMd.dispose();
         if (st.thinkingBodyMdEl && st.thinkingBodyMdEl._streamMd) st.thinkingBodyMdEl._streamMd.dispose();
-        if (st.thinkingRafId) { cancelAnimationFrame(st.thinkingRafId); }
-        if (st.thinkingTimerId) { clearInterval(st.thinkingTimerId); }
-
-        if (st.bodyRafId) { cancelAnimationFrame(st.bodyRafId); }
+        stopThinkingTimer(st, 'thinkingBlockTimerId', 'thinkingBlockStartTime');
         if (sess.agentStates) delete sess.agentStates[st.id];
         if (sess._agentStateLast === st) sess._agentStateLast = null;
-        if (sess._agentCardBody === st.bodyEl) {
-            sess._agentCardBody = null;
-            sess._agentBodyMd = null;
-            sess._agentBodyText = '';
-            sess._agentBodyRafId = null;
-        }
         return;
     }
     // 全量清理（流重置/会话切换）
     if (sess.agentStates) {
         for (var k in sess.agentStates) {
             var s = sess.agentStates[k];
-            if (s.bodyMd && s.bodyMd._streamMd) s.bodyMd._streamMd.dispose();
+            if (s.currentBubbleEl && s.currentBubbleEl._streamMd) s.currentBubbleEl._streamMd.dispose();
             if (s.thinkingBodyMdEl && s.thinkingBodyMdEl._streamMd) s.thinkingBodyMdEl._streamMd.dispose();
-            if (s.thinkingRafId) { cancelAnimationFrame(s.thinkingRafId); }
-            if (s.thinkingTimerId) { clearInterval(s.thinkingTimerId); }
-            
-            if (s.bodyRafId) { cancelAnimationFrame(s.bodyRafId); }
+            stopThinkingTimer(s, 'thinkingBlockTimerId', 'thinkingBlockStartTime');
         }
         sess.agentStates = {};
     }
     sess._agentStateLast = null;
-    if (sess._agentThinkingRafId) { cancelAnimationFrame(sess._agentThinkingRafId); sess._agentThinkingRafId = null; }
-    sess._agentThinkingBlockEl = null;
-    sess._agentThinkingBodyMdEl = null;
-    sess._agentThinkingBodyWrapEl = null;
-    sess._agentThinkingBuffer = '';
-    sess._agentBodyMd = null;
-    sess._agentBodyText = '';
-    if (sess._agentBodyRafId) { cancelAnimationFrame(sess._agentBodyRafId); sess._agentBodyRafId = null; }
-    sess._agentCardBody = null;
 }
 
-/* 在子智能体块内创建 thinking-block */
-function ensureAgentThinkingBlock(sess, st) {
-    if (!st || st.thinkingBlockEl) return;
-    // 若正文缓冲区有未渲染内容，先强刷出来，确保新思考块落在旧正文之后
-    if (st.bodyText && st.bodyMd) {
-        getStreamMd(st.bodyMd).finish();
-        if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(st.bodyMd);
+/* 按 .agent-card-body 容器元素 / 卡片外壳元素反查归属的智能体状态（action_end 等只有元素的配对场景） */
+function findAgentStateByBody(sess, bodyEl) {
+    if (!bodyEl || !sess.agentStates) return null;
+    for (var k in sess.agentStates) {
+        if (sess.agentStates[k].bodyEl === bodyEl) return sess.agentStates[k];
     }
-    // 新思考块应插到最后已有内容之后（按到达顺序），而非始终置顶
-    var block = $('<div>').addClass('thinking-block streaming')[0];
-    if (sess.currentRunId) block.setAttribute('data-run-id', sess.currentRunId);
-    if (window.cliPrintSimplified === false) $(block).addClass('expanded');
-    block.innerHTML = '<div class="thinking-block-header">'
-        + '<span class="tool-type-icon">🧠</span>'
-        + '<span class="thinking-block-label" data-i18n-thinking="progress">' + GourdI18n.t('chat.thinking_in_progress') + '</span>'
-        + '<span class="thinking-timer-wrap" style="margin-left:4px">'
-        + '<span class="thinking-current-timer">0s</span></span>'
-        + '<span class="thinking-status-dot"></span></div>'
-        + '<div class="thinking-block-body"><div class="md-content"></div></div>';
-    $(block).find('.thinking-block-header').on('click', function() { $(block).toggleClass('expanded'); });
-    st.bodyEl.appendChild(block);
-    st.thinkingBlockEl = block;
-    st.thinkingBodyMdEl = $(block).find('.thinking-block-body .md-content')[0];
-    st.thinkingBodyWrapEl = $(block).find('.thinking-block-body')[0];
-    st.thinkingBuffer = '';
-    $(st.thinkingBodyWrapEl).on('scroll', function() {
-        var gap = st.thinkingBodyWrapEl.scrollHeight - st.thinkingBodyWrapEl.scrollTop - st.thinkingBodyWrapEl.clientHeight;
-        sess.thinkingUserScrolledUp = gap > 60;
+    return null;
+}
+function findAgentStateByCard(sess, cardEl) {
+    if (!cardEl || !sess.agentStates) return null;
+    for (var k in sess.agentStates) {
+        if (sess.agentStates[k].card === cardEl || $.contains(sess.agentStates[k].card, cardEl)) return sess.agentStates[k];
+    }
+    return null;
+}
+
+/* 推进子智能体正文指针（镜像主线路 action_end 推进 currentBubbleEl 的机制）：
+   思考块/工具卡产出后新开空 md-content 追加到卡体末尾，后续正文落在时序位置。 */
+function advanceAgentBodyPointer(sess, st) {
+    if (!st) return;
+    advanceBodyPointer(sess, st, function(el) { st.bodyEl.appendChild(el); });
+}
+
+/* 在子智能体块内创建 thinking-block（复用主线路核心，新思考块按时序落在已有内容之后） */
+function ensureAgentThinkingBlock(sess, st) {
+    if (!st) return;
+    ensureThinkingBlockCore(sess, st, {
+        placeFresh: function(el) { st.bodyEl.appendChild(el); },
+        placeBlock: function(block, pointerEl) {
+            if (pointerEl && pointerEl.parentNode) $(pointerEl).before(block);
+            else st.bodyEl.appendChild(block);
+        }
     });
-    var currentTimerSpan = $(block).find('.thinking-current-timer')[0];
-    st.thinkingStartTime = Date.now();
-    if (st.thinkingTimerId) clearInterval(st.thinkingTimerId);
-    st.thinkingTimerId = setInterval(function() {
-        if (!currentTimerSpan || !currentTimerSpan.parentNode) { clearInterval(st.thinkingTimerId); st.thinkingTimerId = null; return; }
-        $(currentTimerSpan).text(Math.floor((Date.now() - st.thinkingStartTime) / 1000) + 's');
-    }, 1000);
 }
 
 /* 结束子智能体的 thinking-block。不传 st 时结束所有正打开的智能体思考块。 */
@@ -1451,60 +1458,34 @@ function finishAgentThinkingBlock(sess, st) {
     if (!st) {
         if (sess.agentStates) {
             for (var k in sess.agentStates) {
-                if (sess.agentStates[k].thinkingBlockEl) finishAgentThinkingBlock(sess, sess.agentStates[k]);
+                if (sess.agentStates[k].thinkingBlockEl) finishThinkingBlockCore(sess, sess.agentStates[k]);
             }
         }
         return;
     }
-    if (!st.thinkingBlockEl) return;
-    if (st.thinkingTimerId) { clearInterval(st.thinkingTimerId); st.thinkingTimerId = null; }
-    // 与主思考块 finishThinkingBlock 一致：增量渲染器全量收敛（取消挂起帧、移除 tail/常驻 pre），
-    // 否则块结束后残留帧继续写入、DOM 停留在流式中间态（agent_end 强刷因 thinkingBuffer 已清空调过）
-    if (st.thinkingBodyMdEl) {
-        getStreamMd(st.thinkingBodyMdEl).finish();
-        if (typeof processMermaidBlocks === 'function') processMermaidBlocks(st.thinkingBodyMdEl);
-    }
-    $(st.thinkingBlockEl).removeClass('streaming');
-    var elapsed = '';
-    if (st.thinkingStartTime) elapsed = ' (' + Math.floor((Date.now() - st.thinkingStartTime) / 1000) + 's)';
-    var label = $(st.thinkingBlockEl).find('.thinking-block-label')[0];
-    if (label) { $(label).text(GourdI18n.t('chat.thinking_finished') + elapsed); label.setAttribute('data-i18n-thinking', 'finished'); label.setAttribute('data-i18n-elapsed', elapsed); }
-    $(st.thinkingBlockEl).find('.thinking-block-dots').remove();
-    $(st.thinkingBlockEl).find('.thinking-timer-wrap').remove();
-    st.thinkingBlockEl = null; st.thinkingBodyMdEl = null; st.thinkingBodyWrapEl = null; st.thinkingBuffer = '';
+    finishThinkingBlockCore(sess, st);
 }
 
-/* 子代理 reason chunk → thinking-block */
+/* 子代理 reason chunk → thinking-block（复用主线路核心） */
 function appendAgentReasonChunk(sess, text, st) {
     if (!st) return;
     ensureAgentThinkingBlock(sess, st);
-    var clean = clearThinkTags(text);
-    st.thinkingBuffer += clean;
-    var mdEl = st.thinkingBodyMdEl;
-    if (!mdEl) return;
-    var r = getStreamMd(mdEl);
-    r.afterRender = function() {
-        if (!st.thinkingBlockEl) return;
-        if (st.thinkingBodyWrapEl && !sess.thinkingUserScrolledUp) st.thinkingBodyWrapEl.scrollTop = st.thinkingBodyWrapEl.scrollHeight;
-        if (sess.sessionId === activeSessionId && !userScrolledUp && messagesWrap) messagesWrap.scrollTop = messagesWrap.scrollHeight;
-    };
-    r.append(clean);
+    appendReasonChunkCore(sess, st, text);
 }
 
-/* 子代理正文 chunk → md-content (节流渲染) */
+/* 子代理正文 chunk → md-content（复用主线路核心；正文容器首次到达时懒创建并追加到卡体末尾） */
 function appendAgentBodyContent(sess, text, st) {
     if (!st) st = sess._agentStateLast;
-    if (!st || !st.bodyMd) return;
+    if (!st || !st.bodyEl) return;
     st.bodyText = (st.bodyText || '') + text;
-    var body = st.bodyMd;
-    var r = getStreamMd(body);
-    r.afterRender = function() {
-        if (body && document.contains(body)) {
-            if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(body);
+    appendBodyContentCore(sess, st, text, true, function() {
+        if (!st.currentBubbleEl || !document.contains(st.currentBubbleEl)) {
+            var newBodyMd = $('<div>').addClass('md-content')[0];
+            st.bodyEl.appendChild(newBodyMd);
+            st.currentBubbleEl = newBodyMd;
         }
-        if (sess.sessionId === activeSessionId && !userScrolledUp && messagesWrap) messagesWrap.scrollTop = messagesWrap.scrollHeight;
-    };
-    r.append(text);
+        return st.currentBubbleEl;
+    });
 }
 
 /* ===== Command Output ===== */
@@ -1668,9 +1649,14 @@ function handleHitlResponse(sess, action) {
     formData.append('hitlAction', action);
     formData.append('sessionId', sess.sessionId);
 
+    // HITL 属当前会话的续轮：优先用会话自身记录的工作空间根，避免工作空间切换后错位
+    var hitlHeaders = {};
+    var hitlCwd = (sess && sess.projectRoot) ? sess.projectRoot : (typeof getSessionCwd === 'function' ? getSessionCwd() : '');
+    if (hitlCwd) hitlHeaders['X-Session-Cwd'] = hitlCwd;
     fetch(SSE_ENDPOINT, {
         method: 'POST',
-        body: formData
+        body: formData,
+        headers: hitlHeaders
     }).then(function(resp) {
         // HTTP 响应只有 {"status":"ok"}，实际数据通过 WebSocket 推送
     }).catch(function(err) {

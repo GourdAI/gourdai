@@ -33,7 +33,7 @@ if ! command -v java &> /dev/null; then
     echo "    - Download from: https://adoptium.net/"
     echo ""
     # If not called from setup.sh, wait for user input
-    if [ -z "$SOLONCODE_SETUP" ]; then
+    if [ -z "$GOURDWORK_SETUP" ]; then
         echo "Press Enter to exit..."
         read -r
     fi
@@ -347,7 +347,7 @@ echo "    source ~/.${USER_SHELL}rc"
 echo ""
 
 # If not called from setup.sh, wait for user input
-if [ -z "$SOLONCODE_SETUP" ]; then
+if [ -z "$GOURDWORK_SETUP" ]; then
     echo "Press Enter to exit..."
     read -r
 fi

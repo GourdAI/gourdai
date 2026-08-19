@@ -13,7 +13,6 @@
   --white: #ffffff;
   --ok: #34d399;          /* 仅用于"运行中/成功"语义状态 */
   --radius: 16px;
-  --nav-h: 64px;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
     "Noto Sans CJK SC", sans-serif;
@@ -116,7 +115,6 @@ ul { list-style: none; }
   margin: 0 auto;
   padding: 0 24px;
 }
-section { scroll-margin-top: calc(var(--nav-h) + 16px); }
 
 /* ---------- 入场 / 滚动显现 ---------- */
 .reveal {
@@ -133,113 +131,10 @@ section { scroll-margin-top: calc(var(--nav-h) + 16px); }
 }
 .rise { animation: rise-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
-/* ---------- 顶部导航 ---------- */
-.nav {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  z-index: 50;
-  height: var(--nav-h);
-  background: rgba(5, 6, 7, 0.3);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  transition: background-color 0.25s, border-color 0.25s, backdrop-filter 0.25s;
-  border-bottom: 1px solid transparent;
-}
-.nav.scrolled {
-  background: rgba(5, 6, 7, 0.72);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-bottom-color: var(--border);
-}
-.nav-inner {
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 700;
-  font-size: 17px;
-  letter-spacing: 0.2px;
-}
-.brand img { width: 26px; height: 26px; border-radius: 6px; }
-.nav-links {
-  display: flex;
-  align-items: center;
-  gap: 30px;
-  font-size: 14px;
-  color: var(--text-dim);
-}
-.nav-links a { transition: color 0.2s; }
-.nav-links a:hover { color: var(--text); }
-.nav-right { display: flex; align-items: center; gap: 12px; }
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1;
-  padding: 11px 20px;
-  transition: background-color 0.2s, border-color 0.2s, transform 0.2s, opacity 0.2s;
-}
-.btn:active { transform: scale(0.97); }
-.btn-primary { background: var(--white); color: #0a0a0b; }
-.btn-primary:hover { background: rgba(255, 255, 255, 0.88); }
-.btn-ghost {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.16);
-  color: var(--text);
-}
-.btn-ghost:hover { background: rgba(255, 255, 255, 0.1); }
-.btn-sm { padding: 8px 16px; font-size: 13px; }
-
-.nav-toggle {
-  display: none;
-  width: 38px; height: 38px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: transparent;
-  color: var(--text);
-  align-items: center;
-  justify-content: center;
-}
-
-/* 移动端菜单 */
-.mobile-menu {
-  position: fixed;
-  top: var(--nav-h); left: 0; right: 0;
-  z-index: 49;
-  background: rgba(8, 9, 11, 0.96);
-  backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--border);
-  padding: 10px 24px 18px;
-  display: none;
-  flex-direction: column;
-  gap: 4px;
-}
-.mobile-menu.open { display: flex; }
-.mobile-menu a {
-  padding: 11px 4px;
-  font-size: 15px;
-  color: var(--text-dim);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-.mobile-menu a:hover { color: var(--text); }
-.mobile-menu .btn { margin-top: 12px; }
-
 /* ---------- Hero ---------- */
 .hero {
   position: relative;
-  padding: calc(var(--nav-h) + 72px) 0 56px;
+  padding: 72px 0 56px;
   text-align: center;
 }
 .hero-badge {
@@ -838,13 +733,10 @@ a.dl-row:hover .arrow { transform: translateY(2px); color: var(--text); }
   .app-side { display: none; }
 }
 @media (max-width: 767px) {
-  .nav-links { display: none; }
-  .nav-right .btn { display: none; }
-  .nav-toggle { display: inline-flex; }
   .section { padding: 68px 0; }
   .feature-grid, .steps, .download-grid { grid-template-columns: 1fr; }
   .app-body { height: 420px; }
-  .hero { padding-top: calc(var(--nav-h) + 48px); }
+  .hero { padding-top: 48px; }
   .download-cta { width: 100%; max-width: 420px; }
   .replay-btn { bottom: 84px; }
 }

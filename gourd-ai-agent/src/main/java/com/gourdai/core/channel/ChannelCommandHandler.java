@@ -114,8 +114,8 @@ public class ChannelCommandHandler {
     private boolean handleIdleState(String channelName, String text, ReplyCallback replyCallback) {
         List<SessionInfo> sessions = listSessions();
         if (sessions.isEmpty()) {
-            // 无已有会话，自动创建新会话并转发消息（IM 自动新建的是全局 chat 会话，无项目根）
-            String newSessionId = SessionLocator.PREFIX_CHAT + Long.toString(System.currentTimeMillis(), 36);
+            // 无已有会话，自动创建新会话并转发消息（IM 自动新建的是全局会话，无所属根）
+            String newSessionId = SessionLocator.PREFIX_WORK + Long.toString(System.currentTimeMillis(), 36);
             routingTable.setActiveSession(channelName, newSessionId); // 内部已设状态为 ACTIVE
             return false; // 返回 false 让消息转发给 AI
         }
@@ -194,7 +194,7 @@ public class ChannelCommandHandler {
      * /new 命令：创建新对话并激活
      */
     private boolean handleNewCommand(String channelName, ReplyCallback replyCallback) {
-        String newSessionId = SessionLocator.PREFIX_CHAT + Long.toString(System.currentTimeMillis(), 36);
+        String newSessionId = SessionLocator.PREFIX_WORK + Long.toString(System.currentTimeMillis(), 36);
         routingTable.setActiveSession(channelName, newSessionId);
         pendingSelections.remove(channelName);
         replyCallback.reply("已创建新对话，现在可以直接发消息了。");
@@ -234,17 +234,17 @@ public class ChannelCommandHandler {
     }
 
     /**
-     * 从文件系统读取会话列表：全局 chat 会话（安装目录）+ 各已登记项目的 code 会话。
+     * 从文件系统读取会话列表：全局会话（安装目录，无所属根）+ 各已登记项目下的项目会话。
      *
-     * <p>chat 会话 projectRoot=null；code 会话带上其项目根，供路由/流入时定位落盘目录与工具 cwd。</p>
+     * <p>全局会话 projectRoot=null；项目会话带上其项目根，供路由/流入时定位落盘目录与工具 cwd。</p>
      */
     public List<SessionInfo> listSessions() {
         List<SessionInfo> result = new ArrayList<>();
 
-        // 1) 全局 chat 会话（安装目录，固定不变）
-        collectFrom(sessionLocator.chatSessionsRoot(), SessionLocator.PREFIX_CHAT, null, null, result);
+        // 1) 全局会话（安装目录，固定不变）
+        collectFrom(sessionLocator.globalSessionsRoot(), SessionLocator.PREFIX_WORK, null, null, result);
 
-        // 2) 各已登记项目下的 code 会话
+        // 2) 各已登记项目下的项目会话
         if (projectService != null) {
             List<Map> projects = projectService.list().getData();
             if (projects != null) {
@@ -253,7 +253,7 @@ public class ChannelCommandHandler {
                     if (root == null || root.isEmpty() || "null".equals(root)) continue;
                     Object nmObj = p.get("name");
                     String projectName = nmObj != null ? String.valueOf(nmObj) : new File(root).getName();
-                    collectFrom(sessionLocator.codeSessionsRoot(root), SessionLocator.PREFIX_CODE,
+                    collectFrom(sessionLocator.sessionsRoot(root), SessionLocator.PREFIX_WORK,
                             root, projectName, result);
                 }
             }
@@ -266,9 +266,9 @@ public class ChannelCommandHandler {
      * 扫描单个会话根目录下匹配前缀的会话，追加到结果。
      *
      * @param sessionsDir 会话根目录（如 &lt;root&gt;/.gwork/sessions）
-     * @param prefix      会话 ID 前缀（chat- / code-）
-     * @param projectRoot 项目根（chat 传 null）
-     * @param projectName 项目展示名（用于 code 会话标签前缀区分，chat 传 null）
+     * @param prefix      会话 ID 前缀（统一 work-）
+     * @param projectRoot 项目根（全局会话传 null）
+     * @param projectName 项目展示名（用于项目会话标签前缀区分，全局会话传 null）
      * @param result      结果收集列表
      */
     private void collectFrom(File sessionsDir, String prefix, String projectRoot,

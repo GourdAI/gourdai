@@ -76,7 +76,7 @@ public class WebGate extends SimpleWebSocketListener {
      * 会话目录定位器（可选）。
      *
      * <p>IM 通道流入 code 会话时，请求不带 {@code X-Session-Cwd} 头，
-     * 需在处理输入前调用 {@link SessionLocator#bindCodeProject} 登记项目根，
+ * 需在处理输入前调用 {@link SessionLocator#bindSessionRoot} 登记所属工作空间根，
      * 才能让 {@code AgentSessionProvider} 正确解析 code 会话的落盘目录。</p>
      */
     private SessionLocator sessionLocator;
@@ -215,7 +215,7 @@ public class WebGate extends SimpleWebSocketListener {
         }
 
         // 旁路持久化：把本块记入 <sessionId>.stream.ndjson，供历史加载时回放。
-        // projectRoot 传 null——code 会话的项目根已由 bindCodeProject 登记在 locator 内存表，
+            // projectRoot 传 null——会话所属根已由 bindSessionRoot 登记在 locator 注册表，
         // 由 resolveDir 自行解析；不影响正常出站推送。
         if (streamStore != null) {
             streamStore.record(sessionId, null, jsonChunk);
@@ -793,19 +793,18 @@ public class WebGate extends SimpleWebSocketListener {
      * <p>在调用 {@link #onChatInput} 之前先检查会话是否繁忙（有 AI 任务正在执行），
      * 若繁忙则跳过本次输入并记录警告日志。用于 IM 通道回调等需要避免并发冲突的场景。</p>
      *
-     * <p>对 code 会话（{@code code-} 前缀），先用 {@code projectRoot} 登记项目根，
-     * 再作为 {@code sessionCwd} 透传，保证落盘目录与 AI 工具工作根都指向正确项目。</p>
+     * <p>{@code projectRoot} 非空时（chat / code 通用），先登记会话所属工作空间根，
+     * 再作为 {@code sessionCwd} 透传，保证落盘目录与 AI 工具工作根都指向正确工作空间。</p>
      *
      * @param sessionId   会话标识
-     * @param projectRoot 项目根绝对路径（chat 会话传 null）
+     * @param projectRoot 所属工作空间根绝对路径（未选择时传 null）
      * @param input       用户输入文本
      * @param source      调用来源标识（用于日志记录，如 "WeChat"）
      */
     public void safeChatInput(String sessionId, String projectRoot, String input, String source) {
-        // code 会话：在解析会话（getSession 会触发 AgentSessionProvider）之前先登记项目根
-        if (sessionLocator != null && SessionLocator.isCodeSession(sessionId)
-                && Assert.isNotEmpty(projectRoot)) {
-            sessionLocator.bindCodeProject(sessionId, projectRoot);
+        // 在解析会话（getSession 会触发 AgentSessionProvider）之前先登记所属工作空间根
+        if (sessionLocator != null && Assert.isNotEmpty(projectRoot)) {
+            sessionLocator.bindSessionRoot(sessionId, projectRoot);
         }
 
         try {
@@ -839,6 +838,18 @@ public class WebGate extends SimpleWebSocketListener {
      * @return 捕获到的 AI 文本；会话繁忙或无文本时返回 null
      */
     public String safeChatInputAndCaptureLoop(String sessionId, String input, String source) {
+        return safeChatInputAndCaptureLoop(sessionId, null, input, source);
+    }
+
+    /**
+     * Loop 专用：带所属工作空间根的安全聊天输入入口。
+     *
+     * @param projectRoot 会话所属工作空间根绝对路径（可为 null，回退默认工作区）
+     */
+    public String safeChatInputAndCaptureLoop(String sessionId, String projectRoot, String input, String source) {
+        if (sessionLocator != null && Assert.isNotEmpty(projectRoot)) {
+            sessionLocator.bindSessionRoot(sessionId, projectRoot);
+        }
         AgentSession session;
         try {
             session = engine.getSession(sessionId);
@@ -876,7 +887,7 @@ public class WebGate extends SimpleWebSocketListener {
             }
         }
 
-        return performAgentTaskSync(session, null, Prompt.of(currentInput), null, agentName);
+        return performAgentTaskSync(session, projectRoot, Prompt.of(currentInput), null, agentName);
     }
 
 

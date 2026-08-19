@@ -135,14 +135,14 @@ public class WebController {
         if (loopScheduler != null) {
             // 会话繁忙守卫：session 正在执行任务时，loop 定时触发跳过本次执行
             loopScheduler.addBusyChecker(sessionId -> {
-                if (sessionId == null || !sessionId.startsWith(SessionLocator.PREFIX_CHAT)) {
+                if (sessionId == null || !sessionId.startsWith(SessionLocator.PREFIX_WORK)) {
                     return false;
                 }
                 return webGate.isSessionBusy(sessionId);
             });
 
             loopScheduler.addTaskExecutor((sessionId, prompt, agentName, channelNotify) -> {
-                if (sessionId.startsWith(SessionLocator.PREFIX_CHAT) == false) {
+                if (sessionId.startsWith(SessionLocator.PREFIX_WORK) == false) {
                     return null;
                 }
 
@@ -153,8 +153,9 @@ public class WebController {
                     effectiveInput = "@" + agentName + " " + prompt;
                 }
 
-                // Loop 任务可能长时间执行（数小时），使用 Loop 专用无限等待版本
-                return webGate.safeChatInputAndCaptureLoop(sessionId, effectiveInput, "Loop");
+                // Loop 任务可能长时间执行（数小时），使用 Loop 专用无限等待版本；
+                // 透传会话所属工作空间根（取自注册表，重启后仍可恢复），保证 __cwd 与落盘目录正确
+                return webGate.safeChatInputAndCaptureLoop(sessionId, sessionLocator.boundRoot(sessionId), effectiveInput, "Loop");
             });
         }
     }
@@ -206,31 +207,39 @@ public class WebController {
     // ==================== 会话管理 ====================
 
     /**
-     * 加载会话列表（按模式区分存储位置）。
-     * <p><b>chat 模式</b>（默认）：扫描安装目录 {@code .gwork/sessions} 下 {@code web-} 前缀会话（全局、固定不变）。
-     * <b>code 模式</b>：扫描所选项目 {@code <root>/.gwork/sessions} 下 {@code code-} 前缀会话。</p>
+     * 加载会话列表（统一 work- 会话，按所属根划分全局 / 项目两类）。
+     * <p><b>root</b> 指定要查看的工作空间根；为空时返回<b>全局会话</b>（未登记所属根），
+     * 否则返回该根下的<b>项目会话</b>并回填 projectRoot，供前端切换会话时恢复工作空间上下文
+     * （X-Session-Cwd）。</p>
+     * <p>扫描目录为全局区（root 为空或恰等于安装目录）时，物理目录可能混入另一类会话
+     * （如同一会话因发送时工作空间状态不同而在全局区与项目区各写一份）：此时按登记表
+     * {@link SessionLocator#boundRoot(String)} 切分——全局视图仅留未登记，项目视图仅留已登记。</p>
      *
-     * @param mode 会话模式：{@code "code"} 或其它（默认 chat）
-     * @param root code 模式下的项目根目录绝对路径
-     * @return 会话列表，每项包含 sessionId、label、time
+     * @param root 要扫描的工作空间根目录绝对路径（为空时扫全局区）
+     * @return 会话列表，每项包含 sessionId、label、time、projectRoot（仅项目会话回填）
      * @throws Exception 文件读取异常
      */
     @Get
     @Mapping("/web/chat/sessions")
-    public Result<List<Map>> sessions(@Param(value = "mode", required = false) String mode,
-                                      @Param(value = "root", required = false) String root) throws Exception {
-        boolean codeMode = "code".equals(mode);
+    public Result<List<Map>> sessions(@Param(value = "root", required = false) String root) throws Exception {
         List<Map> data = new ArrayList<>();
 
-        if (codeMode) {
-            // 解析出「实际扫描根」：root 为空时 codeSessionsRoot 会回退到安装目录，
-            // 这里同步把有效根算出来传给 collectSessions，保证回填的 projectRoot 与
-            // 会话真实所在目录一致（否则空 root 时列出的 code 会话拿不到 projectRoot，
-            // 前端无法恢复 → 切到该会话发送时定位错乱）。
-            String effectiveRoot = Assert.isNotEmpty(root) ? root : engine.getWorkspace();
-            collectSessions(sessionLocator.codeSessionsRoot(root), SessionLocator.PREFIX_CODE, effectiveRoot, data);
-        } else {
-            collectSessions(sessionLocator.chatSessionsRoot(), SessionLocator.PREFIX_CHAT, null, data);
+        // 有效扫描根：root 为空回退安装目录（全局会话区）
+        String effectiveRoot = Assert.isNotEmpty(root) ? root : engine.getWorkspace();
+        boolean sameAsWorkspace = normalizeRoot(effectiveRoot).equals(normalizeRoot(engine.getWorkspace()));
+        // 全局视图 = 未带 root（扫全局区）；带 root 即项目视图，即便恰等于安装目录也按项目扫描
+        // 并回填 projectRoot（前端切换会话时据此恢复所属工作空间）。
+        boolean isGlobal = sameAsWorkspace && Assert.isEmpty(root);
+        collectSessions(sessionLocator.sessionsRoot(effectiveRoot),
+                isGlobal ? null : effectiveRoot, data);
+
+        // 扫描目录为全局区时物理扫描无法区分会话归属（典型：会话发送过程中工作空间状态变化，
+        // 在全局区与项目区各落了一份目录）→ 按登记表（session-roots.json）切分：
+        // 全局视图仅保留未登记所属根的真全局会话；项目视图仅保留已登记的，
+        // 避免工作空间会话混入「对话」tab、全局会话混入项目文件夹。
+        if (sameAsWorkspace) {
+            data.removeIf(item ->
+                    (sessionLocator.boundRoot((String) item.get("sessionId")) != null) == isGlobal);
         }
 
         // 按时间倒序
@@ -241,19 +250,28 @@ public class WebController {
         return Result.succeed(data);
     }
 
+    /** 规范化工作空间根（绝对路径 + 消除 .. 与尾分隔符），用于与安装目录比较判定全局会话。 */
+    private static String normalizeRoot(String r) {
+        if (r == null) return "";
+        try {
+            return java.nio.file.Paths.get(r.trim()).toAbsolutePath().normalize().toString();
+        } catch (Exception e) {
+            return r.trim();
+        }
+    }
+
     /**
-     * 扫描指定目录下匹配前缀的会话文件夹，追加到结果列表。
+     * 扫描指定目录下统一前缀（work-）的会话文件夹，追加到结果列表。
      *
      * @param sessionsDir 会话根目录
-     * @param prefix      会话 ID 前缀过滤（web- 或 code-）
-     * @param root        code 模式的项目根（用于 loop 恢复；chat 模式传 null）
-     * @param data        结果收集列表（会去重 sessionId）
+     * @param root        本次扫描所用的工作空间根（用于回填 projectRoot；null = 全局会话不回填）
+     * @param data        结果收集列表
      */
-    private void collectSessions(File sessionsDir, String prefix, String root, List<Map> data) {
+    private void collectSessions(File sessionsDir, String root, List<Map> data) {
         if (sessionsDir == null || !sessionsDir.exists() || !sessionsDir.isDirectory()) {
             return;
         }
-        File[] dirs = sessionsDir.listFiles(f -> f.isDirectory() && f.getName().startsWith(prefix));
+        File[] dirs = sessionsDir.listFiles(f -> f.isDirectory() && f.getName().startsWith(SessionLocator.PREFIX_WORK));
         if (dirs == null) {
             return;
         }
@@ -288,16 +306,16 @@ public class WebController {
             item.put("sessionId", sid);
             item.put("label", label.length() > 30 ? label.substring(0, 30) + "..." : label);
             item.put("time", dir.lastModified());
-            // code 会话回填其所属项目根：前端切换到历史会话时据此恢复 currentProjectRoot，
-            // 保证发送时 X-Session-Cwd 指向正确项目目录（否则回退安装目录 → 会话定位错乱）。
-            // 此处 root 即本次扫描所用项目根（code 模式非空；chat 模式为 null，不回填）。
-            if (sid.startsWith(SessionLocator.PREFIX_CODE) && Assert.isNotEmpty(root)) {
+            // 回填会话所属工作空间根：前端切换到历史会话时据此恢复工作空间上下文，
+            // 保证发送时 X-Session-Cwd 指向正确目录（否则回退安装目录 → 会话定位错乱）。
+            // 此处 root 即本次扫描所用工作空间根（null = 全局会话，不回填）。
+            if (Assert.isNotEmpty(root)) {
                 item.put("projectRoot", root);
             }
             data.add(item);
 
-            //恢复定时任务（仅 chat 会话，扫描安装目录）
-            if (sid.startsWith(SessionLocator.PREFIX_CHAT)) {
+            //恢复定时任务（仅统一前缀 web 会话，扫描安装目录）
+            if (sid.startsWith(SessionLocator.PREFIX_WORK)) {
                 loopScheduler.restore(sid, engine.getWorkspace(), engine.getHarnessSessions());
             }
         }
@@ -307,7 +325,7 @@ public class WebController {
      * 删除指定会话及其所有消息记录。
      * <p>执行路径安全检查后，递归删除会话目录下的所有文件。</p>
      *
-     * @param sessionId 待删除的会话 ID（必须为 web- 前缀）
+     * @param sessionId 待删除的会话 ID（统一 work- 前缀）
      * @return 操作结果
      * @throws Exception 文件删除异常
      */
@@ -326,6 +344,9 @@ public class WebController {
         // FileAgentSession 会在在途轮次/循环任务等场景下重建 messages/snapshot
         // 文件，导致目录非空删不掉、累计空垃圾文件夹
         engine.removeSession(sessionId);
+
+        // 清除所属根登记，避免注册表残留
+        sessionLocator.unbind(sessionId);
 
         File sessionDir = sessionLocator.resolveDir(sessionId, root);
 
@@ -772,9 +793,9 @@ public class WebController {
                 }
             }
 
-            // Code 模式：先登记会话所属项目根，确保 AgentSessionProvider 把会话落到项目 .gwork/sessions/
-            if (SessionLocator.isCodeSession(sessionId) && Assert.isNotEmpty(sessionCwd)) {
-                sessionLocator.bindCodeProject(sessionId, sessionCwd);
+            // 先登记会话所属工作空间根（chat / code 通用），确保 AgentSessionProvider 把会话落到 <root>/.gwork/sessions/
+            if (Assert.isNotEmpty(sessionCwd)) {
+                sessionLocator.bindSessionRoot(sessionId, sessionCwd);
             }
 
             String hitlAction = ctx.param("hitlAction");
@@ -1298,19 +1319,18 @@ public class WebController {
             return Result.failure(400, "Invalid sessionId");
         }
 
-        // 按会话模式解析落盘位置（与 chat_input 同一套逻辑）：
-        // chat 会话读全局工作区；code 会话读 X-Session-Cwd 绑定的项目根。
-        // 此前固定读 engine.getWorkspace()，导致 code 会话的任务清单（落在项目目录下）
-        // 永远查不到 → 任务面板恒为空。
+        // 与 chat_input 同一套逻辑：chat / code 会话均读其所属工作空间根
+        // （X-Session-Cwd 透传 + 注册表兜底）。此前 chat 会话固定读 engine.getWorkspace()，
+        // 导致带工作空间的 chat 会话的任务清单（落在工作空间目录下）永远查不到 → 任务面板恒为空。
         String sessionCwd = ctx.header("X-Session-Cwd");
         if (sessionCwd != null && sessionCwd.contains("..")) {
             return Result.failure(400, "Invalid Session Cwd");
         }
-        if (SessionLocator.isCodeSession(sessionId) && Assert.isNotEmpty(sessionCwd)) {
-            sessionLocator.bindCodeProject(sessionId, sessionCwd);
+        if (Assert.isNotEmpty(sessionCwd)) {
+            sessionLocator.bindSessionRoot(sessionId, sessionCwd);
         }
 
-        Path todoPath = sessionLocator.resolveDir(sessionId).toPath()
+        Path todoPath = sessionLocator.resolveDir(sessionId, sessionCwd).toPath()
                 .resolve(TodoTalent.TODO_FILE_NAME);
 
         Map<String, Object> data = new LinkedHashMap<>();

@@ -2,7 +2,7 @@
    GWork 官网脚本
    - DOWNLOADS：多端下载唯一配置源（上新平台/改链接只动这里）
    - Hero 应用窗口 Agent 任务演示（时间轴动画，可重播）
-   - 导航状态 / 移动端菜单 / 滚动显现 / UA 识别下载平台
+   - 滚动显现 / UA 识别下载平台
    - 光标追光（背景光晕跟随鼠标，惯性平滑）
    ============================================================ */
 
@@ -338,35 +338,10 @@ function setupSpotlight() {
   }, { passive: true });
 }
 
-/* ================= 导航 ================= */
-function setupNav() {
-  const nav = document.getElementById('nav');
-  const toggle = document.getElementById('navToggle');
-  const menu = document.getElementById('mobileMenu');
-
-  const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 8);
-  onScroll();
-  window.addEventListener('scroll', onScroll, { passive: true });
-
-  if (toggle && menu) {
-    toggle.addEventListener('click', () => {
-      const open = menu.classList.toggle('open');
-      toggle.setAttribute('aria-expanded', String(open));
-    });
-    menu.querySelectorAll('a').forEach(a =>
-      a.addEventListener('click', () => {
-        menu.classList.remove('open');
-        toggle.setAttribute('aria-expanded', 'false');
-      })
-    );
-  }
-}
-
 /* ================= 启动 ================= */
 document.addEventListener('DOMContentLoaded', () => {
   renderDownloads();
   setupHeroCta();
-  setupNav();
   setupReveal();
   setupSpotlight();
 

@@ -1,8 +1,8 @@
-/* app-settings-about.js — 「关于与更新」设置页
+/* app-settings-about.js — 「关于」设置页
  *
- * 桌面端（Electron）：展示桌面端版本 + 后端版本 + 自动更新面板
+ * 桌面端（Electron）：展示桌面端版本 + 自动更新面板
  *   （检查更新 / 下载进度 / 安装并重启；mac 等 notify 平台引导浏览器下载）。
- * 浏览器端（WebGate 直连）：仅展示后端版本，提示桌面端专属能力。
+ * 浏览器端（WebGate 直连）：提示桌面端专属能力。
  *
  * 更新状态由主进程经 preload 桥推送（window.__GOURD_IPC__.onUpdaterState），
  * 状态机与 main/updater.js 保持一致：
@@ -23,7 +23,6 @@
     // 会话内状态缓存：事件推送与主动拉取共用同一份渲染入口
     var lastState = null;
     var desktopVersion = '';
-    var backendVersion = '';
     var rendered = false;
 
     function t(key, args) { return window.GourdI18n ? GourdI18n.t(key, args) : key; }
@@ -57,11 +56,8 @@
             escapeHtml(t('settings.about.desktop_version')) + '</span>' +
             '<span class="about-version-value" id="aboutDesktopVersion">-</span></div>';
         versionRows += '<div class="about-version-row"><span class="about-version-label">' +
-            escapeHtml(t('settings.about.backend_version')) + '</span>' +
-            '<span class="about-version-value" id="aboutBackendVersion">-</span></div>';
-        versionRows += '<div class="about-version-row"><span class="about-version-label">' +
             escapeHtml(t('settings.about.homepage')) + '</span>' +
-            '<span class="about-version-value"><a href="https://www.gourd-ai.cn/" target="_blank" rel="noopener">www.gourd-ai.cn</a></span></div>';
+            '<span class="about-version-value"><a href="https://www.gourdwork.com/" target="_blank" rel="noopener">www.gourdwork.com</a></span></div>';
         html += card(t('settings.about.version_card'), '', versionRows);
 
         // 卡片二：检查更新（内容由 applyState 动态填充）
@@ -89,17 +85,6 @@
             var eld = document.getElementById('aboutDesktopVersion');
             if (eld) eld.textContent = t('settings.about.web_na');
         }
-
-        // 后端版本：来自 /web/chat/meta 的 appVersion（与启动横幅同一数据源）
-        $.get('/web/chat/meta', function (res) {
-            var meta = (res && res.data) ? res.data : res;
-            backendVersion = String((meta && meta.appVersion) || '');
-            var el = document.getElementById('aboutBackendVersion');
-            if (el) el.textContent = backendVersion ? ('v' + backendVersion) : '-';
-        }).fail(function () {
-            var el = document.getElementById('aboutBackendVersion');
-            if (el) el.textContent = '-';
-        });
     }
 
     /* ── 更新状态渲染 ─────────────────────────────────────────── */

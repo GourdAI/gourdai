@@ -216,7 +216,7 @@ jobs:
       - name: 上传安装包
         uses: actions/upload-artifact@v4
         with:
-          name: gourd-ai-desktop-${{ matrix.platform }}
+          name: gwork-${{ matrix.platform }}
           path: |
             gourd-ai-desktop/out/*.exe
             gourd-ai-desktop/out/*.dmg

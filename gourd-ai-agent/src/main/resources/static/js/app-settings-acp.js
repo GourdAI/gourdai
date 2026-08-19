@@ -92,6 +92,8 @@
         html += '</div>'; // /card-group
 
         $c().html(html);
+        // 骨架插入文档后统一填充选择器内容（与就地刷新共用同一渲染入口）
+        updateAcpModelUI();
     }
 
     /* ===== 模型 + 思考深度合并关联选择器 =====
@@ -263,16 +265,15 @@
         return html;
     }
 
+    // 固定骨架（结构与聊天页选择器一致）：内容统一由 updateAcpModelUI 填充
     function renderAcpSelectorHtml() {
-        var displayName = acpState.current ? modelShortName(acpState.current, providerOf(acpState.current)) : followLabel();
-        var tag = acpThinkingTag();
         return '<div class="model-selector dropdown-down acp-model-selector" id="acpModelSelector">'
             + '<div class="model-selector-current">'
-            + '<span class="model-name">' + escapeHtml(displayName) + '</span>'
-            + (tag ? '<span class="model-thinking-tag">' + escapeHtml(tag) + '</span>' : '')
+            + '<span class="model-name"></span>'
+            + '<span class="model-thinking-tag" style="display:none"></span>'
             + '<span class="model-arrow">▾</span>'
             + '</div>'
-            + '<div class="model-dropdown">' + acpDropdownItemsHtml() + '</div>'
+            + '<div class="model-dropdown"></div>'
             + '</div>';
     }
 
@@ -283,41 +284,57 @@
         return '';
     }
 
-    // 仅重建选择器（保存成功后就地刷新，不整页 load，保持下拉打开态）
-    function renderAcpSelector(keepOpen) {
-        var $old = $('#acpModelSelector');
-        var wasOpen = keepOpen || ($old.length && $old.hasClass('open'));
-        if ($old.length) $old.replaceWith(renderAcpSelectorHtml());
-        if (wasOpen) $('#acpModelSelector').addClass('open');
+    /* 就地刷新（对齐聊天页 renderModelUI）：只更新文本与下拉内部 HTML，
+     * 不替换外层容器 —— open 状态、drop-up 入场动画、箭头旋转过渡均不被打断，
+     * 点击模型/档位后不会闪烁跳动。 */
+    function updateAcpModelUI() {
+        var $sel = $('#acpModelSelector');
+        if (!$sel.length) return;
+        var displayName = acpState.current ? modelShortName(acpState.current, providerOf(acpState.current)) : followLabel();
+        var tag = acpThinkingTag();
+        $sel.find('.model-selector-current .model-name').text(displayName);
+        $sel.find('.model-selector-current .model-thinking-tag').text(tag).toggle(!!tag);
+        $sel.find('.model-dropdown').html(acpDropdownItemsHtml());
     }
 
-    // 保存到 general.acpModel（允许置空=跟随默认）
+    // 保存到 general.acpModel（允许置空=跟随默认）。
+    // 交互对齐聊天页 selectModel：先乐观更新 UI（零延迟反馈），请求失败回滚并提示。
     function saveAcpModel(value) {
+        var prevModel = acpState.current;
+        var prevStandard = acpState.currentStandard;
+        acpState.current = value;
+        acpState.currentStandard = standardOfAcpModel(value);
+        updateAcpModelUI();
         $.post('/web/settings/acp/model/save', { acpModel: value }, function (resp) {
-            if (resp && resp.code === 200) {
-                acpState.current = value;
-                acpState.currentStandard = standardOfAcpModel(value);
-                renderAcpSelector(true);
-            } else {
-                showToast((resp && resp.description) || t('settings.acp.model_save_failed'), 'error');
-            }
+            if (!(resp && resp.code === 200)) rollbackModel(prevModel, prevStandard, (resp && resp.description) || t('settings.acp.model_save_failed'));
         }).fail(function () {
-            showToast(t('settings.acp.model_save_failed'), 'error');
+            rollbackModel(prevModel, prevStandard, t('settings.acp.model_save_failed'));
         });
     }
 
-    // 保存到 general.acpThinkingDepth
+    function rollbackModel(prevModel, prevStandard, msg) {
+        acpState.current = prevModel;
+        acpState.currentStandard = prevStandard;
+        updateAcpModelUI();
+        showToast(msg, 'error');
+    }
+
+    // 保存到 general.acpThinkingDepth（同样先乐观更新，失败回滚）
     function saveAcpThinking(value) {
+        var prevThinking = acpState.thinking;
+        acpState.thinking = value;
+        updateAcpModelUI();
         $.post('/web/settings/acp/thinking/save', { acpThinkingDepth: value }, function (resp) {
-            if (resp && resp.code === 200) {
-                acpState.thinking = value;
-                renderAcpSelector(true);
-            } else {
-                showToast((resp && resp.description) || t('settings.acp.thinking_save_failed'), 'error');
-            }
+            if (!(resp && resp.code === 200)) rollbackThinking(prevThinking, (resp && resp.description) || t('settings.acp.thinking_save_failed'));
         }).fail(function () {
-            showToast(t('settings.acp.thinking_save_failed'), 'error');
+            rollbackThinking(prevThinking, t('settings.acp.thinking_save_failed'));
         });
+    }
+
+    function rollbackThinking(prevThinking, msg) {
+        acpState.thinking = prevThinking;
+        updateAcpModelUI();
+        showToast(msg, 'error');
     }
 
     /* ===== 选择器事件（document 委托：render() 每次重建 HTML，无需重复绑定） ===== */
@@ -360,7 +377,7 @@
 
     // 国际化：语言切换后重建选择器文案（chips / 跟随默认标签随语言变）
     document.addEventListener('i18n:localeChanged', function () {
-        if ($('#acpModelSelector').length) renderAcpSelector();
+        if ($('#acpModelSelector').length) updateAcpModelUI();
     });
 
     // 编辑器集成配置：生成 agent_servers 完整 JSON 配置块（各 ACP 编辑器通用）

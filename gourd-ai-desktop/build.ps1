@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 <#
-.SYNOPSIS  gourd-ai-desktop Windows 构建脚本（Electron）
+.SYNOPSIS  GWork Windows 构建脚本（Electron）
 .PARAMETER JavaHome    JDK 目录（默认 $env:JAVA_HOME）
 .PARAMETER ProjectRoot 项目根目录
 .PARAMETER SkipMaven   跳过 Maven 构建
@@ -24,7 +24,7 @@ $JarSource         = Join-Path $ProjectRoot "gourd-ai-agent\target\gourd-ai-agen
 $UiSource          = Join-Path $ProjectRoot "gourd-ai-agent\src\main\resources\static"
 $UiDest            = Join-Path $PSScriptRoot "build\ui"
 
-Write-Host "=== gourd-ai-desktop Windows 构建（Electron）===" -ForegroundColor Cyan
+Write-Host "=== GWork Windows 构建（Electron）===" -ForegroundColor Cyan
 
 # 1. Maven 构建 JAR
 if (-not $SkipMaven) {

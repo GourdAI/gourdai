@@ -436,9 +436,9 @@ public class WebChannel implements Runnable{
      * 切换通道的活跃会话（从 Web 配置面板调用）。
      *
      * @param channel     通道名称（wechat/feishu/dingtalk）
-     * @param sessionId   目标会话 ID
-     * @param projectRoot 目标会话的项目根（code 会话必需；chat 会话可空）。
-     *                    为空且为 code 会话时，服务端会尝试从已登记项目中反查。
+     * @param sessionId   目标会话 ID（统一 work- 前缀）
+     * @param projectRoot 目标会话的所属根（项目会话必需；全局会话可空）。
+     *                    为空时服务端会从已登记项目中反查。
      * @return 操作结果
      */
     @Post
@@ -462,9 +462,10 @@ public class WebChannel implements Runnable{
             return Result.failure("Invalid projectRoot");
         }
 
-        // code 会话但未带 projectRoot：从会话列表反查（保证路由能定位落盘目录与工具 cwd）
+        // 未带所属根：从会话列表反查（项目会话拿到其项目根；全局会话 projectRoot=null），
+        // 保证路由能定位落盘目录与工具 cwd
         String root = (projectRoot != null && !projectRoot.trim().isEmpty()) ? projectRoot.trim() : null;
-        if (root == null && SessionLocator.isCodeSession(sessionId)) {
+        if (root == null) {
             for (ChannelCommandHandler.SessionInfo s : commandHandler.listSessions()) {
                 if (sessionId.equals(s.sessionId)) {
                     root = s.projectRoot;

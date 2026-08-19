@@ -17,6 +17,7 @@ import com.gourdai.harness.agent.AgentEndChunk;
 import com.gourdai.harness.agent.AgentStartChunk;
 import com.gourdai.harness.agent.RetryChunk;
 import com.gourdai.core.portal.web.ThinkingDepth;
+import com.gourdai.core.portal.web.SessionLocator;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.content.Contents;
 import org.noear.solon.ai.chat.content.ImageBlock;
@@ -103,7 +104,9 @@ public class AcpLink implements Runnable {
                     }
                 })
                 .newSessionHandler(req -> {
-                    String sessionId = "acp-" + UUID.randomUUID().toString().substring(0, 8);
+                    // 统一 work- 前缀；ACP 会话不登记所属根（跨进程写 session-roots.json
+                    // 有丢更新风险），落全局会话区，Web 端可在「全局会话」中查看
+                    String sessionId = SessionLocator.PREFIX_WORK + UUID.randomUUID().toString().substring(0, 8);
                     String cwd = req.cwd();
 
                     sessionStates.put(sessionId, new AcpSessionContext(cwd, req.mcpServers()));

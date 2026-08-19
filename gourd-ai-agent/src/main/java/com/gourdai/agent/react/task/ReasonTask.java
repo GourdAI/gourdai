@@ -20,8 +20,10 @@ import org.noear.solon.Utils;
 import com.gourdai.agent.Agent;
 import com.gourdai.agent.AgentChunk;
 import com.gourdai.agent.exception.LlmNoReturnException;
+import com.gourdai.agent.util.AgentUtil;
 import org.noear.solon.ai.chat.ChatRequestDesc;
 import org.noear.solon.ai.chat.ChatResponse;
+import org.noear.solon.ai.chat.ChatResponseDefault;
 import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.util.RetryTask;
@@ -47,6 +49,9 @@ import java.util.concurrent.TimeoutException;
 @Preview("3.8.1")
 public class ReasonTask {
     private static final Logger LOG = LoggerFactory.getLogger(ReasonTask.class);
+
+    /** 流式阶段累积的思考投影前缀（含方言标签帧），存于 ChatResponseDefault.attr，供剥离时精确匹配 */
+    public static final String ATTR_STREAMED_REASONING = "gourd_streamed_reasoning_prefix";
 
     private final ReActAgentConfig config;
     private final ReActAgent agent;
@@ -221,6 +226,14 @@ public class ReasonTask {
             return;
         }
 
+        // 部分接口（openai-responses）流式聚合时把推理文本混入 content，
+        // 统一在此剥离，避免下游（最终答案/历史消息/IM）与思考通道重复渲染；
+        // 优先用流式累积的思考前缀做精确剥离（思考内引用 </think> 字面量时启发式会切错位置）
+        final String streamedReasoningPrefix = (response instanceof ChatResponseDefault)
+                ? ((ChatResponseDefault) response).attrAs(ATTR_STREAMED_REASONING)
+                : null;
+        final String resultContent = AgentUtil.getResultContentWithoutReasoning(responseMessage, streamedReasoningPrefix);
+
         if (response.getUsage() != null) {
             trace.getMetrics().addUsage(response.getUsage());
         }
@@ -236,7 +249,7 @@ public class ReasonTask {
         }
 
         // 容错处理：模型响应内容及工具调用均为空时，引导其重新生成
-        if (Assert.isEmpty(responseMessage.getResultContent()) && Assert.isEmpty(responseMessage.getToolCalls())) {
+        if (Assert.isEmpty(resultContent) && Assert.isEmpty(responseMessage.getToolCalls())) {
             if (trace.getEmptyRetryCounter().incrementAndGet() < 3) {
                 //做3次重复
                 LOG.warn("ReActAgent[{}] choices size:{}, responseMessage is empty: {}", trace.getAgentName(), response.getChoices().size(), responseMessage);
@@ -274,7 +287,7 @@ public class ReasonTask {
         }
 
         // [逻辑 3.5: 思考事件] 提取思考内容并触发 onThought 事件
-        final String clearContent = responseMessage.hasContent() ? responseMessage.getResultContent() : "";
+        final String clearContent = resultContent;
         final String thoughtContent;
 
         if (trace.getConfig().getStyle() == ReActStyle.NATIVE_TOOL) {
@@ -392,13 +405,33 @@ public class ReasonTask {
                                         return null;
                                     }
 
+                                    // 逐帧累积思考投影（含方言的 <think>/</think> 标签帧）：
+                                    // 聚合 content 由同一批帧按序拼接，此前缀可用于无歧义定位正文起点，
+                                    // 修复思考文本内部引用 </think> 字面量时启发式剥离切错位置导致的思考泄漏
+                                    final StringBuilder streamedReasoningBuf = new StringBuilder();
+                                    final int[] lastThinkingFrameStart = {-1};
+
                                     response = req.stream()
                                             .takeUntil(r -> sink.isCancelled())
                                             .doOnNext(resp -> {
                                                 if (!sink.isCancelled()) {
+                                                    AssistantMessage frameMsg = resp.getMessage();
+                                                    if (frameMsg != null && frameMsg.isThinking() && frameMsg.hasContent()) {
+                                                        lastThinkingFrameStart[0] = streamedReasoningBuf.length();
+                                                        streamedReasoningBuf.append(frameMsg.getContent());
+                                                    }
                                                     sink.next(new ReasonChunk(trace, resp, resp.getMessage()));
                                                 }
                                             }).blockLast();
+
+                                    if (response instanceof ChatResponseDefault
+                                            && streamedReasoningBuf.length() > 0) {
+                                        // chat 方言 inline-think（Qwen 风格）的闭标签帧携带正文头，截断避免前缀吞正文；
+                                        // 其余方言末思考帧为纯 </think> 标签帧，此截断为 no-op
+                                        String streamedReasoningPrefix = AgentUtil.normalizeStreamedReasoningPrefix(
+                                                streamedReasoningBuf.toString(), lastThinkingFrameStart[0]);
+                                        ((ChatResponseDefault) response).attrPut(ATTR_STREAMED_REASONING, streamedReasoningPrefix);
+                                    }
                                 } else {
                                     response = req.call();
                                 }

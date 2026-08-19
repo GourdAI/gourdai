@@ -17,6 +17,7 @@ package com.gourdai.core.portal.web;
 
 import com.gourdai.agent.AgentSessionProvider;
 import com.gourdai.core.config.AgentFlags;
+import org.noear.snack4.ONode;
 
 import java.io.File;
 import java.nio.file.Paths;
@@ -26,19 +27,20 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 会话目录定位器 —— 统一解析 {@code sessionId → 会话存储目录} 的唯一入口。
  *
- * <p>GWork 支持两种对话模式，会话数据落盘位置不同：</p>
+ * <p>所有会话统一 {@code work-} 前缀，不再区分 chat / code / acp 等模式，
+ * 会话归属只看<b>有无所属根</b>：</p>
  * <ul>
- *   <li><b>Chat 模式</b>（{@code web-} 前缀）：存到<b>安装目录</b>（App 启动的 {@code user.dir}）下的
- *       {@code .gwork/sessions/}。这是全局会话区，位置固定、跨所选项目不变
- *       —— 与历史行为完全一致，不做任何迁移。</li>
- *   <li><b>Code 模式</b>（{@code code-} 前缀）：存到<b>所选项目</b>目录
- *       {@code <projectRoot>/.gwork/sessions/}，随项目走。</li>
+ *   <li><b>项目会话</b>（有所属根）：存到 {@code <root>/.gwork/sessions/work-xxx}，
+ *       随所选工作空间/项目走。</li>
+ *   <li><b>全局会话</b>（无所属根）：存到安装目录 {@code <安装目录>/.gwork/sessions/work-xxx}，
+ *       即全局对话区。</li>
  * </ul>
  *
- * <h3>Code 会话的项目根注册</h3>
- * <p>{@link AgentSessionProvider} 仅能拿到 {@code sessionId}，
- * 无法感知所选项目。因此 Web 层在处理 code 会话输入前，先调用
- * {@link #bindCodeProject(String, String)} 把 {@code sessionId → projectRoot} 登记到内存表，
+ * <h3>会话所属根注册</h3>
+ * <p>{@link AgentSessionProvider} 及各类无根提示的异步路径（Loop 执行、IM、流式旁路记录等）
+ * 仅能拿到 {@code sessionId}，无法感知所属工作空间。因此 Web 层在处理聊天输入前，先调用
+ * {@link #bindSessionRoot(String, String)} 把 {@code sessionId → workspaceRoot} 登记到注册表
+ * （内存 + 持久化 {@code session-roots.json}，进程重启后可恢复），
  * 之后 {@link #resolveDir(String, String)} 即可正确解析。</p>
  *
  * @author oisin
@@ -46,43 +48,65 @@ import java.util.concurrent.ConcurrentHashMap;
  * @see FileService
  */
 public class SessionLocator {
-    /** code 模式会话 ID 前缀 */
-    public static final String PREFIX_CODE = "code-";
-    /** chat 模式会话 ID 前缀 */
-    public static final String PREFIX_CHAT = "chat-";
+    /** 统一会话 ID 前缀（chat / code / acp 等历史前缀已废弃，不做兼容） */
+    public static final String PREFIX_WORK = "work-";
 
     /** 安装目录 / 全局会话根（进程 user.dir，固定不变） */
     private final String workspace;
     /** 马具会话相对存放区，如 ".gwork/sessions/" */
     private final String harnessSessions;
 
-    /** code 会话 → 项目根目录 的内存登记表（进程内有效） */
-    private final Map<String, String> codeProjectRoots = new ConcurrentHashMap<>();
+    /** sessionId → 所属工作空间根 的内存登记表（进程内有效，session-roots.json 持久化） */
+    private final Map<String, String> boundRoots = new ConcurrentHashMap<>();
 
     public SessionLocator(String workspace, String harnessSessions) {
         this.workspace = workspace;
         this.harnessSessions = harnessSessions;
+        loadBoundRoots();
     }
 
     /**
-     * 判断是否为 code 模式会话 ID。
-     */
-    public static boolean isCodeSession(String sessionId) {
-        return sessionId != null && sessionId.startsWith(PREFIX_CODE);
-    }
-
-    /**
-     * 登记 code 会话所属的项目根目录。
-     * <p>在处理该会话的聊天输入之前调用，供后续 {@code AgentSessionProvider} 解析落盘目录。</p>
+     * 登记会话所属的工作空间根目录（登记后即为项目会话，未登记则落全局区）。
+     * <p>在处理该会话的聊天输入之前调用，供后续 {@code AgentSessionProvider}
+     * 及无根提示的异步路径（Loop 执行、IM、流式旁路记录等）解析落盘目录；
+     * 登记持久化到 {@code session-roots.json}，进程重启不丢失。</p>
      *
-     * @param sessionId   会话 ID（应为 code- 前缀）
-     * @param projectRoot 项目根目录绝对路径；为空则忽略（回退到安装目录）
+     * @param sessionId     会话 ID
+     * @param workspaceRoot 所属工作空间根绝对路径；为空则忽略（回退到安装目录）
      */
-    public void bindCodeProject(String sessionId, String projectRoot) {
-        if (sessionId == null || projectRoot == null || projectRoot.trim().isEmpty()) {
+    public void bindSessionRoot(String sessionId, String workspaceRoot) {
+        if (sessionId == null || workspaceRoot == null || workspaceRoot.trim().isEmpty()) {
             return;
         }
-        codeProjectRoots.put(sessionId, projectRoot.trim());
+        String root = workspaceRoot.trim();
+        String prev = boundRoots.put(sessionId, root);
+        if (prev == null || !prev.equals(root)) {
+            saveBoundRoots();
+        }
+    }
+
+    /**
+     * 查询会话已登记的所属工作空间根（未登记返回 null）。
+     * 供异步路径（如 Loop 任务执行器）取得会话所属工作空间并透传。
+     */
+    public String boundRoot(String sessionId) {
+        return sessionId == null ? null : boundRoots.get(sessionId);
+    }
+
+    /**
+     * 全部已登记的工作空间根（去重）。供 IM 通道等项目会话扫描。
+     */
+    public java.util.Set<String> registeredRoots() {
+        return new java.util.LinkedHashSet<>(boundRoots.values());
+    }
+
+    /**
+     * 会话删除时清除登记，避免注册表残留。
+     */
+    public void unbind(String sessionId) {
+        if (sessionId != null && boundRoots.remove(sessionId) != null) {
+            saveBoundRoots();
+        }
     }
 
     /**
@@ -96,46 +120,48 @@ public class SessionLocator {
     }
 
     /**
-     * 解析会话存储目录。
+     * 解析会话存储目录（全局 / 项目会话统一逻辑）。
      *
      * @param sessionId   会话 ID
-     * @param projectRoot 可选的项目根提示（code 模式由 Web 层透传；chat 模式忽略）
+     * @param projectRoot 可选的工作空间根提示（Web 层透传 X-Session-Cwd / root 参数）
      * @return 该会话的存储目录（绝对、规范化）
      */
     public File resolveDir(String sessionId, String projectRoot) {
-        if (isCodeSession(sessionId)) {
-            String root = (projectRoot != null && !projectRoot.trim().isEmpty())
-                    ? projectRoot.trim()
-                    : codeProjectRoots.get(sessionId);
-            if (root == null || root.isEmpty()) {
-                // 未登记项目根时回退到安装目录，保证不丢数据
-                root = workspace;
-            }
-            return sessionDir(root, sessionId);
+        // 前置校验：null 会话 ID 按约定抛 IllegalArgumentException
+        // （注册表查询不支持 null key，须在查表前拦截；越界字符由 sessionDir 统一收口）
+        if (sessionId == null) {
+            throw new IllegalArgumentException("Illegal sessionId: null");
         }
-
-        // chat / 默认会话：安装目录（全局，固定不变）
-        return sessionDir(workspace, sessionId);
+        String root = (projectRoot != null && !projectRoot.trim().isEmpty())
+                ? projectRoot.trim()
+                : boundRoots.get(sessionId);
+        if (root == null || root.isEmpty()) {
+            // 未登记所属根：全局会话，落安装目录
+            root = workspace;
+        }
+        return sessionDir(root, sessionId);
     }
 
     /**
-     * chat 模式会话列表的扫描根目录（安装目录，全局固定）。
+     * 全局会话列表的扫描根目录（安装目录，固定不变）。
      */
-    public File chatSessionsRoot() {
+    public File globalSessionsRoot() {
         return sessionsRoot(workspace);
     }
 
     /**
-     * code 模式会话列表的扫描根目录（指定项目）。
+     * 会话列表的扫描根目录（全局 / 项目会话通用）。
+     * <p>会话均落在所属工作空间的 {@code .gwork/sessions/}，
+     * 列表扫描时由调用方指定要查看的工作空间根。</p>
      *
-     * @param projectRoot 项目根目录；为空时回退到安装目录
+     * @param root 工作空间根目录；为空时回退到安装目录（即全局会话区）
      */
-    public File codeSessionsRoot(String projectRoot) {
-        String root = (projectRoot != null && !projectRoot.trim().isEmpty()) ? projectRoot.trim() : workspace;
-        return sessionsRoot(root);
+    public File sessionsRoot(String root) {
+        String effective = (root != null && !root.trim().isEmpty()) ? root.trim() : workspace;
+        return doSessionsRoot(effective);
     }
 
-    private File sessionsRoot(String root) {
+    private File doSessionsRoot(String root) {
         migrateLegacyWorkspace(root);
         return Paths.get(root, harnessSessions).toAbsolutePath().normalize().toFile();
     }
@@ -154,6 +180,63 @@ public class SessionLocator {
             }
         } catch (Exception e) {
             // 迁移失败不阻断会话解析（下次打开再试）
+        }
+    }
+
+    /**
+     * 登记表持久化文件：{@code <安装目录>/.gwork/session-roots.json}（sessionId → 所属根）。
+     */
+    private File rootsIndexFile() {
+        return Paths.get(workspace, AgentFlags.getHarnessHome(), "session-roots.json").toFile();
+    }
+
+    /**
+     * 启动时回读登记表（失败不阻断，最坏退化为安装目录兜底）。
+     */
+    private void loadBoundRoots() {
+        try {
+            File f = rootsIndexFile();
+            if (f.exists()) {
+                String json = new String(java.nio.file.Files.readAllBytes(f.toPath()), "UTF-8");
+                ONode root = ONode.ofJson(json);
+                if (root != null && root.isObject()) {
+                    // 注意：getObjectUnsafe 的 value 是 ONode 本体，须用 getString() 取原始字符串；
+                    // String.valueOf(ONode) 会拿到带引号/转义的 JSON 表示，导致后续 Paths.get 报非法路径。
+                    root.getObjectUnsafe().forEach((k, v) -> {
+                        String s = null;
+                        if (v instanceof ONode) {
+                            s = ((ONode) v).getString();
+                        } else if (v != null) {
+                            s = String.valueOf(v);
+                        }
+                        if (s != null && !s.isEmpty()) {
+                            boundRoots.put(k, s);
+                        }
+                    });
+                }
+            }
+        } catch (Exception e) {
+            // 登记表损坏不阻断启动
+        }
+    }
+
+    /**
+     * 登记表落盘（仅在登记变化时调用，文件极小）。
+     */
+    private synchronized void saveBoundRoots() {
+        try {
+            File f = rootsIndexFile();
+            File parent = f.getParentFile();
+            if (parent != null && !parent.exists()) {
+                parent.mkdirs();
+            }
+            ONode node = new ONode().asObject();
+            for (Map.Entry<String, String> e : boundRoots.entrySet()) {
+                node.set(e.getKey(), e.getValue());
+            }
+            java.nio.file.Files.write(f.toPath(), node.toJson().getBytes("UTF-8"));
+        } catch (Exception e) {
+            // 持久化失败不影响内存解析
         }
     }
 

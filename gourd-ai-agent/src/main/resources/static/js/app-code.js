@@ -7,11 +7,7 @@
 (function () {
     // ---------- DOM ----------
     var $body = $('body');
-    var modeBtn = document.getElementById('modeSwitchBtn');
-    var projSelector = document.getElementById('projectSelector');
-    var projCurrent = document.getElementById('projectSelectorCurrent');
     var projName = document.getElementById('projectSelectorName');
-    var projDropdown = document.getElementById('projectDropdown');
 
     var editorPane = document.getElementById('codeEditorPane');
     var editorEmpty = document.getElementById('codeEditorEmpty');
@@ -29,7 +25,6 @@
     var LS_MODE = 'gourdai-app-mode';
     var LS_PROJECT = 'gourdai-code-project';
     var projects = [];            // [{name, path}]
-    var projectsLoaded = false;     // 项目列表是否已加载过（供新窗口启动判断能否立即 selectProject）
     var homeDir = '';             // 用户主目录（/web/chat/meta 提供，用于新建项目预填父目录）
     var openFiles = [];           // [{path, name}]
     var activeFilePath = null;
@@ -130,14 +125,9 @@
         // 否则切到 code 后 body.viewer-open 会连带隐藏编辑器面板、悬留旧浮层。
         if (typeof window.closeDiffViewer === 'function') window.closeDiffViewer();
         window.appMode = 'code';
-        // 项目新窗口启动直达 code 模式时不写持久化（opts.persistMode===false）：
-        // 避免连带把主窗口的模式记忆改成 code（各窗口模式互不干扰）
-        if (!opts || opts.persistMode !== false) {
-            try { localStorage.setItem(LS_MODE, 'code'); } catch (e) {}
-        }
+        try { localStorage.setItem(LS_MODE, 'code'); } catch (e) {}
         $body.addClass('code-mode');
-        if (modeBtn) { modeBtn.classList.add('code-active'); modeBtn.title = GourdI18n.t('code.switch_to_chat'); }
-        // 项目选择器位于文件树顶部，随 code 模式面板一并显示（CSS 控制），无需手动 toggle
+        // 专注模式隐藏主侧栏；项目名/返回/更多操作等入口在文件树面板头部（CSS 控制显隐）
         // code 模式始终使用 chatInput 输入
         window.inChatMode = true;
         if (typeof switchToChatMode === 'function') switchToChatMode();
@@ -146,13 +136,14 @@
         if (!window.filerView) window.filerView = 'files';
         try { document.body.dataset.filerView = window.filerView; } catch (e) {}
         // 先记住上次活动会话：下面的 startFreshSession() 会 forgetActiveSession() 清掉它，
-        // 而 code 会话列表是异步加载的、其回调里才调 restoreActiveSession()——若不先存下来，
+        // 而会话列表是异步加载的、其回调里才调 restoreActiveSession()——若不先存下来，
         // 冷启动进 code 模式就永远恢复不了上次会话（只会停在新草稿）。加载完列表后再写回。
         var savedActive = null;
         try { savedActive = localStorage.getItem('gourdai-active-session'); } catch (e) {}
-        // 只有 code 前缀的会话才需要恢复（web 前缀说明用户上次在 chat 模式）
-        var isCodeSession = savedActive && savedActive.indexOf('code-') === 0;
-        // 先建一个当前模式（code-）的空会话，右栏立即可见
+        // 仅统一前缀（work-）的会话可恢复：若属于当前项目会在列表中命中并恢复；
+        // 属于其它根（全局/其它工作空间）则不在此恢复，留在原视图等用户切换
+        var savedIsWork = savedActive && savedActive.indexOf('work-') === 0;
+        // 先建一个当前模式的空会话，右栏立即可见
         startFreshSession();
         // 立即按当前项目状态刷新中间区（未选项目→欢迎面板），避免异步加载前闪现旧空态
         refreshCenterPane();
@@ -160,9 +151,8 @@
         var saved = null;
         try { saved = localStorage.getItem(LS_PROJECT); } catch (e) {}
         loadProjects(function () {
-            // 项目新窗口启动时携带的目标项目根（__bootProjectOverride），优先打开它
-            var bootProj = window.__bootProjectOverride;
-            window.__bootProjectOverride = null;
+            // 入口指定的目标项目根（如侧栏项目行图标），优先打开它
+            var bootProj = opts && opts.projectRoot;
             if (bootProj) {
                 selectProject(bootProj, true);
             } else if (saved && projects.some(function (p) { return p.path === saved; })) {
@@ -177,11 +167,11 @@
                 if (projName) projName.textContent = GourdI18n.t('code.select_project');
             }
             // 写回上次活动会话 id，供 loadSessionHistory 响应后的 restoreActiveSession 命中并恢复
-            if (isCodeSession && typeof window.rememberActiveSession === 'function') {
+            if (savedIsWork && typeof window.rememberActiveSession === 'function') {
                 window.rememberActiveSession(savedActive);
             }
-            // 若没有可恢复的 code 会话，直接选中列表中第一个（最近的对话）
-            if (!isCodeSession) {
+            // 若没有可恢复的会话（旧前缀残留或无记录），直接选中列表中第一个（最近的对话）
+            if (!savedIsWork) {
                 setTimeout(function () {
                     if ((window.chatHistory || []).length > 0 && window.currentChatIndex === -1) {
                         if (typeof selectSession === 'function') selectSession(0);
@@ -201,7 +191,6 @@
         window.appMode = 'chat';
         try { localStorage.setItem(LS_MODE, 'chat'); } catch (e) {}
         $body.removeClass('code-mode');
-        if (modeBtn) { modeBtn.classList.remove('code-active'); modeBtn.title = GourdI18n.t('code.switch_to_code'); }
         window.currentProjectRoot = '';
         // 关闭可能残留的「变更详情」Git 审查浮层：它靠内联 display + body.viewer-open 控制显隐，
         // 不受 body.code-mode CSS 约束，若不显式关闭，切回 chat 后会继续悬留在中间区。
@@ -212,8 +201,6 @@
         if (typeof rememberActiveSession === 'function') rememberActiveSession(codeSessionId);
         reloadSessionsForMode();
     }
-
-    function toggleMode() { if (isCode()) exitCodeMode(); else enterCodeMode(); }
 
     // 新建当前模式的空会话（不切欢迎页，code 模式保持右栏对话可见）
     function startFreshSession() {
@@ -367,79 +354,11 @@
     function loadProjects(cb) {
         $.get('/web/chat/projects', function (resp) {
             projects = (resp && resp.data) ? resp.data : [];
-            projectsLoaded = true;
-            renderProjectDropdown();
             renderWelcomeRecent();
             if (cb) cb();
-        }).fail(function () { projectsLoaded = true; if (cb) cb(); });
+        }).fail(function () { if (cb) cb(); });
     }
 
-    function renderProjectDropdown() {
-        if (!projDropdown) return;
-        var html = '';
-        if (projects.length === 0) {
-            html += '<div class="project-dropdown-empty">' + GourdI18n.t('code.no_projects') + '</div>';
-        } else {
-            for (var i = 0; i < projects.length; i++) {
-                var p = projects[i];
-                var active = (p.path === window.currentProjectRoot) ? ' active' : '';
-                html += '<div class="project-dropdown-item' + active + '" data-path="' + escAttr(p.path) + '">'
-                    + '<div class="project-dropdown-item-info">'
-                    + '<div class="project-dropdown-item-name">' + escHtml(p.name) + '</div>'
-                    + '<div class="project-dropdown-item-path">' + escHtml(p.path) + '</div>'
-                    + '</div>'
-                    + '<button class="project-dropdown-item-del" title="' + GourdI18n.t('code.remove_no_delete') + '" data-path="' + escAttr(p.path) + '">'
-                    + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
-                    + '</button>'
-                    + '</div>';
-            }
-        }
-        html += '<div class="project-dropdown-add" id="projectAddBtn">'
-            + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
-            + GourdI18n.t('code.open_folder') + '</div>';
-        html += '<div class="project-dropdown-add" id="projectNewBtn">'
-            + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>'
-            + GourdI18n.t('code.new_project') + '</div>';
-        projDropdown.innerHTML = html;
-    }
-
-    // ---------- 项目打开方式：本窗口 / 新窗口 ----------
-    // 桌面端（Electron）选择其它项目时，先询问在本窗口打开还是新窗口打开；
-    // 「新窗口」经 IPC 由主进程新开一个原生窗体（非浏览器窗口）加载同一 UI 并打开该项目。
-    // 浏览器端无 IPC，或重新选择当前项目时，退回原有的本窗口切换行为。
-    function askHowToOpenProject(path) {
-        if (!path) return;
-        if (path === window.currentProjectRoot) { $(projSelector).removeClass('open'); return; }
-        var ipc = window.__GOURD_IPC__;
-        if (!ipc || typeof ipc.openProjectWindow !== 'function') { selectProject(path); return; }
-        var name = path;
-        for (var i = 0; i < projects.length; i++) { if (projects[i].path === path) { name = projects[i].name; break; } }
-        var html = '<div class="kd-confirm">'
-            + '<div class="kd-confirm-msg">' + GourdI18n.t('code.open_project_where', [name]) + '</div>'
-            + '<div class="kd-confirm-btns">'
-            + '<button class="kd-btn kd-btn-cancel" id="opwCancel">' + GourdI18n.t('base.cancel') + '</button>'
-            + '<button class="kd-btn" id="opwThis">' + GourdI18n.t('code.open_in_this_window') + '</button>'
-            + '<button class="kd-btn kd-btn-ok" id="opwNew">' + GourdI18n.t('code.open_in_new_window') + '</button>'
-            + '</div></div>';
-        var idx = layer.open({
-            type: 1, content: html, title: false, closeBtn: 0, shade: 0.3, shadeClose: false,
-            skin: 'kd-layer', area: 'auto',
-            success: function (layero) {
-                layero.find('#opwCancel').on('click', function () { layer.close(idx); });
-                layero.find('#opwThis').on('click', function () { layer.close(idx); selectProject(path); });
-                layero.find('#opwNew').on('click', function () { layer.close(idx); openProjectInNewWindow(path); });
-            }
-        });
-    }
-
-    // 新窗口打开项目：由主进程新开一个原生窗体（BrowserWindow），
-    // 共享同一本地 UI 服务器与后端，直接以 code 模式打开该项目。
-    // IPC 异常时回退为本窗口切换，不丢失用户操作。
-    function openProjectInNewWindow(path) {
-        var ipc = window.__GOURD_IPC__;
-        if (!ipc || typeof ipc.openProjectWindow !== 'function') { selectProject(path); return; }
-        Promise.resolve(ipc.openProjectWindow(path)).catch(function () { selectProject(path); });
-    }
 
     function selectProject(path, silent) {
         // 切项目会关闭全部打开文件；有未保存改动时先确认，取消则中止切换、保留文件与当前项目。
@@ -461,7 +380,6 @@
         var p = null;
         for (var i = 0; i < projects.length; i++) { if (projects[i].path === path) { p = projects[i]; break; } }
         if (projName) projName.textContent = p ? p.name : (path || GourdI18n.t('code.select_project'));
-        renderProjectDropdown();
         // 重新加载文件树
         if (typeof window.loadTree === 'function') window.loadTree();
         // 登记后端文件监听根：项目目录的外部修改才能实时推送 filer_change
@@ -472,10 +390,10 @@
         if (typeof window.loadGitStatus === 'function') window.loadGitStatus();
         // 通知终端：项目根变更，若终端开着则重连到新目录
         if (typeof window.onCodeProjectChanged === 'function') window.onCodeProjectChanged();
-        // 桌面端：同步窗口标题为当前项目名（主窗口与项目新窗口共用此逻辑）
+        // 桌面端：同步窗口标题为当前项目名
         updateWindowTitle(p ? p.name : path);
     }
-    // 桌面端窗口标题：显示当前项目名，多窗口并存时便于区分
+    // 桌面端窗口标题：显示当前项目名
     function updateWindowTitle(name) {
         var ipc = window.__GOURD_IPC__;
         if (!ipc || typeof ipc.setWindowTitle !== 'function') return;
@@ -505,16 +423,15 @@
             }).done(function (resp) {
                 if (resp && resp.code === 200) {
                     projects = resp.data || [];
-                    renderProjectDropdown();
                     renderWelcomeRecent();
-                    // 新加的项目：与其它项目入口一致，询问「本窗口打开 / 新窗口打开」
+                    // 新加的项目：直接在本窗口打开
                     if (projects.length) {
                         var addedPath = '';
                         for (var j = 0; j < projects.length; j++) {
                             if (projects[j].path === path) { addedPath = path; break; }
                         }
                         if (!addedPath) addedPath = projects[0].path;
-                        if (addedPath !== window.currentProjectRoot) askHowToOpenProject(addedPath);
+                        if (addedPath !== window.currentProjectRoot) selectProject(addedPath);
                     }
                     if (typeof showToast === 'function') showToast(GourdI18n.t('code.project_added'), 'success');
                 } else {
@@ -576,7 +493,6 @@
                         if (resp && resp.code === 200) {
                             layer.close(idx);
                             projects = resp.data || [];
-                            renderProjectDropdown();
                             renderWelcomeRecent();
                             if (projects.length) selectProject(projects[0].path);
                             if (typeof showToast === 'function') showToast(GourdI18n.t('code.project_created'), 'success');
@@ -688,7 +604,8 @@
             data: JSON.stringify({ path: path })
         }).done(function (resp) {
             projects = (resp && resp.data) ? resp.data : [];
-            renderProjectDropdown();
+            // 任务侧栏的项目行取自同一列表：移除后刷新任务视图列表
+            if (window.appMode !== 'code' && typeof loadSessionHistory === 'function') loadSessionHistory();
             if (path === window.currentProjectRoot) {
                 if (projects.length) selectProject(projects[0].path);
                 else {
@@ -701,31 +618,6 @@
         });
     }
 
-    // 项目下拉交互
-    if (projCurrent) {
-        projCurrent.addEventListener('click', function (e) {
-            e.stopPropagation();
-            $(projSelector).toggleClass('open');
-        });
-    }
-    if (projDropdown) {
-        projDropdown.addEventListener('click', function (e) {
-            var del = e.target.closest('.project-dropdown-item-del');
-            if (del) { e.stopPropagation(); removeProject(del.getAttribute('data-path')); return; }
-            var add = e.target.closest('#projectAddBtn');
-            if (add) { e.stopPropagation(); $(projSelector).removeClass('open'); addProject(); return; }
-            var create = e.target.closest('#projectNewBtn');
-            if (create) { e.stopPropagation(); $(projSelector).removeClass('open'); newProject(); return; }
-            var item = e.target.closest('.project-dropdown-item');
-            if (item) {
-                $(projSelector).removeClass('open');
-                var picked = item.getAttribute('data-path');
-                // 桌面端选择其它项目时先询问「本窗口打开 / 新窗口打开」；同项目则不动
-                if (picked !== window.currentProjectRoot) askHowToOpenProject(picked);
-            }
-        });
-    }
-    document.addEventListener('click', function () { $(projSelector).removeClass('open'); });
 
     // ---------- 编辑器：打开 / 标签 / 保存 ----------
     // 中间区三态：未选项目→欢迎面板；已选项目未开文件→空态提示；开了文件→编辑器
@@ -774,12 +666,59 @@
             if (item) {
                 var picked = item.getAttribute('data-path');
                 if (picked === window.currentProjectRoot) return;
-                askHowToOpenProject(picked);
+                selectProject(picked);
             }
         });
     }
     if (welcomeOpenBtn) welcomeOpenBtn.addEventListener('click', function () { addProject(); });
     if (welcomeNewBtn) welcomeNewBtn.addEventListener('click', function () { newProject(); });
+
+    // ---------- 专注模式文件树面板头部：返回 / 更多操作 / 设置 ----------
+    // 返回任务视图：退出专注模式，并把任务侧栏工作空间同步选中为刚才的项目，来回无缝
+    var filerBackBtn = document.getElementById('filerBackBtn');
+    if (filerBackBtn) {
+        filerBackBtn.addEventListener('click', function () {
+            var root = window.currentProjectRoot || '';
+            exitCodeMode();
+            if (root && typeof window.applyChatWorkspace === 'function') window.applyChatWorkspace(root, true);
+        });
+    }
+
+    // 更多操作菜单：打开文件夹 / 新建项目（切换项目统一回任务侧栏）
+    var filerMoreBtn = document.getElementById('filerMoreBtn');
+    var filerMoreMenu = document.getElementById('filerMoreMenu');
+    function renderMoreMenu() {
+        if (!filerMoreMenu) return;
+        filerMoreMenu.innerHTML = '<div class="filer-more-item" data-act="open">'
+            + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
+            + escHtml(GourdI18n.t('code.open_folder')) + '</div>'
+            + '<div class="filer-more-item" data-act="new">'
+            + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>'
+            + escHtml(GourdI18n.t('code.new_project')) + '</div>';
+    }
+    if (filerMoreBtn && filerMoreMenu) {
+        filerMoreBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (filerMoreMenu.style.display !== 'none') { filerMoreMenu.style.display = 'none'; return; }
+            renderMoreMenu();
+            filerMoreMenu.style.display = 'block';
+        });
+        filerMoreMenu.addEventListener('click', function (e) {
+            var item = e.target.closest('.filer-more-item');
+            if (!item) return;
+            e.stopPropagation();
+            filerMoreMenu.style.display = 'none';
+            if (item.getAttribute('data-act') === 'open') addProject();
+            else newProject();
+        });
+        document.addEventListener('click', function () { filerMoreMenu.style.display = 'none'; });
+    }
+
+    // 设置：复用主侧栏设置按钮的既有绑定
+    var filerSettingsBtn = document.getElementById('filerSettingsBtn');
+    if (filerSettingsBtn) {
+        filerSettingsBtn.addEventListener('click', function () { $('#settingsBtn').trigger('click'); });
+    }
 
     function openInEditor(path, name) {
         if (!isCode()) {
@@ -1093,9 +1032,6 @@
     window._origOpenFileViewer = window.openFileViewer;
     window.openFileViewer = openInEditor;
 
-    // ---------- 绑定模式切换按钮 ----------
-    if (modeBtn) modeBtn.addEventListener('click', toggleMode);
-
     // ---------- 启动：恢复上次模式 ----------
     (function initMode() {
         var saved = null;
@@ -1103,47 +1039,6 @@
         if (saved === 'code') {
             // 延迟一拍，确保 app-history 等已初始化
             setTimeout(enterCodeMode, 0);
-        }
-    })();
-
-    // ---------- 启动：项目新窗口直达 code 模式并打开指定项目 ----------
-    // 主进程新建项目窗体时把项目根记录在窗口上，并经 URL hash 携带。
-    // 优先经 IPC 查询（权威来源），hash 作兜底。携带项目时覆盖常规的模式恢复：
-    // 直接进入 code 模式并打开该项目（不沿用 localStorage 里的上次项目）。
-    (function initWindowProject() {
-        function fromHash() {
-            var m = (location.hash || '').match(/[#&]project=([^&]+)/);
-            if (!m) return '';
-            try { return decodeURIComponent(m[1]); } catch (e) { return ''; }
-        }
-        function boot(project) {
-            if (!project) return;
-            // 置覆盖标记：若 enterCodeMode 尚未跑过，其 loadProjects 回调会优先消费它；
-            // 若已跑过（回调消费了空标记），则由下面的 trySelect 轮询到列表加载完成后补选中，
-            // 两种时序下新窗口都能打开指定项目。
-            // 注意写 null 而非空串：enterCodeMode 的 loadProjects 回调用真值判断消费覆盖标记，
-            // 若这里残留空串会误判为有项目（''为假值→正常）但保持语义明确；boot('') 已在上方拦截。
-            window.__bootProjectOverride = project || null;
-            enterCodeMode({ persistMode: false });
-            var tries = 0;
-            var trySelect = function () {
-                if (projectsLoaded) {
-                    if (window.currentProjectRoot !== project) selectProject(project);
-                    return;
-                }
-                // 列表尚未加载（后端未就绪/请求在途）：短暂轮询，最多约 10s，超时则停在欢迎面板
-                if (++tries > 100) return;
-                setTimeout(trySelect, 100);
-            };
-            trySelect();
-        }
-        var ipc = window.__GOURD_IPC__;
-        if (ipc && typeof ipc.getWindowProject === 'function') {
-            Promise.resolve(ipc.getWindowProject())
-                .then(function (project) { boot(project || fromHash()); })
-                .catch(function () { boot(fromHash()); });
-        } else {
-            boot(fromHash());
         }
     })();
 
@@ -1223,6 +1118,16 @@
     // 暴露给其它模块
     window.enterCodeMode = enterCodeMode;
     window.exitCodeMode = exitCodeMode;
-    window.toggleAppMode = toggleMode;
+    // 聊天侧栏项目行图标：进入 code 模式并定位到指定项目（已在 code 模式则仅切换项目）
+    window.openProjectInCodeMode = function (path) {
+        if (!path) return;
+        if (isCode()) { if (path !== window.currentProjectRoot) selectProject(path); }
+        else enterCodeMode({ projectRoot: path });
+    };
     window.startFreshCodeSession = startFreshSession;
+    // 任务侧栏项目行「从列表移除」入口复用
+    window.removeProjectFromList = removeProject;
+    // chat 工作空间选择器复用：目录浏览弹窗 + watch 根登记
+    window.openDirPicker = openDirPicker;
+    window.notifyWatchRoot = notifyWatchRoot;
 })();

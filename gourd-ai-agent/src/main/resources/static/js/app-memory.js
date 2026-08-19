@@ -1,6 +1,6 @@
 /* ===== app-memory.js ===== */
 /* 心智记忆面板：查看工作空间 / 全局两个域的记忆条目（只读）。
-   入口：chat 模式侧边栏 #memoryViewBtn；code 模式活动栏 #sidebarMemoryBtn。 */
+   入口：chat 模式侧边栏 #memoryViewBtn；专注模式文件树面板顶部 #filerMemoryBtn。 */
 
 (function() {
     if (document.getElementById('memoryPanelWrap')) return; // 防重复挂载
@@ -147,13 +147,13 @@
     document.addEventListener('mousedown', function(e) {
         if (!panelOpen) return;
         if (panel.contains(e.target)) return;
-        if (e.target.closest && (e.target.closest('#memoryViewBtn') || e.target.closest('#sidebarMemoryBtn'))) return;
+        if (e.target.closest && (e.target.closest('#memoryViewBtn') || e.target.closest('#filerMemoryBtn'))) return;
         closePanel();
     });
 
     /* ---------- 入口绑定 ---------- */
     var btnChat = document.getElementById('memoryViewBtn');
-    var btnCode = document.getElementById('sidebarMemoryBtn');
+    var btnFiler = document.getElementById('filerMemoryBtn');
     if (btnChat) btnChat.addEventListener('click', togglePanel);
-    if (btnCode) btnCode.addEventListener('click', togglePanel);
+    if (btnFiler) btnFiler.addEventListener('click', togglePanel);
 })();
