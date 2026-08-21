@@ -102,13 +102,13 @@ public class LoopScheduler {
     @FunctionalInterface
     public interface TaskExecutor {
         /**
-         * @param sessionId     会话 ID
-         * @param prompt        提示词
-         * @param agentName     代理名称（可为 null，表示主 agent）
-         * @param channelNotify 推送通道名（可为 null），执行完毕后 AI 回复会推到该通道
+         * @param sessionId 会话 ID
+         * @param prompt    提示词（已注入 goal 等上下文的有效提示词）
+         * @param agentName 代理名称（可为 null，表示主 agent）
+         * @param task      任务定义，携带执行上下文（工作空间 / 模型 / 思考档位 / 推送通道）
          * @return AI 响应文本摘要，无法获取时返回 null
          */
-        String execute(String sessionId, String prompt, String agentName, String channelNotify);
+        String execute(String sessionId, String prompt, String agentName, LoopTask task);
     }
 
     /**
@@ -351,10 +351,9 @@ public class LoopScheduler {
             if (jobManager.jobExists(jobName)) {
                 jobManager.jobRemove(jobName);
             }
-            // F6: 清理 worktree
-            if (t.isWorktreeEnabled() && t.getWorkspace() != null) {
-                String wtWorkspace = t.getWorkspace();
-                getWorktreeManager().cleanup(wtWorkspace);
+            // F6: 清理 worktree（工作空间回退口径必须与创建时一致，否则 workspace 为空的任务会漏清理）
+            if (t.isWorktreeEnabled()) {
+                getWorktreeManager().cleanup(worktreeBaseOf(t));
             }
         }
         globalTasks.clear();
@@ -529,12 +528,16 @@ public class LoopScheduler {
             // Phase 4: Worktree 隔离
             String worktreePath = null;
             if (task.isWorktreeEnabled()) {
-                worktreePath = getWorktreeManager().create(engine.getWorkspace(), task.getId());
+                // 任务指定了工作空间时以其为仓库根创建 worktree，否则回退默认工作区
+                String worktreeBase = worktreeBaseOf(task);
+                worktreePath = getWorktreeManager().create(worktreeBase, task.getId());
                 if (worktreePath != null) {
                     LOG.info("Loop task '{}' executing in worktree: {}", task.getId(), worktreePath);
                 } else {
                     LOG.warn("Loop task '{}' worktree creation failed, falling back to main workspace", task.getId());
                 }
+                // 把本轮 worktree 路径交给执行侧，使 AI 真正在隔离工作树内作业
+                task.setActiveWorktreePath(worktreePath);
             }
 
             try {
@@ -543,7 +546,7 @@ public class LoopScheduler {
 
                 executionResult = null;
                 for (TaskExecutor taskExecutor : taskExecutors) {
-                    String result = taskExecutor.execute(effectiveSessionId, effectivePrompt, null, task.getChannelNotify());
+                    String result = taskExecutor.execute(effectiveSessionId, effectivePrompt, null, task);
                     if (result != null) {
                         executionResult = result;
                     }
@@ -577,8 +580,8 @@ public class LoopScheduler {
             } finally {
                 // Phase 4: 清理 worktree（执行完毕后）
                 if (worktreePath != null) {
-                    getWorktreeManager().remove(worktreePath);
-                    LOG.debug("Loop task '{}' worktree cleaned up", task.getId());
+                    task.setActiveWorktreePath(null);
+                    releaseWorktree(task, worktreePath);
                 }
             }
 
@@ -588,6 +591,37 @@ public class LoopScheduler {
         } finally {
             task.finish();
         }
+    }
+
+    /**
+     * worktree 的仓库根：任务显式指定的工作空间优先，否则回退默认工作区。
+     *
+     * <p>创建（onTrigger）与清理（stopAll）必须共用此口径，不得各自判空。</p>
+     */
+    private String worktreeBaseOf(LoopTask task) {
+        return task.getWorkspace() != null ? task.getWorkspace() : engine.getWorkspace();
+    }
+
+    /**
+     * 释放本轮 worktree：先提交 AI 产出的改动，再删除工作树目录。
+     *
+     * <p>worktree 目录是单轮一次性的，但其上的 {@code loop/<taskId>} 分支是持久的：
+     * 成果提交到分支后才能删目录，否则每轮都在销毁 AI 的工作。
+     * 提交失败时保留目录，将丢失风险转为可排查的残留目录。</p>
+     */
+    private void releaseWorktree(LoopTask task, String worktreePath) {
+        WorktreeManager.CommitOutcome outcome = getWorktreeManager()
+                .commitAll(worktreePath, "loop(" + task.getId() + "): iteration " + task.getCurrentIteration());
+
+        if (outcome == WorktreeManager.CommitOutcome.FAILED) {
+            LOG.warn("Loop task '{}' worktree has uncommitted changes and commit failed, keep dir for manual recovery: {}",
+                    task.getId(), worktreePath);
+            return;
+        }
+
+        // 保留 loop/ 分支（可能已承载多轮成果），仅删除本轮工作树目录
+        getWorktreeManager().remove(worktreePath, false);
+        LOG.debug("Loop task '{}' worktree released ({})", task.getId(), outcome);
     }
 
     /**

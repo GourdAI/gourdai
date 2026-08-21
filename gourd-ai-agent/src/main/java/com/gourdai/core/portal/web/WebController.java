@@ -141,7 +141,7 @@ public class WebController {
                 return webGate.isSessionBusy(sessionId);
             });
 
-            loopScheduler.addTaskExecutor((sessionId, prompt, agentName, channelNotify) -> {
+            loopScheduler.addTaskExecutor((sessionId, prompt, agentName, task) -> {
                 if (sessionId.startsWith(SessionLocator.PREFIX_WORK) == false) {
                     return null;
                 }
@@ -153,9 +153,22 @@ public class WebController {
                     effectiveInput = "@" + agentName + " " + prompt;
                 }
 
+                // 工作空间：任务显式指定优先（自动化页面选择的执行目录），否则回退会话注册表中的所属根。
+                // 注意：任务绑定了前台会话时，该会话的所属根由用户决定，不得用任务 workspace 反向改绑——
+                // safeChatInputAndCaptureLoop 会 bindSessionRoot（持久化），否则会静默改变用户会话的落盘与屒属目录。
+                String projectRoot = (task != null && task.getBoundSessionId() == null && task.getWorkspace() != null)
+                        ? task.getWorkspace()
+                        : sessionLocator.boundRoot(sessionId);
+
+                // Worktree 隔离：开启且本轮创建成功时，AI 应在工作树内作业。
+                // 该目录仅本轮有效（执行完即被删除），故作为瞬态根单独传入，不得写入会话注册表。
+                String worktreeRoot = task != null ? task.getActiveWorktreePath() : null;
+
                 // Loop 任务可能长时间执行（数小时），使用 Loop 专用无限等待版本；
-                // 透传会话所属工作空间根（取自注册表，重启后仍可恢复），保证 __cwd 与落盘目录正确
-                return webGate.safeChatInputAndCaptureLoop(sessionId, sessionLocator.boundRoot(sessionId), effectiveInput, "Loop");
+                // 透传工作空间根保证 __cwd 与落盘目录正确，并按任务定义应用模型与思考档位
+                return webGate.safeChatInputAndCaptureLoop(sessionId, projectRoot, worktreeRoot, effectiveInput, "Loop",
+                        task != null ? task.getModelName() : null,
+                        task != null ? task.getThinkingDepth() : null);
             });
         }
     }
@@ -1049,6 +1062,12 @@ public class WebController {
             item.put("worktreeEnabled", t.isWorktreeEnabled());
             item.put("maxIterations", t.getMaxIterations());
             item.put("runNow", t.isRunNow());
+            // 执行上下文（自动化页面的工作空间 / 模型 / 思考档位）：未设置时不输出，前端视为“跟随默认”
+            if (t.getWorkspace() != null) item.put("workspace", t.getWorkspace());
+            if (t.getModelName() != null) item.put("modelName", t.getModelName());
+            if (t.getThinkingDepth() != null) item.put("thinkingDepth", t.getThinkingDepth());
+            if (t.getChannelNotify() != null) item.put("channelNotify", t.getChannelNotify());
+            if (t.getBoundSessionId() != null) item.put("boundSessionId", t.getBoundSessionId());
             data.add(item);
         }
         return Result.succeed(data);
@@ -1073,6 +1092,7 @@ public class WebController {
             if (t.getId().equals(taskId)) {
                 Map<String, Object> item = new LinkedHashMap<>();
                 item.put("id", t.getId());
+                if (t.getName() != null) item.put("name", t.getName());
                 item.put("prompt", t.getPrompt());
                 item.put("intervalMinutes", t.getIntervalMinutes());
                 if (t.getCron() != null) item.put("cron", t.getCron());
@@ -1086,6 +1106,12 @@ public class WebController {
                 item.put("worktreeEnabled", t.isWorktreeEnabled());
                 item.put("maxIterations", t.getMaxIterations());
                 item.put("runNow", t.isRunNow());
+                // 执行上下文：供编辑页回填
+                if (t.getWorkspace() != null) item.put("workspace", t.getWorkspace());
+                if (t.getModelName() != null) item.put("modelName", t.getModelName());
+                if (t.getThinkingDepth() != null) item.put("thinkingDepth", t.getThinkingDepth());
+                if (t.getChannelNotify() != null) item.put("channelNotify", t.getChannelNotify());
+                if (t.getBoundSessionId() != null) item.put("boundSessionId", t.getBoundSessionId());
                 return Result.succeed(item);
             }
         }
@@ -1105,7 +1131,12 @@ public class WebController {
                           @Param(value = "goalCondition", required = false) String goalCondition,
                           @Param(value = "worktreeEnabled", required = false) Boolean worktreeEnabled,
                           @Param(value = "maxIterations", required = false) Integer maxIterations,
-                          @Param(value = "runNow", required = false) Boolean runNow) {
+                          @Param(value = "runNow", required = false) Boolean runNow,
+                          @Param(value = "taskWorkspace", required = false) String taskWorkspace,
+                          @Param(value = "modelName", required = false) String modelName,
+                          @Param(value = "thinkingDepth", required = false) String thinkingDepth,
+                          @Param(value = "channelNotify", required = false) String channelNotify,
+                          @Param(value = "boundSessionId", required = false) String boundSessionId) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure(400, "Invalid sessionId");
         }
@@ -1123,7 +1154,9 @@ public class WebController {
                 goalCondition,
                 worktreeEnabled != null ? worktreeEnabled : false,
                 maxIterations,
-                runNow != null && runNow
+                runNow != null && runNow,
+                taskWorkspace, modelName, thinkingDepth,
+                channelNotify, boundSessionId
         );
 
         task.setName(name);
@@ -1153,7 +1186,11 @@ public class WebController {
                              @Param(value = "worktreeEnabled", required = false) Boolean worktreeEnabled,
                              @Param(value = "channelNotify", required = false) String channelNotify,
                              @Param(value = "maxIterations", required = false) Integer maxIterations,
-                             @Param(value = "runNow", required = false) Boolean runNow) {
+                             @Param(value = "runNow", required = false) Boolean runNow,
+                             @Param(value = "taskWorkspace", required = false) String taskWorkspace,
+                             @Param(value = "modelName", required = false) String modelName,
+                             @Param(value = "thinkingDepth", required = false) String thinkingDepth,
+                             @Param(value = "boundSessionId", required = false) String boundSessionId) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure(400, "Invalid sessionId");
         }
@@ -1174,17 +1211,35 @@ public class WebController {
         String effectiveCron = cron != null ? cron : existing.getCron();
         String effectivePrompt = (prompt != null && !prompt.trim().isEmpty()) ? prompt.trim() : existing.getPrompt();
 
+        // 执行上下文：前端未传则沿用原值；传空串表示“清除选择（跟随默认）”，LoopTask 会归一为 null
+        String effectiveWorkspace = taskWorkspace != null ? taskWorkspace : existing.getWorkspace();
+        String effectiveModelName = modelName != null ? modelName : existing.getModelName();
+        String effectiveThinking = thinkingDepth != null ? thinkingDepth : existing.getThinkingDepth();
+        String effectiveChannel = channelNotify != null ? channelNotify : existing.getChannelNotify();
+        String effectiveBoundSession = boundSessionId != null ? boundSessionId : existing.getBoundSessionId();
+
         LoopTask newTask = existing.copyWithUpdate(
                 effectivePrompt, interval, effectiveCron,
                 goalCondition != null ? goalCondition : existing.getGoalCondition(),
                 worktreeEnabled != null ? worktreeEnabled : existing.isWorktreeEnabled(),
                 maxIterations != null ? maxIterations : existing.getMaxIterations(),
-                runNow != null ? runNow : existing.isRunNow()
+                runNow != null ? runNow : existing.isRunNow(),
+                effectiveWorkspace, effectiveModelName, effectiveThinking,
+                effectiveChannel, effectiveBoundSession
         );
 
         // 保留 enabled 和 name
         newTask.setEnabled(existing.isEnabled());
         newTask.setName(name != null ? name : existing.getName());
+
+        // 运行时会话：工作空间未变时复用（保留任务历史上下文）；已变则不继承，
+        // 避免新工作空间下的任务继续写入/读取旧目录的会话历史（下次触发会重建）。
+        if (java.util.Objects.equals(existing.getWorkspace(), newTask.getWorkspace())) {
+            newTask.setRuntimeSessionId(existing.getRuntimeSessionId());
+        } else if (existing.getRuntimeSessionId() != null && sessionLocator != null) {
+            // 工作空间已变：旧运行时会话不再使用，同步注销其所属根登记，避免注册表持续残留
+            sessionLocator.unbind(existing.getRuntimeSessionId());
+        }
 
         loopScheduler.update(sessionId, workspace, harnessSessions, taskId, newTask);
         return Result.succeed();
@@ -1518,6 +1573,32 @@ public class WebController {
     public Result<Map> fileRead(@Param("path") String path,
                                 @Param(value = "root", required = false) String root) throws Exception {
         return fileService.read(path, root);
+    }
+
+    /**
+     * 工作区文件原始字节流接口 —— Code 模式预览图片/PDF/音视频等二进制文件。
+     * <p>沿用 filer/read 同一套路径安全校验（拒绝 {@code ..}、必须位于项目根内），
+     * 校验通过后按文件扩展名设置 Content-Type 直接输出原始字节（最大 50MB）。</p>
+     *
+     * @see FileService#resolveForRaw(String, String)
+     */
+    @Get
+    @Mapping("/web/chat/filer/raw")
+    public void fileRaw(Context ctx, @Param("path") String path,
+                        @Param(value = "root", required = false) String root) throws Exception {
+        Result<File> resolved = fileService.resolveForRaw(path, root);
+        if (resolved.getCode() != 200 || resolved.getData() == null) {
+            ctx.status(resolved.getCode() > 0 ? resolved.getCode() : 500);
+            ctx.output(resolved.getDescription() != null ? resolved.getDescription() : "Error");
+            return;
+        }
+
+        File file = resolved.getData();
+        ctx.status(200);
+        ctx.headerSet("Cache-Control", "no-store");
+        ctx.contentType(FileService.contentTypeOf(file.getName()));
+        ctx.contentLength(file.length());
+        ctx.output(Files.readAllBytes(file.toPath()));
     }
 
     /**

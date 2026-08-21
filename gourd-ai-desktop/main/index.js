@@ -17,7 +17,7 @@
  * 语音识别、剪贴板等能力可用（自定义协议 app:// 会禁用这些）。详见 ui-server.js。
  */
 
-const { app, BrowserWindow, screen, Menu, Tray, ipcMain, nativeImage, session } = require('electron');
+const { app, BrowserWindow, screen, Menu, Tray, ipcMain, nativeImage, session, shell } = require('electron');
 const path = require('path');
 const {
   findAvailablePort,
@@ -112,6 +112,17 @@ function awaitBackendReady(timeoutMs) {
 }
 
 /**
+ * 外链交给系统浏览器打开：仅放行 http(s) 协议，防止 javascript:/file: 等注入。
+ * @param {string} url
+ */
+function openExternalSafe(url) {
+  if (!/^https?:\/\//i.test(url)) return;
+  Promise.resolve(shell.openExternal(url)).catch((e) => {
+    console.warn('[gourd-ai-desktop] 打开外链失败:', url, e && e.message);
+  });
+}
+
+/**
  * 创建主窗口
  */
 function createMainWindow() {
@@ -139,6 +150,21 @@ function createMainWindow() {
 
   // 禁止页面 <title> 覆盖窗口标题
   mainWindow.on('page-title-updated', (e) => e.preventDefault());
+
+  // 外链（target="_blank" / window.open）一律交给系统浏览器。
+  // Electron 默认会在应用内弹裸新窗口（多一个渲染进程、无导航栏体验差），这里拦截改外部打开。
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    openExternalSafe(url);
+    return { action: 'deny' };
+  });
+
+  // 防主窗口本体被裸链接（如 markdown 渲染、未带 target=_blank 的 <a>）导航到外站。
+  // will-navigate 只由渲染层/用户点击触发，loadURL 等编程式导航不经过，不影响本地 UI 首载。
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    if (uiOrigin && url.startsWith(uiOrigin)) return;
+    e.preventDefault();
+    openExternalSafe(url);
+  });
 
   // 加载本地 UI 服务器（http://localhost:{uiPort}，秒开，无需等待后端）。
   // 界面里的 /web/** 接口请求与 WebSocket 由该服务器同源反向代理到本地 jar，

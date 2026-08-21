@@ -140,7 +140,6 @@
     "cmd_commands": "快捷命令",
     "skills": "技能",
     "subagent": "子代理",
-    "loop_task": "定时任务",
     "history_msg": "历史消息",
     "plus_more": "更多",
     "voice_input": "语音输入",
@@ -222,7 +221,6 @@
       "mcp": "MCP配置",
       "openapi": "接口配置",
       "lsp": "LSP配置",
-      "loop": "定时任务",
       "channel": "远控通道",
       "acp": "ACP配置",
       "about": "关于"
@@ -543,9 +541,6 @@
       "checker_agent": "验证者子代理",
       "max_iter": "最大迭代",
       "worktree_isolation": "Worktree 隔离",
-      "worktree_desc": "在独立分支执行",
-      "run_immediately": "首次立即执行",
-      "run_immediately_desc": "保存后立即执行一次",
       "test_run": "测试运行",
       "save": "保存",
       "saving": "保存中…",
@@ -554,7 +549,6 @@
       "status_disabled": "已停用",
       "status_running": "运行中",
       "status_ready": "就绪",
-      "executed_times": "已执行 {0} 次",
       "last_exec": "上次: {0}",
       "iteration": "第 {0} 次",
       "cron_format": "cron: {0}",
@@ -580,18 +574,7 @@
       "minutes_ago": "{0}分钟前",
       "hours_ago": "{0}小时前",
       "days_ago": "{0}天前",
-      "loop_task_list": "循环任务 ({0})",
-      "new_loop": "新建循环",
-      "edit_loop": "编辑循环 #{0}",
-      "loop_task_desc": "任务描述",
-      "loop_interval": "间隔",
-      "loop_fixed": "固定间隔",
       "loop_cron": "Cron 表达式",
-      "loop_exec_strategy": "执行策略（测试）",
-      "loop_goal": "目标完成检测描述（goal）",
-      "loop_trigger_btn": "测试运行",
-      "loop_save": "保存",
-      "loop_not_found": "未找到任务数据",
       "weekday_1": "周一",
       "weekday_2": "周二",
       "weekday_3": "周三",
@@ -765,6 +748,7 @@
     "expand_failed": "展开失败，重试",
     "input_tokens": "输入 Token",
     "cache_read_tokens": "缓存读取 Token",
+    "cache_hit_rate": "缓存命中率",
     "output_tokens": "输出 Token",
     "elapsed_time": "耗时",
     "agent_label": "智能体",
@@ -792,7 +776,7 @@
     "no_projects": "还没有项目，点下方添加",
     "remove_no_delete": "移除（不删除磁盘目录）",
     "open_folder": "打开文件夹",
-    "new_project": "新建项目",
+    
     "project_added": "项目已添加",
     "add_failed": "添加失败",
     "add_failed_no_dir": "添加失败（目录不存在？）",
@@ -837,8 +821,10 @@
       "expandTree": "展开文件树"
     },
     "confirm": "确定",
-    "back_to_tasks": "返回任务",
-    "more_actions": "更多操作"
+    "back": "返回",
+    "preview_binary_title": "二进制文件",
+    "preview_binary_desc": "该文件为二进制格式，暂不支持预览",
+    "preview_load_failed": "预览加载失败"
   },
   "common": {
     "name": "名称",
@@ -965,25 +951,39 @@
     "appkey": "AppKey",
     "appsecret": "AppSecret"
   },
-  "loop": {
-    "templates": {
-      "auto_fix_name": "自动修复循环",
-      "auto_fix_desc": "反复尝试修复直到测试通过",
-      "auto_fix_prompt": "运行测试套件，分析失败原因，并尝试修复代码",
-      "daily_review_name": "每日代码审查",
-      "daily_review_desc": "定时进行每日代码审查和风险汇总",
-      "daily_review_prompt": "审查昨天所有的代码提交，汇总变更内容和潜在风险",
-      "daily_memory_name": "夜间记忆整理",
-      "daily_memory_desc": "夜间整理对话记忆并提取用户偏好",
-      "daily_memory_prompt": "回顾今天所有的对话，提取用户偏好、技术决策和重要约束，存储到长期记忆中",
-      "ci_monitor_name": "CI 监控",
-      "ci_monitor_desc": "定期检查构建状态，分析失败原因",
-      "ci_monitor_prompt": "检查最近的 CI 构建状态，分析失败案例并生成汇总报告",
-      "health_check_name": "服务健康检查",
-      "health_check_desc": "定期探测服务状态，发现异常时告警",
-      "health_check_prompt": "检查所有核心服务的健康状态（HTTP 端点），如有异常汇总告警"
-    },
-    "fill_template": "填充模板"
+  "automation": {
+    "title": "自动化",
+    "desc": "创建定时任务，让 AI 按计划自动执行。",
+    "created_tasks": "已创建任务",
+    "instruction": "指令",
+    "model_default": "默认模型",
+    "templates": "定时任务模板",
+    "tpl": {
+      "standup": {
+        "name": "晨会动态",
+        "desc": "汇总上一个工作日以来的提交、模块变化与待跟进事项。",
+        "sched": "工作日 09:00",
+        "prompt": "汇总上一个工作日以来的提交、模块变化、CI 状态和待跟进事项，最终生成不超过 5 条的晨会口述摘要。只读分析，不修改代码或外部状态；证据不足时明确说明，不要推测。"
+      },
+      "risk": {
+        "name": "风险扫描",
+        "desc": "检查最近 24 小时的代码变更，报告有直接证据的高置信风险。",
+        "sched": "每天 10:00",
+        "prompt": "检查最近 24 小时的代码变更，识别运行错误、数据丢失、权限绕过、资源泄漏及跨端兼容等高置信风险，并附代码和 commit/diff 证据。只读分析，只使用可验证的仓库事实；证据不足时明确说明，不推测，也不修改代码或外部状态。"
+      },
+      "release": {
+        "name": "发布简报",
+        "desc": "整理本周已合并变更，生成团队版与用户版发布摘要。",
+        "sched": "每周五 17:00",
+        "prompt": "整理本周已合并的变更，按新功能、修复、重构、破坏性变更分类，分别生成面向团队的技术摘要和面向用户的发布说明。只读分析，逐条附 commit 或 PR 依据；不修改代码或外部状态。"
+      },
+      "docsync": {
+        "name": "文档同步检查",
+        "desc": "对照近期实现变更，找出可能遗漏的文档更新。",
+        "sched": "每周四 15:00",
+        "prompt": "对照近期的实现变更，检查 README、docs、配置说明和使用示例是否与当前代码一致，列出需要补充或修正的文档位置并说明原因。只读分析，不直接改动文档；无法确认的项标注为待人工确认。"
+      }
+    }
   },
   "queue": {
     "title": "消息执行队列",

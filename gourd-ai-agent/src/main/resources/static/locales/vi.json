@@ -140,7 +140,6 @@
     "cmd_commands": "Lệnh tắt",
     "skills": "Kỹ năng",
     "subagent": "Tác nhân con",
-    "loop_task": "Tác vụ lặp",
     "history_msg": "Lịch sử tin nhắn",
     "plus_more": "Thêm",
     "voice_input": "Nhập thoại",
@@ -222,7 +221,6 @@
       "mcp": "Cấu hình MCP",
       "openapi": "Cấu hình OpenAPI",
       "lsp": "Cấu hình LSP",
-      "loop": "Lập lịch",
       "channel": "Từ xa",
       "acp": "ACP",
       "about": "Giới thiệu"
@@ -543,9 +541,6 @@
       "checker_agent": "Subagent xác minh",
       "max_iter": "Số lặp tối đa",
       "worktree_isolation": "Cách ly Worktree",
-      "worktree_desc": "Thực thi trên nhánh độc lập",
-      "run_immediately": "Thực thi ngay lần đầu",
-      "run_immediately_desc": "Thực thi ngay sau khi lưu",
       "test_run": "Chạy thử",
       "save": "Lưu",
       "saving": "Đang lưu…",
@@ -554,7 +549,6 @@
       "status_disabled": "Đã vô hiệu hóa",
       "status_running": "Đang chạy",
       "status_ready": "Sẵn sàng",
-      "executed_times": "Đã thực thi {0} lần",
       "last_exec": "Lần trước: {0}",
       "iteration": "Lần thứ {0}",
       "cron_format": "cron: {0}",
@@ -580,18 +574,7 @@
       "minutes_ago": "{0} phút trước",
       "hours_ago": "{0} giờ trước",
       "days_ago": "{0} ngày trước",
-      "loop_task_list": "Tác vụ lặp ({0})",
-      "new_loop": "Tạo vòng lặp mới",
-      "edit_loop": "Chỉnh sửa vòng lặp #{0}",
-      "loop_task_desc": "Mô tả tác vụ",
-      "loop_interval": "Khoảng cách",
-      "loop_fixed": "Khoảng cách cố định",
       "loop_cron": "Biểu thức Cron",
-      "loop_exec_strategy": "Chiến lược thực thi (kiểm tra)",
-      "loop_goal": "Mô tả phát hiện hoàn thành mục tiêu (goal)",
-      "loop_trigger_btn": "Chạy thử",
-      "loop_save": "Lưu",
-      "loop_not_found": "Không tìm thấy dữ liệu tác vụ",
       "weekday_1": "T2",
       "weekday_2": "T3",
       "weekday_3": "T4",
@@ -765,6 +748,7 @@
     "expand_failed": "Mở rộng thất bại, thử lại",
     "input_tokens": "Token đầu vào",
     "cache_read_tokens": "Token đọc bộ nhớ đệm",
+    "cache_hit_rate": "Tỷ lệ trúng bộ nhớ đệm",
     "output_tokens": "Token đầu ra",
     "elapsed_time": "Thời gian",
     "agent_label": "Tác nhân",
@@ -792,7 +776,7 @@
     "no_projects": "Chưa có dự án, nhấp bên dưới để thêm",
     "remove_no_delete": "Xóa (không xóa thư mục trên đĩa)",
     "open_folder": "Mở thư mục",
-    "new_project": "Tạo dự án mới",
+    
     "project_added": "Đã thêm dự án",
     "add_failed": "Thêm thất bại",
     "add_failed_no_dir": "Thêm thất bại (thư mục không tồn tại?)",
@@ -837,8 +821,10 @@
       "expandTree": "Mở rộng cây tệp"
     },
     "confirm": "Xác nhận",
-    "back_to_tasks": "Quay lại nhiệm vụ",
-    "more_actions": "Thao tác khác"
+    "back": "Quay lại",
+    "preview_binary_title": "Tệp nhị phân",
+    "preview_binary_desc": "Tệp này ở định dạng nhị phân, chưa hỗ trợ xem trước",
+    "preview_load_failed": "Tải bản xem trước thất bại"
   },
   "common": {
     "name": "Tên",
@@ -965,25 +951,39 @@
     "appkey": "AppKey",
     "appsecret": "AppSecret"
   },
-  "loop": {
-    "templates": {
-      "auto_fix_name": "Vòng lặp tự sửa",
-      "auto_fix_desc": "Thử sửa lặp lại đến khi kiểm thử đạt",
-      "auto_fix_prompt": "Chạy bộ kiểm thử, phân tích lỗi và thử sửa mã",
-      "daily_review_name": "Đánh giá mã hằng ngày",
-      "daily_review_desc": "Đánh giá mã và tổng hợp rủi ro hằng ngày theo lịch",
-      "daily_review_prompt": "Xem lại tất cả commit hôm qua và tổng hợp thay đổi cùng rủi ro tiềm ẩn",
-      "daily_memory_name": "Củng cố bộ nhớ ban đêm",
-      "daily_memory_desc": "Sắp xếp bộ nhớ hội thoại ban đêm và trích xuất sở thích người dùng",
-      "daily_memory_prompt": "Xem lại tất cả hội thoại hôm nay, trích xuất sở thích, quyết định kỹ thuật và ràng buộc quan trọng rồi lưu vào bộ nhớ dài hạn",
-      "ci_monitor_name": "Giám sát CI",
-      "ci_monitor_desc": "Kiểm tra định kỳ trạng thái build và phân tích lỗi",
-      "ci_monitor_prompt": "Kiểm tra trạng thái build CI gần đây, phân tích lỗi và tạo báo cáo tổng hợp",
-      "health_check_name": "Kiểm tra sức khỏe dịch vụ",
-      "health_check_desc": "Định kỳ thăm dò trạng thái dịch vụ và cảnh báo khi bất thường",
-      "health_check_prompt": "Kiểm tra sức khỏe của tất cả dịch vụ cốt lõi (endpoint HTTP) và tổng hợp cảnh báo khi có bất thường"
-    },
-    "fill_template": "Điền mẫu"
+  "automation": {
+    "title": "Tự động hóa",
+    "desc": "Tạo tác vụ định kỳ và để AI tự động thực hiện theo lịch.",
+    "created_tasks": "Tác vụ đã tạo",
+    "instruction": "Chỉ thị",
+    "model_default": "Mô hình mặc định",
+    "templates": "Mẫu tác vụ định kỳ",
+    "tpl": {
+      "standup": {
+        "name": "Bản tin họp sáng",
+        "desc": "Tổng hợp các commit, thay đổi module và việc cần theo dõi kể từ ngày làm việc trước.",
+        "sched": "Ngày làm việc 09:00",
+        "prompt": "Tổng hợp các commit, thay đổi module, trạng thái CI và những việc cần theo dõi kể từ ngày làm việc trước, cuối cùng tạo bản tóm tắt trình bày trong họp sáng với không quá 5 mục. Chỉ phân tích ở chế độ đọc, không sửa mã nguồn hay trạng thái bên ngoài; khi chứng cứ không đủ thì nêu rõ, không suy đoán."
+      },
+      "risk": {
+        "name": "Quét rủi ro",
+        "desc": "Kiểm tra các thay đổi mã trong 24 giờ qua và báo cáo những rủi ro có độ tin cậy cao kèm chứng cứ trực tiếp.",
+        "sched": "Hằng ngày 10:00",
+        "prompt": "Kiểm tra các thay đổi mã trong 24 giờ qua, xác định các rủi ro có độ tin cậy cao như lỗi khi chạy, mất dữ liệu, vượt qua kiểm tra quyền, rò rỉ tài nguyên và vấn đề tương thích đa nền tảng, kèm theo chứng cứ từ mã nguồn và commit/diff. Chỉ phân tích ở chế độ đọc, chỉ dùng các dữ kiện có thể kiểm chứng trong kho mã; khi chứng cứ không đủ thì nêu rõ, không suy đoán và không sửa mã nguồn hay trạng thái bên ngoài."
+      },
+      "release": {
+        "name": "Bản tin phát hành",
+        "desc": "Sắp xếp các thay đổi đã hợp nhất trong tuần, tạo bản tóm tắt phát hành cho nhóm và cho người dùng.",
+        "sched": "Thứ Sáu hằng tuần 17:00",
+        "prompt": "Sắp xếp các thay đổi đã được hợp nhất trong tuần này, phân loại theo tính năng mới, sửa lỗi, tái cấu trúc và thay đổi gây mất tương thích, rồi tạo riêng bản tóm tắt kỹ thuật cho nhóm và ghi chú phát hành cho người dùng. Chỉ phân tích ở chế độ đọc, mỗi mục đều kèm căn cứ là commit hoặc PR; không sửa mã nguồn hay trạng thái bên ngoài."
+      },
+      "docsync": {
+        "name": "Kiểm tra đồng bộ tài liệu",
+        "desc": "Đối chiếu với các thay đổi triển khai gần đây để tìm ra những phần tài liệu có thể bị bỏ sót.",
+        "sched": "Thứ Năm hằng tuần 15:00",
+        "prompt": "Đối chiếu với các thay đổi triển khai gần đây, kiểm tra xem README, docs, phần mô tả cấu hình và ví dụ sử dụng có khớp với mã nguồn hiện tại hay không, liệt kê những vị trí tài liệu cần bổ sung hoặc chỉnh sửa và nêu rõ lý do. Chỉ phân tích ở chế độ đọc, không trực tiếp sửa tài liệu; những mục không thể xác nhận thì đánh dấu là chờ người kiểm tra thủ công."
+      }
+    }
   },
   "queue": {
     "title": "Hàng đợi tin nhắn",

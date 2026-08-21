@@ -36,31 +36,17 @@ body.is-electron.is-mac:not(.code-mode) .sidebar-header { padding-top: 40px; }
 .main-nav-kbd { font-size: 11px; color: var(--text-tertiary); flex-shrink: 0; }
 .sidebar-title { padding: 16px 16px 8px; font-size: 11px; color: var(--text-secondary); font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
 .sidebar-list { flex: 1; overflow-y: auto; padding: 4px 10px; }
-.sidebar-item { padding: 10px 12px; border-radius: 10px; cursor: pointer; color: var(--text-sidebar); font-size: 13px; display: flex; align-items: center; min-height: 22px; transition: all 0.15s; margin-bottom: 2px; }
-.sidebar-item:hover { background: var(--bg-hover); }
+.sidebar-item { position: relative; padding: 10px 12px; border-radius: 10px; cursor: pointer; color: var(--text-sidebar); font-size: 13px; display: flex; align-items: center; min-height: 22px; transition: all 0.15s; margin-bottom: 2px; }
+.sidebar-item:hover, .sidebar-item:focus-within { background: var(--bg-hover); }
 .sidebar-item.active { background: var(--accent-light); color: var(--accent); font-weight: 500; }
 .sidebar-item-label { flex: 1; min-width: 0; line-height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sidebar-item-del { display: none; flex-shrink: 0; width: 22px; height: 22px; border: none; background: none; border-radius: 6px; cursor: pointer; color: var(--text-secondary); font-size: 14px; align-items: center; justify-content: center; margin-left: 4px; transition: all 0.15s; }
-.sidebar-item:hover .sidebar-item-del { display: flex; }
+/* 会话行悬停操作组（重命名 / 删除）：右侧绝对定位悬浮 + 左侧渐变遮罩，与项目行 .proj-actions 同规格；
+   整组 opacity 淡入淡出，悬停无布局跳动，隐藏态不可点击（键盘聚焦亦显示，兼顾可访问性）；
+   按钮规格共用 .proj-action-btn（22x22 圆角），渐变遮罩色随行底色（悬停=--bg-hover，选中=--accent-light）。 */
+.item-actions { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; align-items: center; padding-left: 16px; background: linear-gradient(to right, transparent, var(--bg-hover) 14px); opacity: 0; pointer-events: none; transition: opacity 0.15s; }
+.sidebar-item:hover .item-actions, .sidebar-item:focus-within .item-actions { opacity: 1; pointer-events: auto; }
+.sidebar-item.active .item-actions { background: linear-gradient(to right, transparent, var(--accent-light) 14px); }
 .sidebar-item-del:hover { background: var(--bg-danger-subtle); color: var(--color-danger); }
-.sidebar-item-rename {
-    display: none;
-    background: none;
-    border: none;
-    color: var(--color-text-tertiary);
-    cursor: pointer;
-    padding: 2px 4px;
-    font-size: 14px;
-    border-radius: 4px;
-    transition: all 0.15s;
-}
-.sidebar-item:hover .sidebar-item-rename {
-    display: inline-flex;
-}
-.sidebar-item-rename:hover {
-    color: var(--color-text-primary);
-    background: rgba(127,127,127,0.15);
-}
 /* Chat 侧栏：历史 tab 行（对话/项目两个 pill tab + 展开/过滤/清空操作按钮；code 模式隐藏整行） */
 .history-tabs-row { display: flex; align-items: center; gap: 4px; margin: 6px 10px 8px; flex-shrink: 0; }
 .history-tabs { display: flex; gap: 4px; flex: 1; min-width: 0; }
@@ -85,7 +71,7 @@ body.is-electron.is-mac:not(.code-mode) .sidebar-header { padding-top: 40px; }
 /* Chat 聚合视图：小节标题（项目 / 任务） */
 .sidebar-section-title { padding: 10px 8px 6px; font-size: 11px; color: var(--text-tertiary); font-weight: 600; letter-spacing: 1px; }
 /* 项目文件夹节点（可展开/收起，展开态箭头旋转 90°），其会话嵌套在下方缩进区 */
-.proj-node { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; cursor: pointer; color: var(--text-sidebar); font-size: 13px; transition: all 0.15s; }
+.proj-node { position: relative; display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; cursor: pointer; color: var(--text-sidebar); font-size: 13px; transition: all 0.15s; }
 .proj-node:hover { background: var(--bg-hover); }
 .proj-node svg { flex-shrink: 0; }
 .proj-chevron { color: var(--text-tertiary); transition: transform 0.15s; }
@@ -93,12 +79,14 @@ body.is-electron.is-mac:not(.code-mode) .sidebar-header { padding-top: 40px; }
 .proj-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .proj-sessions { display: none; margin: 0 0 6px 15px; border-left: 1px solid var(--border-color); padding-left: 6px; }
 .proj-node.expanded + .proj-sessions { display: block; }
-/* 项目行悬停按钮：进入专注模式 / 从列表移除，默认隐藏，悬停行时显示（与会话行 rename/del 按钮一致） */
-.proj-open-code { display: none; flex-shrink: 0; width: 22px; height: 22px; border: none; background: none; border-radius: 6px; cursor: pointer; color: var(--text-tertiary); align-items: center; justify-content: center; transition: all 0.15s; }
-.proj-node:hover .proj-open-code { display: flex; }
-.proj-open-code:hover { background: rgba(127,127,127,0.15); color: var(--text-primary); }
-.proj-remove { display: none; flex-shrink: 0; width: 22px; height: 22px; border: none; background: none; border-radius: 6px; cursor: pointer; color: var(--text-tertiary); align-items: center; justify-content: center; transition: all 0.15s; }
-.proj-node:hover .proj-remove { display: flex; }
+/* 项目行悬停操作组（新建任务 / 进入专注模式 / 从列表移除）：
+   右侧绝对定位悬浮 + 左侧渐变遮罩（VS Code 风格），不挤压名称宽度、悬停无布局跳动；
+   整组 opacity 淡入淡出，隐藏态不可点击；按钮统一 22x22 圆角规格，hover 底色/字色按语义区分。 */
+.proj-actions { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; align-items: center; padding-left: 16px; background: linear-gradient(to right, transparent, var(--bg-hover) 14px); opacity: 0; pointer-events: none; transition: opacity 0.15s; }
+.proj-node:hover .proj-actions, .proj-node:focus-within .proj-actions { opacity: 1; pointer-events: auto; }
+.proj-action-btn, .item-action-btn { display: flex; flex-shrink: 0; width: 22px; height: 22px; border: none; background: none; border-radius: 6px; cursor: pointer; color: var(--text-tertiary); align-items: center; justify-content: center; transition: background 0.15s, color 0.15s; }
+.proj-action-btn:hover, .item-action-btn:hover { background: rgba(127,127,127,0.15); color: var(--text-primary); }
+.proj-new-chat:hover { background: rgba(127,127,127,0.15); color: var(--accent); }
 .proj-remove:hover { background: rgba(127,127,127,0.15); color: var(--color-danger); }
 .proj-sessions .sidebar-item { padding: 6px 8px; }
 /* 会话行右侧相对时间小字 */
@@ -288,6 +276,8 @@ body.is-electron.is-mac:not(.code-mode) .sidebar-header { padding-top: 40px; }
 
 /* Markdown 渲染容器：用 will-change 提示浏览器预优化布局，减少重排引起的跳动 */
 .md-content { padding: 2px 0; color: var(--text-ai-msg); font-size: 14px; contain: layout style paint; will-change: contents; }
+/* 空正文容器不占位：指针推进遗留的空 .md-content 若撑高会破坏卡片间 margin 折叠，导致间隔忽高忽低 */
+.md-content:empty { display: none; }
 .md-content > :first-child { margin-top: 0; }
 .md-content > :last-child { margin-bottom: 0; }
 /* 流式增量渲染的尾部包裹层：空 div 无边框/padding，外边距可穿透折叠，间距与平铺渲染一致；
@@ -373,18 +363,26 @@ body.is-electron.is-mac:not(.code-mode) .sidebar-header { padding-top: 40px; }
 .agent-card .tool-args { display: inline; order: 4; color: var(--text-tertiary); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
 
-/* 子智能体块内容体（默认隐藏，展开后显示；复用外部主智能体 md-content 样式） */
-.agent-card-body { display: none; padding: 10px 14px; font-size: 14px; color: var(--text-primary); line-height: 1.7; min-height: 0; }
+/* 子智能体块内容体（默认隐藏，展开后显示；复用外部主智能体 md-content 样式）。
+   限高滚动：子代理输出（思考 + 多个工具卡 + 正文）体量常远超主气泡单段，无 max-height 时
+   卡片会一路向下撑开、把主对话顶出视口。与 .tool-card-body(200px) / .thinking-block-body(300px)
+   同口径，卡体自身成为滚动容器。不加 overscroll-behavior：保留默认滚动链，卡体触底后继续滚
+   会自然传给消息区，避免鼠标停在卡上时页面滚动被卡体“吃掉”。 */
+.agent-card-body { display: none; padding: 10px 14px; font-size: 14px; color: var(--text-primary); line-height: 1.7; min-height: 0; max-height: 420px; overflow-y: auto; }
 .agent-card.expanded .agent-card-body { display: block; }
 /* 空结果体不占空间 */
 .agent-card.expanded .agent-card-body:empty { display: none; }
 /* 智能体块内的 md-content / thinking-block / tool-card 复用外部主智能体样式 */
 .agent-card-body > .md-content { color: var(--text-primary); font-size: 14px; line-height: 1.7; }
-.agent-card-body > .thinking-block { margin: 0 0 10px; }
+/* 卡体内间隔统一 8px（与 tool-card / tool-batch-group 一致），避免 thinking-block 10px 造成间隔忽高忽低；
+   code 模式由 code.css 更高优先级规则统一覆盖为 6px。 */
+.agent-card-body > .thinking-block { margin: 0 0 8px; }
 .agent-card-body > .thinking-block + .md-content { margin-top: 8px; }
+/* 卡体已限高滚动，内层思考块沿用 300px 会让嵌套滚动区几乎占满整卡；收敛到与卡内工具卡同量级 */
+.agent-card-body .thinking-block-body { max-height: 180px; }
 .agent-card-body > .tool-card, .agent-card-body > .tool-batch-group { margin: 8px 0; }
 /* 子智能体执行结果摘要（放在块内最末尾） */
-.agent-result-summary { margin-top: 12px; padding: 10px 14px; background: var(--bg-hover); border-radius: 8px; font-size: 13px; color: var(--text-secondary); line-height: 1.6; border-left: 3px solid var(--color-success); }
+.agent-result-summary { margin-top: 8px; padding: 10px 14px; background: var(--bg-hover); border-radius: 8px; font-size: 13px; color: var(--text-secondary); line-height: 1.6; border-left: 3px solid var(--color-success); }
 
 .chunk-error { margin: 8px 0; padding: 10px 14px; background: var(--error-bg); border-left: 3px solid var(--error-border); border-radius: 6px; color: var(--error-text); font-size: 13px; }
 .chunk-retry { margin: 8px 0; padding: 8px 14px; background: rgba(245,158,11,0.12); border-left: 3px solid var(--color-warning); border-radius: 6px; color: var(--color-warning); font-size: 13px; display: flex; align-items: center; gap: 8px; }
@@ -415,7 +413,8 @@ body.is-electron.is-mac:not(.code-mode) .sidebar-header { padding-top: 40px; }
 .msg-trace .trace-item:first-child { margin-left: 0; }
 .msg-trace .trace-ic { display: inline-flex; align-items: center; opacity: 0.85; line-height: 1; }
 .msg-trace .trace-ic svg { width: 11px; height: 11px; display: block; }
-.msg-meta-row { display: block; margin-top: 4px; line-height: 1.2; min-height: 13px; }
+.msg-meta-row { display: block; margin-top: 4px; line-height: 1.2; min-height: 0; }
+.msg-meta-row:has(.trace-item) { min-height: 13px; }
 
 /* Message Highlight Animation (locate/locateUserMessage) */
 .msg-row.user.msg-highlight .msg-bubble {
@@ -446,7 +445,7 @@ body.is-electron.is-mac:not(.code-mode) .sidebar-header { padding-top: 40px; }
 
 /* Thinking */
 .inline-thinking { display: flex; align-items: center; gap: 8px; padding: 8px 0; color: var(--text-secondary); font-size: 13px; will-change: visibility; }
-.inline-thinking.hidden-reserve { visibility: hidden; }
+.inline-thinking.hidden-reserve { display: none; }
 /* 子智能体卡片头部的等待指示器：多智能体并行时各自在卡片头部展示执行中状态。
    头部恒可见（卡片体默认折叠），margin-left:auto 靠右、flex-shrink:0 不被挤压（描述文本自行省略）。 */
 
@@ -462,7 +461,7 @@ body.is-electron.is-mac:not(.code-mode) .sidebar-header { padding-top: 40px; }
 @keyframes dot-bounce { 0%, 80%, 100% { opacity: 0.25; transform: scale(0.85); } 40% { opacity: 1; transform: scale(1.15); } }
 
 /* Thinking Block (collapsible reasoning content) */
-.thinking-block { margin: 0 0 12px; border: 1px solid var(--thinking-block-border); border-radius: 10px; overflow: hidden; background: var(--thinking-block-bg); }
+.thinking-block { margin: 0 0 10px; border: 1px solid var(--thinking-block-border); border-radius: 10px; overflow: hidden; background: var(--thinking-block-bg); }
 .thinking-block-header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; cursor: pointer; font-size: 13px; user-select: none; transition: background 0.15s; }
 .thinking-block-header:hover { background: var(--bg-hover); }
 .thinking-block-label { color: var(--text-secondary); font-weight: 500; }

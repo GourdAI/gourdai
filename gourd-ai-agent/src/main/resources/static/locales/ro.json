@@ -140,7 +140,6 @@
     "cmd_commands": "Comenzi rapide",
     "skills": "Abilități",
     "subagent": "Sub-agent",
-    "loop_task": "Sarcină programată",
     "history_msg": "Mesaje anterioare",
     "plus_more": "Mai multe",
     "voice_input": "Introducere vocală",
@@ -222,7 +221,6 @@
       "mcp": "Configurare MCP",
       "openapi": "Configurare OpenAPI",
       "lsp": "Configurare LSP",
-      "loop": "Programare",
       "channel": "La distanță",
       "acp": "ACP",
       "about": "Despre"
@@ -543,9 +541,6 @@
       "checker_agent": "Sub-agent de verificare",
       "max_iter": "Iterații maxime",
       "worktree_isolation": "Izolare Worktree",
-      "worktree_desc": "Execuție pe ramură independentă",
-      "run_immediately": "Execuție imediată inițială",
-      "run_immediately_desc": "Execută o dată imediat după salvare",
       "test_run": "Testare execuție",
       "save": "Salvare",
       "saving": "Se salvează…",
@@ -554,7 +549,6 @@
       "status_disabled": "Dezactivat",
       "status_running": "În execuție",
       "status_ready": "Pregătit",
-      "executed_times": "Executat de {0} ori",
       "last_exec": "Ultima dată: {0}",
       "iteration": "A {0}-a iterație",
       "cron_format": "cron: {0}",
@@ -580,18 +574,7 @@
       "minutes_ago": "acum {0} minute",
       "hours_ago": "acum {0} ore",
       "days_ago": "acum {0} zile",
-      "loop_task_list": "Sarcini ciclice ({0})",
-      "new_loop": "Ciclu nou",
-      "edit_loop": "Editare ciclu #{0}",
-      "loop_task_desc": "Descrierea sarcinii",
-      "loop_interval": "Interval",
-      "loop_fixed": "Interval fix",
       "loop_cron": "Expresie Cron",
-      "loop_exec_strategy": "Strategie de execuție (test)",
-      "loop_goal": "Descriere detecție obiectiv (goal)",
-      "loop_trigger_btn": "Testare execuție",
-      "loop_save": "Salvare",
-      "loop_not_found": "Datele sarcinii nu au fost găsite",
       "weekday_1": "Lun",
       "weekday_2": "Mar",
       "weekday_3": "Mie",
@@ -765,6 +748,7 @@
     "expand_failed": "Expandare eșuată, reîncercați",
     "input_tokens": "Token de intrare",
     "cache_read_tokens": "Token citire cache",
+    "cache_hit_rate": "Rată de succes cache",
     "output_tokens": "Token de ieșire",
     "elapsed_time": "Durată",
     "agent_label": "Agent",
@@ -792,7 +776,7 @@
     "no_projects": "Nu există proiecte încă, adăugați mai jos",
     "remove_no_delete": "Îndepărtare (fără ștergere din disc)",
     "open_folder": "Deschidere dosar",
-    "new_project": "Proiect nou",
+    
     "project_added": "Proiect adăugat",
     "add_failed": "Adăugare eșuată",
     "add_failed_no_dir": "Adăugare eșuată (director inexistent?)",
@@ -837,8 +821,10 @@
       "expandTree": "Expandare arbore fișiere"
     },
     "confirm": "Confirmă",
-    "back_to_tasks": "Înapoi la sarcini",
-    "more_actions": "Mai multe acțiuni"
+    "back": "Înapoi",
+    "preview_binary_title": "Fișier binar",
+    "preview_binary_desc": "Fișierul este în format binar și nu poate fi previzualizat",
+    "preview_load_failed": "Încărcarea previzualizării a eșuat"
   },
   "common": {
     "name": "Nume",
@@ -965,25 +951,39 @@
     "appkey": "AppKey",
     "appsecret": "AppSecret"
   },
-  "loop": {
-    "templates": {
-      "auto_fix_name": "Buclă auto-remediere",
-      "auto_fix_desc": "Încearcă remedieri până trec testele",
-      "auto_fix_prompt": "Rulează suita de teste, analizează eșecurile și încearcă să repari codul",
-      "daily_review_name": "Revizuire zilnică de cod",
-      "daily_review_desc": "Revizuire zilnică programată și sinteză de riscuri",
-      "daily_review_prompt": "Revizuiește toate commit-urile de ieri și rezumă modificările și riscurile",
-      "daily_memory_name": "Consolidare nocturnă a memoriei",
-      "daily_memory_desc": "Organizează memoria conversațiilor noaptea și extrage preferințele utilizatorului",
-      "daily_memory_prompt": "Revizuiește toate conversațiile de azi, extrage preferințele, deciziile tehnice și constrângerile și stochează-le în memoria de lungă durată",
-      "ci_monitor_name": "Monitorizare CI",
-      "ci_monitor_desc": "Verifică periodic starea build-ului și analizează eșecurile",
-      "ci_monitor_prompt": "Verifică starea recentă a build-urilor CI, analizează eșecurile și generează un raport de sinteză",
-      "health_check_name": "Verificare stare serviciu",
-      "health_check_desc": "Sondează periodic starea serviciului și alertează la anomalii",
-      "health_check_prompt": "Verifică starea tuturor serviciilor principale (endpoint-uri HTTP) și rezumă alertele pentru anomalii"
-    },
-    "fill_template": "Completează șablon"
+  "automation": {
+    "title": "Automatizare",
+    "desc": "Creează sarcini programate și lasă AI-ul să le execute automat.",
+    "created_tasks": "Sarcini create",
+    "instruction": "Instrucțiune",
+    "model_default": "Model implicit",
+    "templates": "Șabloane de sarcini programate",
+    "tpl": {
+      "standup": {
+        "name": "Raport de standup",
+        "desc": "Sintetizează commit-urile, modificările de module și aspectele de urmărit de la ziua lucrătoare precedentă.",
+        "sched": "Zile lucrătoare, 09:00",
+        "prompt": "Sintetizează commit-urile, modificările de module, starea CI și aspectele care necesită urmărire de la ziua lucrătoare precedentă și generează în final un rezumat oral pentru standup, de cel mult 5 puncte. Doar analiză în regim de citire; nu modifica codul sau starea externă. Când dovezile sunt insuficiente, precizează acest lucru explicit și nu face presupuneri."
+      },
+      "risk": {
+        "name": "Scanare de riscuri",
+        "desc": "Verifică modificările de cod din ultimele 24 de ore și raportează riscurile cu grad ridicat de certitudine, susținute de dovezi directe.",
+        "sched": "Zilnic, 10:00",
+        "prompt": "Verifică modificările de cod din ultimele 24 de ore și identifică riscuri cu grad ridicat de certitudine, precum erori de execuție, pierderi de date, ocolirea permisiunilor, scurgeri de resurse și probleme de compatibilitate între platforme, atașând dovezi din cod și din commit/diff. Doar analiză în regim de citire, folosind exclusiv fapte verificabile din depozit; când dovezile sunt insuficiente, precizează acest lucru explicit, nu face presupuneri și nu modifica codul sau starea externă."
+      },
+      "release": {
+        "name": "Buletin de lansare",
+        "desc": "Organizează modificările integrate în această săptămână și generează rezumate de lansare pentru echipă și pentru utilizatori.",
+        "sched": "În fiecare vineri, 17:00",
+        "prompt": "Organizează modificările integrate în această săptămână, clasifică-le în funcționalități noi, corecturi, refactorizări și modificări incompatibile, apoi generează separat un rezumat tehnic pentru echipă și note de lansare pentru utilizatori. Doar analiză în regim de citire, cu referință la commit sau PR pentru fiecare element; nu modifica codul sau starea externă."
+      },
+      "docsync": {
+        "name": "Verificarea sincronizării documentației",
+        "desc": "Compară cu modificările recente de implementare pentru a găsi actualizările de documentație posibil omise.",
+        "sched": "În fiecare joi, 15:00",
+        "prompt": "Compară cu modificările recente de implementare și verifică dacă README, docs, descrierile de configurare și exemplele de utilizare corespund codului actual; enumeră locurile din documentație care trebuie completate sau corectate și explică motivele. Doar analiză în regim de citire, fără a modifica direct documentația; marchează elementele care nu pot fi confirmate ca fiind în așteptarea verificării manuale."
+      }
+    }
   },
   "queue": {
     "title": "Coadă de mesaje",

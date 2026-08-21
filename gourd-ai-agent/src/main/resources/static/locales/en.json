@@ -140,7 +140,6 @@
     "cmd_commands": "Quick Commands",
     "skills": "Skills",
     "subagent": "Subagent",
-    "loop_task": "Scheduled Task",
     "history_msg": "History Messages",
     "plus_more": "More",
     "voice_input": "Voice Input",
@@ -222,7 +221,6 @@
       "mcp": "MCP",
       "openapi": "OpenAPI",
       "lsp": "LSP",
-      "loop": "Scheduler",
       "channel": "Remote",
       "acp": "ACP",
       "about": "About"
@@ -543,9 +541,6 @@
       "checker_agent": "Checker Agent",
       "max_iter": "Max Iterations",
       "worktree_isolation": "Worktree Isolation",
-      "worktree_desc": "Execute on a separate branch",
-      "run_immediately": "Run Immediately on First",
-      "run_immediately_desc": "Execute once right after saving",
       "test_run": "Test Run",
       "save": "Save",
       "saving": "Saving…",
@@ -554,7 +549,6 @@
       "status_disabled": "Disabled",
       "status_running": "Running",
       "status_ready": "Ready",
-      "executed_times": "Executed {0} times",
       "last_exec": "Last: {0}",
       "iteration": "Iteration {0}",
       "cron_format": "cron: {0}",
@@ -580,18 +574,7 @@
       "minutes_ago": "{0}m ago",
       "hours_ago": "{0}h ago",
       "days_ago": "{0}d ago",
-      "loop_task_list": "Loop Tasks ({0})",
-      "new_loop": "New Loop",
-      "edit_loop": "Edit Loop #{0}",
-      "loop_task_desc": "Task Description",
-      "loop_interval": "Interval",
-      "loop_fixed": "Fixed Interval",
       "loop_cron": "Cron Expression",
-      "loop_exec_strategy": "Execution Strategy (Beta)",
-      "loop_goal": "Goal Completion Description",
-      "loop_trigger_btn": "Test Run",
-      "loop_save": "Save",
-      "loop_not_found": "Task data not found",
       "delete_failed": "Delete failed",
       "parse_failed": "Parse failed",
       "upload_failed": "Upload failed",
@@ -765,6 +748,7 @@
     "expand_failed": "Expand failed, retry",
     "input_tokens": "Input Tokens",
     "cache_read_tokens": "Cache Read Tokens",
+    "cache_hit_rate": "Cache Hit Rate",
     "output_tokens": "Output Tokens",
     "elapsed_time": "Elapsed",
     "agent_label": "Agent",
@@ -792,7 +776,7 @@
     "no_projects": "No projects yet, click below to add",
     "remove_no_delete": "Remove (keep files on disk)",
     "open_folder": "Open Folder",
-    "new_project": "New Project",
+    
     "project_added": "Project added",
     "add_failed": "Failed to add",
     "add_failed_no_dir": "Failed to add (directory not found?)",
@@ -837,8 +821,10 @@
       "expandTree": "Expand File Tree"
     },
     "confirm": "Confirm",
-    "back_to_tasks": "Back to tasks",
-    "more_actions": "More actions"
+    "back": "Back",
+    "preview_binary_title": "Binary File",
+    "preview_binary_desc": "This file is in binary format and cannot be previewed",
+    "preview_load_failed": "Failed to load preview"
   },
   "common": {
     "name": "Name",
@@ -965,25 +951,39 @@
     "restarted": "Terminal restarted",
     "restart_failed": "Terminal restart failed"
   },
-  "loop": {
-    "templates": {
-      "auto_fix_desc": "Repeatedly attempt fixes until tests pass",
-      "auto_fix_name": "Auto-fix loop",
-      "auto_fix_prompt": "Run the test suite, analyze failures, and attempt to fix the code",
-      "ci_monitor_desc": "Periodically check build status and analyze failures",
-      "ci_monitor_name": "CI monitoring",
-      "ci_monitor_prompt": "Check recent CI build status, analyze failures, and generate a summary report",
-      "daily_memory_desc": "Organize conversation memory at night and extract user preferences",
-      "daily_memory_name": "Nightly memory consolidation",
-      "daily_memory_prompt": "Review all of today’s conversations, extract user preferences, technical decisions, and key constraints, and store them in long-term memory",
-      "daily_review_desc": "Scheduled daily code review and risk summary",
-      "daily_review_name": "Daily code review",
-      "daily_review_prompt": "Review all of yesterday’s code commits and summarize changes and potential risks",
-      "health_check_desc": "Periodically probe service status and alert on anomalies",
-      "health_check_name": "Service health check",
-      "health_check_prompt": "Check the health of all core services (HTTP endpoints) and summarize alerts for any anomalies"
-    },
-    "fill_template": "Fill template"
+  "automation": {
+    "title": "Automation",
+    "desc": "Create scheduled tasks and let AI run them on a schedule.",
+    "created_tasks": "Created Tasks",
+    "instruction": "Instructions",
+    "model_default": "Default Model",
+    "templates": "Scheduled Task Templates",
+    "tpl": {
+      "standup": {
+        "name": "Standup Digest",
+        "desc": "Summarize the commits, module changes, and follow-up items since the last business day.",
+        "sched": "Weekdays 09:00",
+        "prompt": "Summarize the commits, module changes, CI status, and follow-up items since the last business day, and produce a spoken standup summary of no more than 5 bullet points. Read-only analysis; do not modify code or external state. When the evidence is insufficient, state it explicitly and do not speculate."
+      },
+      "risk": {
+        "name": "Risk Scan",
+        "desc": "Review the code changes from the last 24 hours and report high-confidence risks backed by direct evidence.",
+        "sched": "Daily 10:00",
+        "prompt": "Review the code changes from the last 24 hours and identify high-confidence risks such as runtime errors, data loss, permission bypass, resource leaks, and cross-platform compatibility issues, attaching code and commit/diff evidence. Read-only analysis, using only verifiable repository facts. When the evidence is insufficient, state it explicitly; do not speculate, and do not modify code or external state."
+      },
+      "release": {
+        "name": "Release Brief",
+        "desc": "Compile this week's merged changes into a team-facing and a user-facing release summary.",
+        "sched": "Fridays 17:00",
+        "prompt": "Compile the changes merged this week, categorize them into new features, fixes, refactors, and breaking changes, and produce a technical summary for the team and release notes for users. Read-only analysis, with a commit or PR reference for every item; do not modify code or external state."
+      },
+      "docsync": {
+        "name": "Doc Sync Check",
+        "desc": "Compare recent implementation changes against the docs to find updates that may have been missed.",
+        "sched": "Thursdays 15:00",
+        "prompt": "Compare recent implementation changes against the README, docs, configuration references, and usage examples to check whether they match the current code, then list the documentation locations that need to be added or corrected and explain why. Read-only analysis; do not edit the docs directly, and mark anything that cannot be confirmed as pending human review."
+      }
+    }
   },
   "queue": {
     "title": "Message Queue",

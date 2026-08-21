@@ -71,6 +71,8 @@
             <div class="code-editor-main" id="codeEditorMain" style="display:none">
                 <div class="code-editor-tabbar" id="codeEditorTabbar"></div>
                 <div class="code-editor-host" id="codeEditorHost"></div>
+                <!-- 二进制文件预览层（图片/PDF/音视频）：与 Monaco 编辑器宿主互斥显示，由 app-code.js 切换 -->
+                <div class="code-preview-host" id="codePreviewHost" style="display:none"></div>
             </div>
         </div>
         <!-- Code 模式：底部本地终端（独立于编辑器面板：diff 浮层打开时隐藏的是编辑器面板，终端不受影响）-->
@@ -104,11 +106,11 @@
     <div class="filer-resize-handle" id="filerResizeHandle"></div>
     <div class="filer-panel collapsed" id="filerPanel">
         <div class="filer-content">
-        <!-- 专注模式：面板顶栏（返回任务 + 终端/记忆/设置入口）-->
+        <!-- 专注模式：面板顶栏（返回 + 终端/记忆/设置入口）-->
         <div class="filer-topbar">
-            <button class="filer-back-btn" id="filerBackBtn" data-i18n-title="code.back_to_tasks">
+            <button class="filer-back-btn" id="filerBackBtn" data-i18n-title="code.back">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-                <span data-i18n="code.back_to_tasks">返回任务</span>
+                <span data-i18n="code.back">返回</span>
             </button>
             <div class="filer-topbar-actions">
                 <button class="filer-head-btn filer-terminal-btn" id="filerTerminalBtn" data-i18n-title="app.terminal_shortcut">
@@ -122,7 +124,7 @@
                 </button>
             </div>
         </div>
-        <!-- 专注模式：项目行（项目名 + 文件/Git 视图切换 + 更多操作）-->
+        <!-- 专注模式：项目行（项目名 + 文件/Git 视图切换）-->
         <div class="filer-project-row">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
             <span class="filer-project-name" id="projectSelectorName">选择项目...</span>
@@ -134,10 +136,7 @@
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>
                     <span class="git-badge" style="display:none">0</span>
                 </button>
-                <button class="filer-head-btn" id="filerMoreBtn" data-i18n-title="code.more_actions">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
-                </button>
-                <div class="filer-more-menu" id="filerMoreMenu" style="display:none"></div>
+                
             </div>
         </div>
         <div class="filer-tab-content active" id="tabContentFiles">

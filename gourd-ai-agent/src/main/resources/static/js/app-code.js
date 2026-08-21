@@ -20,6 +20,7 @@
     var welcomeNewBtn = document.getElementById('codeWelcomeNewBtn');
     var tabbar = document.getElementById('codeEditorTabbar');
     var editorHost = document.getElementById('codeEditorHost');
+    var previewHost = document.getElementById('codePreviewHost');
 
     // ---------- 状态 ----------
     var LS_MODE = 'gourdai-app-mode';
@@ -673,7 +674,7 @@
     if (welcomeOpenBtn) welcomeOpenBtn.addEventListener('click', function () { addProject(); });
     if (welcomeNewBtn) welcomeNewBtn.addEventListener('click', function () { newProject(); });
 
-    // ---------- 专注模式文件树面板头部：返回 / 更多操作 / 设置 ----------
+    // ---------- 专注模式文件树面板头部：返回 / 设置 ----------
     // 返回任务视图：退出专注模式，并把任务侧栏工作空间同步选中为刚才的项目，来回无缝
     var filerBackBtn = document.getElementById('filerBackBtn');
     if (filerBackBtn) {
@@ -682,36 +683,6 @@
             exitCodeMode();
             if (root && typeof window.applyChatWorkspace === 'function') window.applyChatWorkspace(root, true);
         });
-    }
-
-    // 更多操作菜单：打开文件夹 / 新建项目（切换项目统一回任务侧栏）
-    var filerMoreBtn = document.getElementById('filerMoreBtn');
-    var filerMoreMenu = document.getElementById('filerMoreMenu');
-    function renderMoreMenu() {
-        if (!filerMoreMenu) return;
-        filerMoreMenu.innerHTML = '<div class="filer-more-item" data-act="open">'
-            + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
-            + escHtml(GourdI18n.t('code.open_folder')) + '</div>'
-            + '<div class="filer-more-item" data-act="new">'
-            + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>'
-            + escHtml(GourdI18n.t('code.new_project')) + '</div>';
-    }
-    if (filerMoreBtn && filerMoreMenu) {
-        filerMoreBtn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            if (filerMoreMenu.style.display !== 'none') { filerMoreMenu.style.display = 'none'; return; }
-            renderMoreMenu();
-            filerMoreMenu.style.display = 'block';
-        });
-        filerMoreMenu.addEventListener('click', function (e) {
-            var item = e.target.closest('.filer-more-item');
-            if (!item) return;
-            e.stopPropagation();
-            filerMoreMenu.style.display = 'none';
-            if (item.getAttribute('data-act') === 'open') addProject();
-            else newProject();
-        });
-        document.addEventListener('click', function () { filerMoreMenu.style.display = 'none'; });
     }
 
     // 设置：复用主侧栏设置按钮的既有绑定
@@ -724,6 +695,17 @@
         if (!isCode()) {
             // chat 模式仍走原只读查看器（若存在）
             if (window._origOpenFileViewer) return window._origOpenFileViewer(path, name);
+            return;
+        }
+        // 可预览二进制文件（图片/PDF/音视频）：跳过文本读取，直接开预览标签
+        // （Chromium 内核原生渲染，无需额外依赖；不依赖 Monaco 加载完成）
+        var pk = previewKindOf(name || baseName(path));
+        if (pk) {
+            if (docs[path]) { activateFile(path); return; }
+            docs[path] = { preview: pk, dirty: false, diskChanged: false };
+            openFiles.push({ path: path, name: name || baseName(path) });
+            renderTabs();
+            activateFile(path);
             return;
         }
         // Monaco 为 AMD 异步加载：待就绪后再创建编辑器/模型
@@ -742,6 +724,14 @@
                 }
                 var d = resp.data || {};
                 var fileName = d.name || name || path;
+                // 二进制文件（后端口探测到 NUL 字节）：不显示乱码，开「不支持预览」占位标签
+                if (d.binary) {
+                    docs[path] = { preview: 'binary', dirty: false, diskChanged: false };
+                    openFiles.push({ path: path, name: fileName });
+                    renderTabs();
+                    activateFile(path);
+                    return;
+                }
                 var info = guessMonacoLanguage(fileName);
                 var content = d.content || '';
                 // 大文件降级：超阈值跳过语法着色与补全（Monaco 视口渲染本身不会像旧编辑器那样全量 DOM 卡顿）
@@ -759,12 +749,29 @@
 
     function activateFile(path) {
         var st = docs[path];
-        if (!st || !editor) return;
+        if (!st) return;
         // 切走前保存当前 model 的视图状态（光标/滚动），下次切回恢复
-        if (activeFilePath && activeFilePath !== path && docs[activeFilePath]) {
+        if (activeFilePath && activeFilePath !== path && docs[activeFilePath] && editor) {
             docs[activeFilePath].viewState = editor.saveViewState();
         }
+        // 预览标签（图片/PDF/音视频/二进制占位）：无 Monaco model，直接切换预览层渲染
+        if (st.preview) {
+            activeFilePath = path;
+            // 激活即重新拉流渲染，「磁盘已变更」标记随之解除
+            if (st.diskChanged) {
+                st.diskChanged = false;
+                var ptab = tabbar ? tabbar.querySelector('.code-editor-tab[data-path="' + cssEsc(path) + '"]') : null;
+                if (ptab) ptab.classList.remove('disk-changed');
+            }
+            showPreview(path);
+            renderTabs();
+            refreshCenterPane();
+            return;
+        }
+        if (!editor) return;
         activeFilePath = path;
+        // 切到文本编辑：关闭可能残留的预览层（恢复编辑器宿主显示）
+        hidePreview();
         // 仅当 model 变化时才切换（同一 model 重复 setModel 会重复挂变更监听）
         if (editor.getModel() !== st.model) {
             editor.setModel(st.model);
@@ -790,7 +797,8 @@
             var st = docs[f.path];
             var active = (f.path === activeFilePath) ? ' active' : '';
             var dirty = (st && st.dirty) ? ' dirty' : '';
-            var diskChanged = (st && st.diskChanged && st.dirty) ? ' disk-changed' : '';
+            // 预览标签永不 dirty，但可能 disk-changed（非激活时外部修改，红点提示）
+            var diskChanged = (st && st.diskChanged) ? ' disk-changed' : '';
             html += '<div class="code-editor-tab' + active + dirty + diskChanged + '" data-path="' + escAttr(f.path) + '" title="' + escAttr(f.path) + '">'
                 + '<span class="code-editor-tab-name">' + escHtml(f.name) + '</span>'
                 + '<span class="code-editor-tab-dot"></span>'
@@ -849,6 +857,7 @@
         openFiles = openFiles.filter(function (f) { return f.path !== path; });
         if (activeFilePath === path) {
             activeFilePath = null;
+            hidePreview(); // 关闭当前标签：预览内容随之清除，再激活下一个（或回空态）
             if (openFiles.length) activateFile(openFiles[openFiles.length - 1].path);
             else { if (editor) editor.setModel(null); refreshCenterPane(); renderTabs(); }
         } else {
@@ -857,6 +866,7 @@
     }
 
     function closeAllFiles() {
+        hidePreview();
         for (var p in docs) {
             if (docs[p] && docs[p].model) docs[p].model.dispose();
         }
@@ -951,6 +961,18 @@
     function handleDiskChanged(path) {
         var st = docs[path];
         if (!st) return;
+        if (st.preview) {
+            // 预览标签：激活中直接重新拉流渲染（URL 带时间戳天然破缓存）；
+            // 非激活时标记红点，待激活时刷新
+            if (activeFilePath === path) {
+                showPreview(path);
+            } else if (!st.diskChanged) {
+                st.diskChanged = true;
+                var ptab = tabbar ? tabbar.querySelector('.code-editor-tab[data-path="' + cssEsc(path) + '"]') : null;
+                if (ptab) ptab.classList.add('disk-changed');
+            }
+            return;
+        }
         if (st.dirty) {
             // 有未保存改动：不覆盖，标记「磁盘已变更」，点击标签时确认重载
             if (!st.diskChanged) {
@@ -1012,6 +1034,84 @@
         onCodeFilerChange(chunk);
         if (typeof _origOnFilerChange === 'function') _origOnFilerChange(chunk);
     };
+
+    // ---------- 二进制文件预览（图片/PDF/音视频，Chromium 原生渲染，无额外依赖） ----------
+    // 可预览扩展名按类划分；SVG 保留 Monaco 可编辑文本，不在此列
+    var PREVIEW_KINDS = {
+        image: { png: 1, jpg: 1, jpeg: 1, gif: 1, webp: 1, bmp: 1, ico: 1, avif: 1 },
+        pdf: { pdf: 1 },
+        audio: { mp3: 1, wav: 1, ogg: 1, m4a: 1, aac: 1, flac: 1 },
+        video: { mp4: 1, webm: 1 }
+    };
+    function previewKindOf(fileName) {
+        var ext = String(fileName || '').toLowerCase().split('.').pop();
+        for (var k in PREVIEW_KINDS) {
+            if (PREVIEW_KINDS[k][ext]) return k;
+        }
+        return null;
+    }
+
+    // 预览用原始字节流地址（附时间戳破缓存：外部修改后刷新即可见新内容）
+    function rawUrl(path) {
+        return '/web/chat/filer/raw?path=' + encodeURIComponent(path) + rootQuery() + '&_t=' + Date.now();
+    }
+
+    // 渲染指定文件的预览层，并与编辑器宿主互斥显示
+    function showPreview(path) {
+        var st = docs[path];
+        if (!previewHost || !st || !st.preview) return;
+        var url = rawUrl(path);
+        var name = escAttr(baseName(path));
+        var html = '';
+        if (st.preview === 'image') {
+            html = '<div class="code-preview-stage"><img class="code-preview-img" src="' + url + '" alt="' + name + '" /></div>';
+        } else if (st.preview === 'pdf') {
+            html = '<iframe class="code-preview-frame" src="' + url + '" title="' + name + '"></iframe>';
+        } else if (st.preview === 'audio') {
+            html = '<div class="code-preview-stage"><audio class="code-preview-media" controls src="' + url + '"></audio></div>';
+        } else if (st.preview === 'video') {
+            html = '<div class="code-preview-stage"><video class="code-preview-media" controls src="' + url + '"></video></div>';
+        } else {
+            // binary 占位：不可预览的二进制文件（zip/exe/字体等）
+            html = '<div class="code-preview-stage"><div class="code-preview-binary">'
+                + binaryIcon()
+                + '<div class="code-preview-binary-title">' + GourdI18n.t('code.preview_binary_title') + '</div>'
+                + '<div class="code-preview-binary-name">' + escHtml(baseName(path)) + '</div>'
+                + '<div class="code-preview-binary-desc">' + GourdI18n.t('code.preview_binary_desc') + '</div>'
+                + '</div></div>';
+        }
+        previewHost.innerHTML = html;
+        previewHost.style.display = 'flex';
+        if (editorHost) editorHost.style.display = 'none';
+        // 媒体加载失败：降级为通用「加载失败」占位
+        var media = previewHost.querySelector('img, audio, video');
+        if (media) media.addEventListener('error', function () { previewLoadFailed(); });
+    }
+
+    // 关闭预览层（停止音视频播放），恢复编辑器宿主显示
+    function hidePreview() {
+        if (!previewHost) return;
+        var wasVisible = previewHost.style.display !== 'none';
+        previewHost.innerHTML = '';
+        previewHost.style.display = 'none';
+        if (editorHost) editorHost.style.display = '';
+        // 容器刚由隐藏恢复可见：主动刷新一次 Monaco 布局（automaticLayout 之外的双保险）
+        if (wasVisible && editor) setTimeout(function () { editor.layout(); }, 0);
+    }
+
+    function previewLoadFailed() {
+        if (!previewHost) return;
+        previewHost.innerHTML = '<div class="code-preview-stage"><div class="code-preview-binary">'
+            + binaryIcon()
+            + '<div class="code-preview-binary-title">' + GourdI18n.t('code.preview_load_failed') + '</div>'
+            + '</div></div>';
+    }
+
+    function binaryIcon() {
+        return '<svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+            + '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>'
+            + '</svg>';
+    }
 
     // ---------- helpers ----------
     function rootQuery() {

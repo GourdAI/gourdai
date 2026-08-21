@@ -45,6 +45,8 @@ function SessionState(sessionId) {
     this.thinkingBlockTimerId = null;
     this.thinkingBlockStartTime = null;
     this.thinkingUserScrolledUp = false;  // 思考区用户主动向上滚动标记
+    // 最近一次 context_size 快照：上下文指示器是全局单例 DOM，靠它按会话回填，使切会话不丢失用量/缓存指标
+    this.lastContextChunk = null;
 
     this.userMsgCounter = 0;
 }
@@ -121,7 +123,9 @@ function setActiveSession(sessionId) {
             refreshSessionModel(sessionId);
         }
     }
-    if (typeof resetContextIndicator === 'function') resetContextIndicator();
+    // 按会话恢复上下文指示器（该会话有历史用量则回填，否则清空）
+    if (typeof restoreContextIndicator === 'function') restoreContextIndicator(sess);
+    else if (typeof resetContextIndicator === 'function') resetContextIndicator();
 }
 
 function deactivateSession() {

@@ -94,11 +94,65 @@ public class WorktreeManager {
     }
 
     /**
-     * 删除 worktree 及其关联分支
+     * 提交 worktree 内的全部改动（含未跟踪文件）。
+     *
+     * <p>worktree 目录在单轮执行后会被移除，若不先提交则 AI 在其中产出的成果会被丢弃。
+     * 调用方需根据返回值决定是否可安全删除目录：仅 {@link CommitOutcome#COMMITTED} 与
+     * {@link CommitOutcome#NO_CHANGES} 下删除才不会丢失数据。</p>
+     *
+     * @param worktreePath worktree 路径
+     * @param message      提交信息
+     * @return 提交结果
+     */
+    public CommitOutcome commitAll(String worktreePath, String message) {
+        if (worktreePath == null || worktreePath.isEmpty()) {
+            return CommitOutcome.NO_CHANGES;
+        }
+
+        File dir = new File(worktreePath);
+        if (!dir.isDirectory()) {
+            return CommitOutcome.NO_CHANGES;
+        }
+
+        String status = execGit(dir, "status", "--porcelain");
+        if (status == null) {
+            log.warn("Cannot read worktree status, treat as dirty to avoid data loss: {}", worktreePath);
+            return CommitOutcome.FAILED;
+        }
+        if (status.isEmpty()) {
+            return CommitOutcome.NO_CHANGES;
+        }
+
+        if (execGit(dir, "add", "-A") == null) {
+            log.warn("Failed to stage worktree changes: {}", worktreePath);
+            return CommitOutcome.FAILED;
+        }
+        if (execGit(dir, "commit", "-m", message) == null) {
+            log.warn("Failed to commit worktree changes (check git user.name/user.email): {}", worktreePath);
+            return CommitOutcome.FAILED;
+        }
+
+        log.info("Committed worktree changes at: {}", worktreePath);
+        return CommitOutcome.COMMITTED;
+    }
+
+    /**
+     * 删除 worktree 目录，保留关联分支（不丢弃已提交成果）
      *
      * @param worktreePath worktree 路径
      */
     public void remove(String worktreePath) {
+        remove(worktreePath, false);
+    }
+
+    /**
+     * 删除 worktree 目录
+     *
+     * @param worktreePath worktree 路径
+     * @param deleteBranch 是否同时删除关联分支。仅在确认分支无有效成果时传 true，
+     *                     否则会连同 AI 已提交的工作一起丢弃。
+     */
+    public void remove(String worktreePath, boolean deleteBranch) {
         if (worktreePath == null || worktreePath.isEmpty()) {
             return;
         }
@@ -113,12 +167,26 @@ public class WorktreeManager {
         // 移除 worktree
         execGit(gitRoot, "worktree", "remove", worktreePath, "--force");
 
-        // 尝试推导分支名并删除分支
         String dirName = worktree.getFileName().toString();
         String branchName = LOOP_PREFIX + dirName;
-        execGit(gitRoot, "branch", "-D", branchName);
+        if (deleteBranch) {
+            execGit(gitRoot, "branch", "-D", branchName);
+            log.info("Removed worktree and branch '{}'", branchName);
+        } else {
+            log.info("Removed worktree dir, kept branch '{}'", branchName);
+        }
+    }
 
-        log.info("Removed worktree and branch '{}'", branchName);
+    /**
+     * worktree 改动提交结果
+     */
+    public enum CommitOutcome {
+        /** 无任何改动，无需提交 */
+        NO_CHANGES,
+        /** 改动已提交到分支 */
+        COMMITTED,
+        /** 存在改动但提交失败（删除目录会丢失数据） */
+        FAILED
     }
 
     /**
@@ -168,7 +236,8 @@ public class WorktreeManager {
 
         for (String wtPath : loopWorktrees) {
             log.info("Cleaning up worktree: {}", wtPath);
-            remove(wtPath);
+            // 保留分支：loop/ 分支上可能累积了 AI 已提交的成果，不得随目录一起删除
+            remove(wtPath, false);
         }
 
         if (loopWorktrees.isEmpty()) {

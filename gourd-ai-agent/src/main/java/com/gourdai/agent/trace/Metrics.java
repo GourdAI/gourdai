@@ -36,6 +36,14 @@ public class Metrics implements Serializable {
      */
     private volatile long totalDuration;
 
+    /**
+     * 输入令牌数（口径已归一：<b>恒为含缓存的真实输入</b>）。
+     *
+     * <p><b>为什么在采集端归一：</b>各家对「输入是否含缓存」口径不一（Anthropic 原生不含、OpenAI 已含），
+     * 且子代理可使用<b>另一家厂商</b>的模型，其指标会通过 {@link #addMetrics} 并入父 trace。
+     * 若把归一留到展示端再做，面对的就是<b>跨方言混合和</b>，判据不再自洽（会把 OpenAI 那部分已含的缓存重复计入）。
+     * 故必须在 {@link #addUsage} 逐条累加时、于各自方言的上下文内完成归一。</p>
+     */
     private volatile long promptTokens;
     private volatile long completionTokens;
     private volatile long totalTokens;
@@ -105,11 +113,18 @@ public class Metrics implements Serializable {
         }
     }
 
+    /**
+     * 累加单条真实用量。
+     *
+     * <p>输入令牌在此处<b>逐条归一</b>为「含缓存的真实输入」（见 {@link UsageNormalizer}）：
+     * 每条 usage 都在自己方言的上下文内判定，因此跨厂商（父/子代理不同模型）求和后依旧正确。</p>
+     */
     public void addUsage(AiUsage usage) {
         LOCK.lock();
 
         try {
-            this.promptTokens += usage.promptTokens();
+            this.promptTokens += UsageNormalizer.normalizeInputTokens(
+                    usage.promptTokens(), usage.cacheCreationInputTokens(), usage.cacheReadInputTokens());
             this.completionTokens += usage.completionTokens();
             this.totalTokens += usage.totalTokens();
             this.cacheCreationInputTokens += usage.cacheCreationInputTokens();
@@ -126,6 +141,9 @@ public class Metrics implements Serializable {
         return totalDuration;
     }
 
+    /**
+     * 输入令牌数（口径已归一：恒为含缓存的真实输入，无需再叠加缓存）
+     */
     public long getPromptTokens() {
         return promptTokens;
     }

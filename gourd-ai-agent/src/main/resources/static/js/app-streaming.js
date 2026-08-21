@@ -304,7 +304,18 @@ function onWebChunk(sess, chunk) {
                 break;
             case 'hitl':   finishThinkingBlock(sess); finishAgentThinkingBlock(sess); finishPendingTool(sess); appendHitlCard(sess, chunk.toolName, chunk.command); break;
             case 'trace':  finishThinkingBlock(sess); finishAgentThinkingBlock(sess); finishPendingTool(sess); appendTraceBadge(sess, chunk); break;
-            case 'context_size': if (typeof updateContextIndicator === 'function' && sess.sessionId === activeSessionId) updateContextIndicator(chunk); break;
+            case 'context_size':
+                // 快照始终写入会话（即使非活跃），保证切回该会话时能恢复；仅活跃会话刷新 DOM。
+                // 两分支均遵循单调时间戳门禁（回放旧帧不得覆盖新帧）
+                if (typeof updateContextIndicator === 'function') {
+                    if (sess.sessionId === activeSessionId) {
+                        updateContextIndicator(chunk, sess);
+                    } else if (!sess.lastContextChunk
+                            || (chunk.createdAt || 0) >= (sess.lastContextChunk.createdAt || 0)) {
+                        sess.lastContextChunk = chunk;
+                    }
+                }
+                break;
         }
         sess.silenceTimer = setTimeout(function() {
             if (!sess.isStreaming || sess.thinkingBlockEl) return;
@@ -398,6 +409,9 @@ function finishStream(sess) {
 
     // resetStreamState 会清空 buffer，所以必须在上面强刷完后再调
     resetStreamState(sess);
+
+    // 清扫遗留的视觉为空正文容器，统一卡片间隔（指针推进遗留的空 .md-content 会撑出参差间距）
+    purgeEmptyMdBlocks(sess.container);
 
     if (sess.sessionId === activeSessionId) {
         isStreaming = false;
@@ -732,8 +746,8 @@ setActiveSession = function(sid) {
         if (window.loadTodos) window.loadTodos();
         // 切换会话时刷新消息队列 UI（列表/chip/badge）
         if (window.updateMessageQueueUI) window.updateMessageQueueUI();
-        // 切换会话时重置上下文指示器
-        if (typeof resetContextIndicator === 'function') resetContextIndicator();
+        // 注：上下文指示器的恢复已由 setActiveSession 内部单点完成（app-base.js），
+        // 此处不再重复调用：同 tick 内若会话已被删除，sessionMap[sid] 为 undefined 会误隐藏。
     }, 0);
 };
 

@@ -17,10 +17,7 @@ package com.gourdai.core.portal.web;
 
 import org.noear.solon.core.handle.Result;
 
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.InputStreamReader;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
@@ -66,6 +63,54 @@ public class FileService {
             // 构建输出
             "target", "build"
     ));
+
+    /** 原始字节预览流的最大文件大小：50MB（图片/PDF/音视频预览用） */
+    public static final long RAW_MAX_SIZE = 50L * 1024 * 1024;
+
+    /**
+     * 文件扩展名 → Content-Type 映射（原始字节预览流用）。
+     * <p>覆盖前端可预览的图片/PDF/音视频类型；未命中返回 {@code application/octet-stream}。</p>
+     */
+    private static final Map<String, String> CONTENT_TYPES = new HashMap<>();
+    static {
+        // 图片
+        CONTENT_TYPES.put("png", "image/png");
+        CONTENT_TYPES.put("jpg", "image/jpeg");
+        CONTENT_TYPES.put("jpeg", "image/jpeg");
+        CONTENT_TYPES.put("gif", "image/gif");
+        CONTENT_TYPES.put("webp", "image/webp");
+        CONTENT_TYPES.put("bmp", "image/bmp");
+        CONTENT_TYPES.put("ico", "image/x-icon");
+        CONTENT_TYPES.put("avif", "image/avif");
+        CONTENT_TYPES.put("svg", "image/svg+xml");
+        // PDF
+        CONTENT_TYPES.put("pdf", "application/pdf");
+        // 音频
+        CONTENT_TYPES.put("mp3", "audio/mpeg");
+        CONTENT_TYPES.put("wav", "audio/wav");
+        CONTENT_TYPES.put("ogg", "audio/ogg");
+        CONTENT_TYPES.put("m4a", "audio/mp4");
+        CONTENT_TYPES.put("aac", "audio/aac");
+        CONTENT_TYPES.put("flac", "audio/flac");
+        // 视频
+        CONTENT_TYPES.put("mp4", "video/mp4");
+        CONTENT_TYPES.put("webm", "video/webm");
+    }
+
+    /**
+     * 按文件名推断 Content-Type。
+     *
+     * @param fileName 文件名（含扩展名）
+     * @return 对应的 MIME 类型；未知扩展名返回 {@code application/octet-stream}
+     */
+    public static String contentTypeOf(String fileName) {
+        if (fileName == null) return "application/octet-stream";
+        int dot = fileName.lastIndexOf('.');
+        if (dot < 0 || dot == fileName.length() - 1) return "application/octet-stream";
+        String ext = fileName.substring(dot + 1).toLowerCase();
+        String type = CONTENT_TYPES.get(ext);
+        return type != null ? type : "application/octet-stream";
+    }
 
     /**
      * 构造函数。
@@ -186,21 +231,33 @@ public class FileService {
             return Result.failure(413, "File too large (max 2MB)");
         }
 
-        // 读取文件内容（尝试 UTF-8，失败回退系统默认编码）
+        // 读取文件字节（尝试 UTF-8 解码，失败回退系统默认编码）
+        byte[] bytes;
+        try {
+            bytes = java.nio.file.Files.readAllBytes(target);
+        } catch (Exception e) {
+            return Result.failure(500, "Failed to read file: " + e.getMessage());
+        }
+
+        // 二进制探测：前 8KB 内出现 NUL（0x00）字节即判定二进制，返回 binary 标记而非乱码内容；
+        // 前端据此改走预览路径（图片/PDF/音视频）或显示「不支持预览」占位
+        int scanLen = Math.min(bytes.length, 8192);
+        for (int i = 0; i < scanLen; i++) {
+            if (bytes[i] == 0) {
+                Map<String, Object> bin = new LinkedHashMap<>();
+                bin.put("binary", true);
+                bin.put("path", path);
+                bin.put("name", file.getName());
+                bin.put("size", file.length());
+                return Result.succeed(bin);
+            }
+        }
+
         String content;
         try {
-            content = new String(java.nio.file.Files.readAllBytes(target), "UTF-8");
+            content = new String(bytes, "UTF-8");
         } catch (Exception e) {
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(file)))) {
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    sb.append(line).append("\n");
-                }
-                content = sb.toString();
-            } catch (Exception ex) {
-                return Result.failure(500, "Failed to read file: " + ex.getMessage());
-            }
+            content = new String(bytes);
         }
 
         Map<String, Object> data = new LinkedHashMap<>();
@@ -210,6 +267,42 @@ public class FileService {
         data.put("size", file.length());
 
         return Result.succeed(data);
+    }
+
+    /**
+     * 解析原始字节读取（二进制预览流）的目标文件。
+     * <p>沿用与 {@link #read} 一致的路径安全校验（拒绝 {@code ..}、必须位于根目录内），
+     * 并限制文件大小（最大 {@link #RAW_MAX_SIZE} = 50MB）。校验通过后返回文件本身，
+     * 由调用方负责按正确 Content-Type 输出字节流。</p>
+     *
+     * @param path 相对路径，基于根目录
+     * @param root 可选的项目根目录（Code 模式）
+     * @return 成功时 data 为目标文件；失败时携带对应 HTTP 语义错误码（400/403/404/413）
+     */
+    public Result<File> resolveForRaw(String path, String root) {
+        if (path == null || path.trim().isEmpty()) {
+            return Result.failure(400, "Path is required");
+        }
+        if (path.contains("..")) {
+            return Result.failure(400, "Invalid path");
+        }
+
+        java.nio.file.Path workspacePath = resolveRoot(root);
+        java.nio.file.Path target = workspacePath.resolve(path).toAbsolutePath().normalize();
+
+        if (!target.startsWith(workspacePath)) {
+            return Result.failure(403, "Access denied");
+        }
+
+        File file = target.toFile();
+        if (!file.exists() || file.isDirectory()) {
+            return Result.failure(404, "File not found");
+        }
+        if (file.length() > RAW_MAX_SIZE) {
+            return Result.failure(413, "File too large (max 50MB)");
+        }
+
+        return Result.succeed(file);
     }
 
     /**

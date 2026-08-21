@@ -1,5 +1,7 @@
 target/
 !.mvn/wrapper/maven-wrapper.jar
+# Spring Boot 解包/误生成的构建残骸（不应出现在任何模块根目录）
+BOOT-INF/
 
 ### STS ###
 .apt_generated
@@ -47,3 +49,4 @@ work
 
 .gwork/
 downloads/
+_scratch/

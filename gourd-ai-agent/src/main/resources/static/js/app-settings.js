@@ -138,6 +138,11 @@
 
     $settingsBtn.on('click', openSettings);
     $('#settingsCloseBtn').on('click', closeSettings);
+
+    // 导出给其它主视图调用（如自动化页面打开时需关掉本浮层）；
+    // 本文件整体包在 IIFE 内，不导出时外部只能靠 trigger('click') 兜底。
+    window.openSettings = openSettings;
+    window.closeSettings = closeSettings;
     // 不再支持点击浮层外部关闭：面板内修改未保存时误触会丢失全部填写内容，只能通过右上角关闭按钮或 ESC 关闭
     $(document).on('keydown', function (e) { if (e.key === 'Escape' && $overlay.is(':visible')) closeSettings(); });
 
@@ -182,9 +187,6 @@
         } else if (targetTab === 'lsp') {
             $('#settingsTabLsp').addClass('active');
             if (mod('_settingsLsp')) mod('_settingsLsp').load();
-        } else if (targetTab === 'loop') {
-            $('#settingsTabLoop').addClass('active');
-            if (mod('_settingsLoop')) mod('_settingsLoop').load();
         } else if (targetTab === 'channel') {
             $('#settingsTabChannel').addClass('active');
             if (window._channelModule) window._channelModule.load();
@@ -209,7 +211,6 @@
         else if (targetTab === 'mcp') { if (mod('_settingsMcp')) mod('_settingsMcp').load(); }
         else if (targetTab === 'openapi') { if (mod('_settingsOpenapi')) mod('_settingsOpenapi').load(); }
         else if (targetTab === 'lsp') { if (mod('_settingsLsp')) mod('_settingsLsp').load(); }
-        else if (targetTab === 'loop') { if (mod('_settingsLoop')) mod('_settingsLoop').load(); }
         else if (targetTab === 'channel') { if (window._channelModule) window._channelModule.load(); }
         else if (targetTab === 'acp') { if (mod('_settingsAcp')) mod('_settingsAcp').load(); }
         else if (targetTab === 'about') { if (mod('_settingsAbout')) mod('_settingsAbout').load(); }

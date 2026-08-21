@@ -140,7 +140,6 @@
     "cmd_commands": "Schnellbefehle",
     "skills": "Fähigkeiten",
     "subagent": "Unteragent",
-    "loop_task": "Geplante Aufgabe",
     "history_msg": "Nachrichtenverlauf",
     "plus_more": "Mehr",
     "voice_input": "Spracheingabe",
@@ -222,7 +221,6 @@
       "mcp": "MCP-Konfiguration",
       "openapi": "OpenAPI-Konfiguration",
       "lsp": "LSP-Konfiguration",
-      "loop": "Zeitplan",
       "channel": "Fernzugriff",
       "acp": "ACP",
       "about": "Info"
@@ -543,9 +541,6 @@
       "checker_agent": "Prüfender Unteragent",
       "max_iter": "Maximale Iteration",
       "worktree_isolation": "Worktree-Isolierung",
-      "worktree_desc": "In einem separaten Branch ausführen",
-      "run_immediately": "Erste Ausführung sofort",
-      "run_immediately_desc": "Sofort einmalig ausführen nach dem Speichern",
       "test_run": "Testlauf",
       "save": "Speichern",
       "saving": "Speichern…",
@@ -554,7 +549,6 @@
       "status_disabled": "Deaktiviert",
       "status_running": "Läuft",
       "status_ready": "Bereit",
-      "executed_times": "Bereits {0} Mal ausgeführt",
       "last_exec": "Letztes Mal: {0}",
       "iteration": "Durchlauf {0}",
       "cron_format": "cron: {0}",
@@ -580,18 +574,7 @@
       "minutes_ago": "Vor {0} Minuten",
       "hours_ago": "Vor {0} Stunden",
       "days_ago": "Vor {0} Tagen",
-      "loop_task_list": "Schleifenaufgaben ({0})",
-      "new_loop": "Neue Schleife",
-      "edit_loop": "Schleife #{0} bearbeiten",
-      "loop_task_desc": "Aufgabenbeschreibung",
-      "loop_interval": "Intervall",
-      "loop_fixed": "Festes Intervall",
       "loop_cron": "Cron-Ausdruck",
-      "loop_exec_strategy": "Ausführungsstrategie (Test)",
-      "loop_goal": "Zielerreichungs-Erkennung (goal)",
-      "loop_trigger_btn": "Testlauf",
-      "loop_save": "Speichern",
-      "loop_not_found": "Aufgabendaten nicht gefunden",
       "weekday_1": "Montag",
       "weekday_2": "Dienstag",
       "weekday_3": "Mittwoch",
@@ -765,6 +748,7 @@
     "expand_failed": "Erweitern fehlgeschlagen, erneut versuchen",
     "input_tokens": "Eingabe-Token",
     "cache_read_tokens": "Cache-Lese-Token",
+    "cache_hit_rate": "Cache-Trefferquote",
     "output_tokens": "Ausgabe-Token",
     "elapsed_time": "Dauer",
     "agent_label": "Agent",
@@ -792,7 +776,7 @@
     "no_projects": "Noch keine Projekte, unten hinzufügen",
     "remove_no_delete": "Entfernen (Verzeichnis auf Festplatte nicht löschen)",
     "open_folder": "Ordner öffnen",
-    "new_project": "Neues Projekt",
+    
     "project_added": "Projekt hinzugefügt",
     "add_failed": "Hinzufügen fehlgeschlagen",
     "add_failed_no_dir": "Hinzufügen fehlgeschlagen (Verzeichnis existiert nicht?)",
@@ -837,8 +821,10 @@
       "expandTree": "Datei-Baum erweitern"
     },
     "confirm": "Bestätigen",
-    "back_to_tasks": "Zurück zu Aufgaben",
-    "more_actions": "Weitere Aktionen"
+    "back": "Zurück",
+    "preview_binary_title": "Binärdatei",
+    "preview_binary_desc": "Diese Datei liegt im Binärformat vor und kann nicht in der Vorschau angezeigt werden",
+    "preview_load_failed": "Vorschau konnte nicht geladen werden"
   },
   "common": {
     "name": "Name",
@@ -965,25 +951,39 @@
     "appkey": "AppKey",
     "appsecret": "AppSecret"
   },
-  "loop": {
-    "templates": {
-      "auto_fix_name": "Auto-Fix-Schleife",
-      "auto_fix_desc": "Wiederholt Korrekturen versuchen, bis Tests bestehen",
-      "auto_fix_prompt": "Testsuite ausführen, Fehler analysieren und Code reparieren",
-      "daily_review_name": "Tägliche Code-Review",
-      "daily_review_desc": "Geplante tägliche Code-Review und Risikoübersicht",
-      "daily_review_prompt": "Alle gestrigen Commits prüfen und Änderungen sowie Risiken zusammenfassen",
-      "daily_memory_name": "Nächtliche Speicherkonsolidierung",
-      "daily_memory_desc": "Nachts Gesprächsspeicher ordnen und Nutzerpräferenzen extrahieren",
-      "daily_memory_prompt": "Alle heutigen Gespräche prüfen, Nutzerpräferenzen, technische Entscheidungen und Randbedingungen extrahieren und im Langzeitspeicher ablegen",
-      "ci_monitor_name": "CI-Überwachung",
-      "ci_monitor_desc": "Build-Status regelmäßig prüfen und Fehler analysieren",
-      "ci_monitor_prompt": "Aktuellen CI-Build-Status prüfen, Fehler analysieren und Zusammenfassung erstellen",
-      "health_check_name": "Service-Zustandsprüfung",
-      "health_check_desc": "Dienststatus regelmäßig prüfen und bei Anomalien warnen",
-      "health_check_prompt": "Zustand aller Kerndienste (HTTP-Endpunkte) prüfen und Anomalien als Warnung zusammenfassen"
-    },
-    "fill_template": "Vorlage ausfüllen"
+  "automation": {
+    "title": "Automatisierung",
+    "desc": "Erstellen Sie geplante Aufgaben und lassen Sie die KI sie automatisch ausführen.",
+    "created_tasks": "Erstellte Aufgaben",
+    "instruction": "Anweisung",
+    "model_default": "Standardmodell",
+    "templates": "Vorlagen für geplante Aufgaben",
+    "tpl": {
+      "standup": {
+        "name": "Standup-Update",
+        "desc": "Fasst Commits, Moduländerungen und offene Punkte seit dem letzten Arbeitstag zusammen.",
+        "sched": "Wochentags 09:00",
+        "prompt": "Fasse die Commits, Moduländerungen, den CI-Status und die offenen Punkte seit dem letzten Arbeitstag zusammen und erstelle daraus eine mündlich vortragbare Standup-Zusammenfassung mit maximal 5 Punkten. Nur lesende Analyse; ändere weder Code noch externen Zustand. Wenn die Belege nicht ausreichen, weise ausdrücklich darauf hin und stelle keine Vermutungen an."
+      },
+      "risk": {
+        "name": "Risiko-Scan",
+        "desc": "Prüft die Codeänderungen der letzten 24 Stunden und meldet Risiken mit hoher Zuverlässigkeit, für die direkte Belege vorliegen.",
+        "sched": "Täglich 10:00",
+        "prompt": "Prüfe die Codeänderungen der letzten 24 Stunden und identifiziere Risiken mit hoher Zuverlässigkeit wie Laufzeitfehler, Datenverlust, Umgehung von Berechtigungen, Ressourcenlecks und plattformübergreifende Kompatibilitätsprobleme; belege jedes Risiko mit Code und Commit/Diff. Nur lesende Analyse und ausschließlich auf Basis überprüfbarer Fakten aus dem Repository. Wenn die Belege nicht ausreichen, weise ausdrücklich darauf hin, stelle keine Vermutungen an und ändere weder Code noch externen Zustand."
+      },
+      "release": {
+        "name": "Release-Briefing",
+        "desc": "Stellt die in dieser Woche gemergten Änderungen zusammen und erzeugt eine Release-Zusammenfassung für das Team und für Nutzer.",
+        "sched": "Freitags 17:00",
+        "prompt": "Stelle die in dieser Woche gemergten Änderungen zusammen, gliedere sie nach neuen Funktionen, Fehlerbehebungen, Refactorings und Breaking Changes und erzeuge daraus jeweils eine technische Zusammenfassung für das Team sowie Release Notes für Nutzer. Nur lesende Analyse; belege jeden Punkt mit dem zugehörigen Commit oder PR. Ändere weder Code noch externen Zustand."
+      },
+      "docsync": {
+        "name": "Dokumentationsabgleich",
+        "desc": "Findet anhand der letzten Implementierungsänderungen möglicherweise vergessene Dokumentationsupdates.",
+        "sched": "Donnerstags 15:00",
+        "prompt": "Prüfe anhand der letzten Implementierungsänderungen, ob README, docs, Konfigurationsbeschreibungen und Anwendungsbeispiele mit dem aktuellen Code übereinstimmen, und liste die Dokumentationsstellen auf, die ergänzt oder korrigiert werden müssen, jeweils mit Begründung. Nur lesende Analyse; ändere die Dokumentation nicht direkt. Punkte, die nicht bestätigt werden können, kennzeichne als manuell zu prüfen."
+      }
+    }
   },
   "queue": {
     "title": "Nachrichten-Warteschlange",

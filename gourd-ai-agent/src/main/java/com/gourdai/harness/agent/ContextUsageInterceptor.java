@@ -19,7 +19,7 @@ import org.noear.solon.ai.AiUsage;
 import com.gourdai.agent.AgentChunk;
 import com.gourdai.agent.react.AbsReActInterceptor;
 import com.gourdai.agent.react.ReActTrace;
-import org.noear.solon.ai.chat.ChatConfigReadonly;
+import com.gourdai.agent.trace.UsageNormalizer;
 import org.noear.solon.ai.chat.ChatResponse;
 import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.slf4j.Logger;
@@ -38,13 +38,9 @@ import reactor.core.publisher.FluxSink;
  * {@link AiUsage}（含缓存创建/读取），换算出「输入（含缓存）」并推送一个 {@link ContextUsageChunk}，
  * 让指示器改用真实用量刷新——不再显示估算值。
  *
- * <p><b>方言口径归一：</b>不同接口规范对「输入 token 是否含缓存」的口径不同：
- * <ul>
- *   <li>OpenAI 兼容：{@code prompt_tokens} <b>已包含</b>缓存命中部分（cached 是其子集），
- *       故输入 = promptTokens，不再叠加缓存；</li>
- *   <li>Anthropic/Claude：{@code input_tokens} <b>不含</b>缓存，缓存创建/读取是独立且需叠加的部分，
- *       故输入 = promptTokens + cacheCreation + cacheRead。</li>
- * </ul>
+ * <p><b>口径归一：</b>不同接口规范（及不同框架版本）对「输入 token 是否含缓存」的口径不同，
+ * 统一交由 {@link UsageNormalizer#normalizeInputTokens} 按数值自洽性判定（不依赖方言、不依赖依赖版本），
+ * 并据此计算缓存命中率，详见该类注释。
  *
  * <p><b>无状态约束：</b>拦截器按 class 注册为全局单例，故不使用任何实例可变字段；
  * 所有状态都通过 {@link ReActTrace}（每会话/每任务一份）承载。
@@ -67,8 +63,9 @@ public class ContextUsageInterceptor extends AbsReActInterceptor {
 
         long cacheCreation = usage.cacheCreationInputTokens();
         long cacheRead = usage.cacheReadInputTokens();
-        long inputTokens = normalizeInputTokens(trace, usage.promptTokens(), cacheCreation, cacheRead);
+        long inputTokens = UsageNormalizer.normalizeInputTokens(usage.promptTokens(), cacheCreation, cacheRead);
         long outputTokens = usage.completionTokens();
+        double cacheRate = UsageNormalizer.cacheHitRate(inputTokens, cacheRead);
 
         int messageCount = 0;
         try {
@@ -79,47 +76,18 @@ public class ContextUsageInterceptor extends AbsReActInterceptor {
             // 消息数仅用于展示，取不到不影响用量推送
         }
 
-        pushUsageChunk(trace, inputTokens, outputTokens, cacheCreation, cacheRead, messageCount);
-    }
-
-    /**
-     * 按接口规范归一「输入 token」口径：
-     * Anthropic/Claude 需叠加缓存；OpenAI 兼容的 promptTokens 已含缓存，不叠加。
-     */
-    private long normalizeInputTokens(ReActTrace trace, long promptTokens, long cacheCreation, long cacheRead) {
-        if (isAnthropicStyle(trace)) {
-            return promptTokens + cacheCreation + cacheRead;
-        }
-        return promptTokens;
-    }
-
-    private boolean isAnthropicStyle(ReActTrace trace) {
-        try {
-            ChatConfigReadonly config = trace.getOptions().getChatModel().getConfig();
-            String standard = config.getStandardOrProvider();
-            if (standard != null) {
-                String s = standard.toLowerCase();
-                if (s.contains("anthropic") || s.contains("claude")) {
-                    return true;
-                }
-            }
-            String apiUrl = config.getApiUrl();
-            return apiUrl != null && apiUrl.endsWith("/messages");
-        } catch (Exception e) {
-            // 取不到配置时按 OpenAI 口径（更常见）处理，避免误叠加缓存导致输入虚高
-            return false;
-        }
+        pushUsageChunk(trace, inputTokens, outputTokens, cacheCreation, cacheRead, cacheRate, messageCount);
     }
 
     private void pushUsageChunk(ReActTrace trace,
                                 long inputTokens, long outputTokens,
-                                long cacheCreation, long cacheRead,
+                                long cacheCreation, long cacheRead, double cacheRate,
                                 int messageCount) {
         try {
             FluxSink<AgentChunk> sink = trace.getOptions().getStreamSink();
             if (sink != null && !sink.isCancelled()) {
                 sink.next(new ContextUsageChunk(trace, inputTokens, outputTokens,
-                        cacheCreation, cacheRead, messageCount));
+                        cacheCreation, cacheRead, cacheRate, messageCount));
             }
         } catch (Exception e) {
             if (LOG.isDebugEnabled()) {

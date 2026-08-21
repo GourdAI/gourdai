@@ -62,6 +62,88 @@ public class FileServiceTest {
         }
     }
 
+    /**
+     * read() 二进制探测：含 NUL 字节的文件返回 binary 标记而非乱码内容；
+     * 纯文本文件仍正常返回 content（无回归）。
+     */
+    @Test
+    public void testReadBinaryDetection() throws Exception {
+        Path root = Files.createTempDirectory("filer-binary-test");
+        try {
+            // 二进制文件：头部含 NUL 字节（模拟 PNG 头）
+            byte[] pngLike = new byte[] { (byte) 0x89, 'P', 'N', 'G', 0x00, 0x00, 0x00, 0x0D };
+            Files.write(root.resolve("logo.png"), pngLike);
+            // 纯文本文件
+            Files.write(root.resolve("hello.txt"), "hello world".getBytes("UTF-8"));
+
+            FileService service = new FileService(root.toString());
+
+            Map<String, Object> bin = service.read("logo.png", root.toString()).getData();
+            Assertions.assertEquals(Boolean.TRUE, bin.get("binary"), "含 NUL 文件应标记 binary");
+            Assertions.assertNull(bin.get("content"), "二进制文件不应返回乱码内容");
+            Assertions.assertEquals("logo.png", bin.get("name"));
+
+            Map<String, Object> txt = service.read("hello.txt", root.toString()).getData();
+            Assertions.assertNull(txt.get("binary"), "文本文件不应带 binary 标记");
+            Assertions.assertEquals("hello world", txt.get("content"));
+        } finally {
+            deleteRecursively(root.toFile());
+        }
+    }
+
+    /**
+     * resolveForRaw() 安全边界：沿用 read 同一套校验（拒绝 ..、越界、目录、不存在），
+     * 合法文件返回 File 本体。
+     */
+    @Test
+    public void testResolveForRawSecurity() throws Exception {
+        Path root = Files.createTempDirectory("filer-raw-test");
+        try {
+            Path sub = Files.createDirectory(root.resolve("assets"));
+            Files.write(sub.resolve("a.png"), new byte[] { 1, 2, 3 });
+
+            FileService service = new FileService(root.toString());
+
+            // 合法文件
+            Result<File> ok = service.resolveForRaw("assets/a.png", root.toString());
+            Assertions.assertEquals(200, ok.getCode());
+            Assertions.assertNotNull(ok.getData());
+            Assertions.assertEquals("a.png", ok.getData().getName());
+
+            // .. 路径拒绝（优先命中参数校验）
+            Assertions.assertEquals(400, service.resolveForRaw("../outside.png", root.toString()).getCode());
+            // 越界拒绝（绝对路径指向根外，规范化后不在根内）
+            Path outsideRoot = Files.createTempDirectory("filer-raw-outside");
+            try {
+                Path outsideFile = Files.createFile(outsideRoot.resolve("outside.png"));
+                Assertions.assertEquals(403, service.resolveForRaw(outsideFile.toString(), root.toString()).getCode());
+            } finally {
+                deleteRecursively(outsideRoot.toFile());
+            }
+            // 目录拒绝
+            Assertions.assertEquals(404, service.resolveForRaw("assets", root.toString()).getCode());
+            // 不存在拒绝
+            Assertions.assertEquals(404, service.resolveForRaw("nope.png", root.toString()).getCode());
+            // 空路径拒绝
+            Assertions.assertEquals(400, service.resolveForRaw("", root.toString()).getCode());
+        } finally {
+            deleteRecursively(root.toFile());
+        }
+    }
+
+    /** contentTypeOf() MIME 映射：预览类型命中，未知扩展名回退 octet-stream */
+    @Test
+    public void testContentTypeOf() {
+        Assertions.assertEquals("image/png", FileService.contentTypeOf("a.png"));
+        Assertions.assertEquals("image/jpeg", FileService.contentTypeOf("b.JPG"));
+        Assertions.assertEquals("application/pdf", FileService.contentTypeOf("doc.pdf"));
+        Assertions.assertEquals("audio/mpeg", FileService.contentTypeOf("song.mp3"));
+        Assertions.assertEquals("video/mp4", FileService.contentTypeOf("clip.mp4"));
+        Assertions.assertEquals("application/octet-stream", FileService.contentTypeOf("archive.zip"));
+        Assertions.assertEquals("application/octet-stream", FileService.contentTypeOf("noext"));
+        Assertions.assertEquals("application/octet-stream", FileService.contentTypeOf(null));
+    }
+
     private void deleteRecursively(File f) {
         File[] children = f.listFiles();
         if (children != null) {

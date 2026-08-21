@@ -140,7 +140,6 @@
     "cmd_commands": "Comandos rápidos",
     "skills": "Habilidades",
     "subagent": "Subagente",
-    "loop_task": "Tarea programada",
     "history_msg": "Historial de mensajes",
     "plus_more": "Más",
     "voice_input": "Entrada de voz",
@@ -222,7 +221,6 @@
       "mcp": "Configuración de MCP",
       "openapi": "Configuración de interfaces",
       "lsp": "Configuración de LSP",
-      "loop": "Programador",
       "channel": "Remoto",
       "acp": "ACP",
       "about": "Acerca de"
@@ -543,9 +541,6 @@
       "checker_agent": "Subagente verificador",
       "max_iter": "Iteración máxima",
       "worktree_isolation": "Aislamiento Worktree",
-      "worktree_desc": "Ejecutar en una rama independiente",
-      "run_immediately": "Ejecución inmediata primera vez",
-      "run_immediately_desc": "Ejecutar una vez inmediatamente después de guardar",
       "test_run": "Ejecución de prueba",
       "save": "Guardar",
       "saving": "Guardando…",
@@ -554,7 +549,6 @@
       "status_disabled": "Desactivada",
       "status_running": "En ejecución",
       "status_ready": "Lista",
-      "executed_times": "Ejecutada {0} veces",
       "last_exec": "Última vez: {0}",
       "iteration": "Iteración {0}",
       "cron_format": "cron: {0}",
@@ -580,18 +574,7 @@
       "minutes_ago": "Hace {0} minutos",
       "hours_ago": "Hace {0} horas",
       "days_ago": "Hace {0} días",
-      "loop_task_list": "Tareas en bucle ({0})",
-      "new_loop": "Nuevo bucle",
-      "edit_loop": "Editar bucle #{0}",
-      "loop_task_desc": "Descripción de la tarea",
-      "loop_interval": "Intervalo",
-      "loop_fixed": "Intervalo fijo",
       "loop_cron": "Expresión Cron",
-      "loop_exec_strategy": "Estrategia de ejecución (prueba)",
-      "loop_goal": "Descripción de detección de objetivo (goal)",
-      "loop_trigger_btn": "Ejecución de prueba",
-      "loop_save": "Guardar",
-      "loop_not_found": "No se encontraron datos de tarea",
       "weekday_1": "Lun",
       "weekday_2": "Mar",
       "weekday_3": "Mié",
@@ -765,6 +748,7 @@
     "expand_failed": "Error al expandir, reintenta",
     "input_tokens": "Token de entrada",
     "cache_read_tokens": "Token de lectura de caché",
+    "cache_hit_rate": "Tasa de aciertos de caché",
     "output_tokens": "Token de salida",
     "elapsed_time": "Duración",
     "agent_label": "Agente",
@@ -792,7 +776,7 @@
     "no_projects": "Aún no hay proyectos, añade uno abajo",
     "remove_no_delete": "Eliminar (no borrar el directorio del disco)",
     "open_folder": "Abrir carpeta",
-    "new_project": "Nuevo proyecto",
+    
     "project_added": "Proyecto añadido",
     "add_failed": "Error al añadir",
     "add_failed_no_dir": "Error al añadir (¿el directorio no existe?)",
@@ -837,8 +821,10 @@
       "expandTree": "Expandir árbol de archivos"
     },
     "confirm": "Confirmar",
-    "back_to_tasks": "Volver a tareas",
-    "more_actions": "Más acciones"
+    "back": "Volver",
+    "preview_binary_title": "Archivo binario",
+    "preview_binary_desc": "Este archivo está en formato binario y no se puede previsualizar",
+    "preview_load_failed": "Error al cargar la vista previa"
   },
   "common": {
     "name": "Nombre",
@@ -965,25 +951,39 @@
     "appkey": "AppKey",
     "appsecret": "AppSecret"
   },
-  "loop": {
-    "templates": {
-      "auto_fix_name": "Bucle de autoarreglo",
-      "auto_fix_desc": "Reintenta correcciones hasta que pasen las pruebas",
-      "auto_fix_prompt": "Ejecuta la suite de pruebas, analiza los fallos e intenta corregir el código",
-      "daily_review_name": "Revisión diaria de código",
-      "daily_review_desc": "Revisión diaria programada de código y resumen de riesgos",
-      "daily_review_prompt": "Revisa todos los commits de ayer y resume cambios y riesgos potenciales",
-      "daily_memory_name": "Consolidación nocturna de memoria",
-      "daily_memory_desc": "Organiza la memoria de conversaciones por la noche y extrae preferencias del usuario",
-      "daily_memory_prompt": "Revisa todas las conversaciones de hoy, extrae preferencias, decisiones técnicas y restricciones clave y guárdalas en la memoria a largo plazo",
-      "ci_monitor_name": "Monitoreo de CI",
-      "ci_monitor_desc": "Comprueba periódicamente el estado de compilación y analiza los fallos",
-      "ci_monitor_prompt": "Revisa el estado reciente de builds de CI, analiza fallos y genera un informe resumido",
-      "health_check_name": "Comprobación de estado del servicio",
-      "health_check_desc": "Sondea periódicamente el estado del servicio y alerta ante anomalías",
-      "health_check_prompt": "Comprueba el estado de todos los servicios principales (endpoints HTTP) y resume las alertas de anomalías"
-    },
-    "fill_template": "Rellenar plantilla"
+  "automation": {
+    "title": "Automatización",
+    "desc": "Crea tareas programadas y deja que la IA las ejecute automáticamente.",
+    "created_tasks": "Tareas creadas",
+    "instruction": "Instrucción",
+    "model_default": "Modelo predeterminado",
+    "templates": "Plantillas de tareas programadas",
+    "tpl": {
+      "standup": {
+        "name": "Resumen de la reunión diaria",
+        "desc": "Resume los commits, los cambios de módulos y los puntos pendientes desde el último día laborable.",
+        "sched": "Días laborables 09:00",
+        "prompt": "Resume los commits, los cambios de módulos, el estado de CI y los puntos pendientes desde el último día laborable, y genera un resumen oral para la reunión diaria con un máximo de 5 puntos. Análisis de solo lectura: no modifiques el código ni ningún estado externo. Si las pruebas son insuficientes, indícalo explícitamente y no especules."
+      },
+      "risk": {
+        "name": "Análisis de riesgos",
+        "desc": "Revisa los cambios de código de las últimas 24 horas e informa de los riesgos de alta confianza que cuenten con pruebas directas.",
+        "sched": "Todos los días 10:00",
+        "prompt": "Revisa los cambios de código de las últimas 24 horas e identifica riesgos de alta confianza como errores de ejecución, pérdida de datos, elusión de permisos, fugas de recursos y problemas de compatibilidad entre plataformas, adjuntando en cada caso las pruebas del código y del commit/diff. Análisis de solo lectura, utilizando únicamente hechos verificables del repositorio; si las pruebas son insuficientes, indícalo explícitamente, no especules y no modifiques el código ni ningún estado externo."
+      },
+      "release": {
+        "name": "Informe de lanzamiento",
+        "desc": "Recopila los cambios fusionados esta semana y genera un resumen de lanzamiento para el equipo y para los usuarios.",
+        "sched": "Cada viernes 17:00",
+        "prompt": "Recopila los cambios fusionados esta semana, clasifícalos en nuevas funciones, correcciones, refactorizaciones y cambios incompatibles, y genera un resumen técnico para el equipo y unas notas de lanzamiento para los usuarios. Análisis de solo lectura: respalda cada punto con su commit o pull request correspondiente; no modifiques el código ni ningún estado externo."
+      },
+      "docsync": {
+        "name": "Comprobación de sincronización de la documentación",
+        "desc": "Detecta las actualizaciones de documentación que puedan haberse omitido frente a los cambios recientes de implementación.",
+        "sched": "Cada jueves 15:00",
+        "prompt": "Comparando con los cambios recientes de implementación, comprueba si el README, la carpeta docs, las descripciones de configuración y los ejemplos de uso siguen coincidiendo con el código actual, y enumera los lugares de la documentación que deben completarse o corregirse explicando el motivo. Análisis de solo lectura: no modifiques la documentación directamente; marca como pendiente de confirmación manual los puntos que no puedas verificar."
+      }
+    }
   },
   "queue": {
     "title": "Cola de mensajes",

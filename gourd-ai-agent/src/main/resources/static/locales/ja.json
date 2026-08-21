@@ -140,7 +140,6 @@
     "cmd_commands": "コマンドショートカット",
     "skills": "スキル",
     "subagent": "サブエージェント",
-    "loop_task": "スケジュールタスク",
     "history_msg": "履歴メッセージ",
     "plus_more": "その他",
     "voice_input": "音声入力",
@@ -222,7 +221,6 @@
       "mcp": "MCP 設定",
       "openapi": "API 設定",
       "lsp": "LSP 設定",
-      "loop": "スケジュール",
       "channel": "リモート",
       "acp": "ACP",
       "about": "バージョン情報"
@@ -543,9 +541,6 @@
       "checker_agent": "検証者サブエージェント",
       "max_iter": "最大反復",
       "worktree_isolation": "Worktree 分離",
-      "worktree_desc": "独立ブランチで実行",
-      "run_immediately": "初回即時実行",
-      "run_immediately_desc": "保存後直ちに1回実行",
       "test_run": "テスト実行",
       "save": "保存",
       "saving": "保存中…",
@@ -554,7 +549,6 @@
       "status_disabled": "無効",
       "status_running": "実行中",
       "status_ready": "準備完了",
-      "executed_times": "{0} 回実行済み",
       "last_exec": "前回: {0}",
       "iteration": "第 {0} 回目",
       "cron_format": "cron: {0}",
@@ -580,18 +574,7 @@
       "minutes_ago": "{0}分前",
       "hours_ago": "{0}時間前",
       "days_ago": "{0}日前",
-      "loop_task_list": "ループタスク ({0})",
-      "new_loop": "新規ループ",
-      "edit_loop": "ループ #{0} を編集",
-      "loop_task_desc": "タスク説明",
-      "loop_interval": "間隔",
-      "loop_fixed": "固定間隔",
       "loop_cron": "Cron 式",
-      "loop_exec_strategy": "実行戦略（テスト）",
-      "loop_goal": "目標完了検出説明（goal）",
-      "loop_trigger_btn": "テスト実行",
-      "loop_save": "保存",
-      "loop_not_found": "タスクデータが見つかりません",
       "weekday_1": "月",
       "weekday_2": "火",
       "weekday_3": "水",
@@ -765,6 +748,7 @@
     "expand_failed": "展開に失敗しました。再試行",
     "input_tokens": "入力 Token",
     "cache_read_tokens": "キャッシュ読み取り Token",
+    "cache_hit_rate": "キャッシュヒット率",
     "output_tokens": "出力 Token",
     "elapsed_time": "所要時間",
     "agent_label": "エージェント",
@@ -792,7 +776,7 @@
     "no_projects": "プロジェクトがありません。下方をクリックして追加",
     "remove_no_delete": "削除（ディスクディレクトリは削除しない）",
     "open_folder": "フォルダを開く",
-    "new_project": "新しいプロジェクト",
+    
     "project_added": "プロジェクトが追加されました",
     "add_failed": "追加に失敗しました",
     "add_failed_no_dir": "追加に失敗しました（ディレクトリが存在しませんか？）",
@@ -837,8 +821,10 @@
       "expandTree": "ファイルツリーを展開"
     },
     "confirm": "確定",
-    "back_to_tasks": "タスクに戻る",
-    "more_actions": "その他の操作"
+    "back": "戻る",
+    "preview_binary_title": "バイナリファイル",
+    "preview_binary_desc": "このファイルはバイナリ形式のため、プレビューできません",
+    "preview_load_failed": "プレビューの読み込みに失敗しました"
   },
   "common": {
     "name": "名前",
@@ -965,25 +951,39 @@
     "appkey": "AppKey",
     "appsecret": "AppSecret"
   },
-  "loop": {
-    "templates": {
-      "auto_fix_name": "自動修復ループ",
-      "auto_fix_desc": "テストが通るまで修復を繰り返す",
-      "auto_fix_prompt": "テストスイートを実行し、失敗原因を分析してコードを修復する",
-      "daily_review_name": "毎日のコードレビュー",
-      "daily_review_desc": "毎日のコードレビューとリスク集計を定期実行",
-      "daily_review_prompt": "昨日のすべてのコミットをレビューし、変更内容と潜在リスクをまとめる",
-      "daily_memory_name": "夜間メモリ整理",
-      "daily_memory_desc": "夜間に会話メモリを整理し、ユーザー設定を抽出する",
-      "daily_memory_prompt": "今日のすべての会話を振り返り、ユーザー設定・技術的決定・重要な制約を抽出し長期記憶に保存する",
-      "ci_monitor_name": "CI モニタリング",
-      "ci_monitor_desc": "ビルド状態を定期的に確認し、失敗原因を分析する",
-      "ci_monitor_prompt": "最近の CI ビルド状態を確認し、失敗事例を分析して集計レポートを生成する",
-      "health_check_name": "サービスヘルスチェック",
-      "health_check_desc": "サービス状態を定期的に探査し、異常時に警告する",
-      "health_check_prompt": "すべてのコアサービスの健全性（HTTP エンドポイント）を確認し、異常があれば集計して警告する"
-    },
-    "fill_template": "テンプレートを挿入"
+  "automation": {
+    "title": "自動化",
+    "desc": "定期実行タスクを作成し、AI にスケジュールどおり自動実行させます。",
+    "created_tasks": "作成済みタスク",
+    "instruction": "指示",
+    "model_default": "デフォルトのモデル",
+    "templates": "定期実行タスクのテンプレート",
+    "tpl": {
+      "standup": {
+        "name": "朝会ダイジェスト",
+        "desc": "前営業日以降のコミット、モジュールの変更、フォローアップ事項をまとめます。",
+        "sched": "平日 09:00",
+        "prompt": "前営業日以降のコミット、モジュールの変更、CI の状態、フォローアップ事項をまとめ、最終的に 5 項目以内の朝会用の口頭サマリーを作成してください。読み取り専用の分析とし、コードや外部状態は変更しないでください。根拠が不十分な場合は明示し、推測はしないでください。"
+      },
+      "risk": {
+        "name": "リスクスキャン",
+        "desc": "直近 24 時間のコード変更を確認し、直接的な根拠のある確度の高いリスクを報告します。",
+        "sched": "毎日 10:00",
+        "prompt": "直近 24 時間のコード変更を確認し、実行時エラー、データ損失、権限のバイパス、リソースリーク、クロスプラットフォーム互換性などの確度の高いリスクを特定し、コードおよび commit/diff の根拠を添えてください。読み取り専用の分析とし、検証可能なリポジトリの事実のみを使用してください。根拠が不十分な場合は明示し、推測はせず、コードや外部状態も変更しないでください。"
+      },
+      "release": {
+        "name": "リリースブリーフ",
+        "desc": "今週マージされた変更を整理し、チーム向けとユーザー向けのリリースサマリーを作成します。",
+        "sched": "毎週金曜 17:00",
+        "prompt": "今週マージされた変更を整理し、新機能、修正、リファクタリング、破壊的変更に分類して、チーム向けの技術サマリーとユーザー向けのリリースノートをそれぞれ作成してください。読み取り専用の分析とし、各項目に commit または PR の根拠を添えてください。コードや外部状態は変更しないでください。"
+      },
+      "docsync": {
+        "name": "ドキュメント同期チェック",
+        "desc": "最近の実装変更と照らし合わせ、更新漏れの可能性があるドキュメントを洗い出します。",
+        "sched": "毎週木曜 15:00",
+        "prompt": "最近の実装変更と照らし合わせて、README、docs、設定の説明、使用例が現在のコードと一致しているか確認し、追記または修正が必要なドキュメントの箇所とその理由を列挙してください。読み取り専用の分析とし、ドキュメントを直接変更しないでください。確認できない項目は人による確認待ちとして明記してください。"
+      }
+    }
   },
   "queue": {
     "title": "メッセージキュー",

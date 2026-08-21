@@ -140,7 +140,6 @@
     "cmd_commands": "Commandes raccourcies",
     "skills": "Compétences",
     "subagent": "Sous-agent",
-    "loop_task": "Tâche planifiée",
     "history_msg": "Messages historiques",
     "plus_more": "Plus",
     "voice_input": "Saisie vocale",
@@ -222,7 +221,6 @@
       "mcp": "Configuration MCP",
       "openapi": "Configuration OpenAPI",
       "lsp": "Configuration LSP",
-      "loop": "Planificateur",
       "channel": "À distance",
       "acp": "ACP",
       "about": "À propos"
@@ -543,9 +541,6 @@
       "checker_agent": "Sous-agent vérificateur",
       "max_iter": "Itérations maximales",
       "worktree_isolation": "Isolation Worktree",
-      "worktree_desc": "Exécuter sur une branche indépendante",
-      "run_immediately": "Exécuter immédiatement au premier lancement",
-      "run_immediately_desc": "Exécuter une fois immédiatement après la sauvegarde",
       "test_run": "Test d'exécution",
       "save": "Enregistrer",
       "saving": "Enregistrement…",
@@ -554,7 +549,6 @@
       "status_disabled": "Désactivé",
       "status_running": "En cours",
       "status_ready": "Prêt",
-      "executed_times": "Exécuté {0} fois",
       "last_exec": "Dernier : {0}",
       "iteration": "Itération {0}",
       "cron_format": "cron : {0}",
@@ -580,18 +574,7 @@
       "minutes_ago": "il y a {0} minute(s)",
       "hours_ago": "il y a {0} heure(s)",
       "days_ago": "il y a {0} jour(s)",
-      "loop_task_list": "Tâches en boucle ({0})",
-      "new_loop": "Nouvelle boucle",
-      "edit_loop": "Modifier la boucle #{0}",
-      "loop_task_desc": "Description de la tâche",
-      "loop_interval": "Intervalle",
-      "loop_fixed": "Intervalle fixe",
       "loop_cron": "Expression Cron",
-      "loop_exec_strategy": "Stratégie d'exécution (test)",
-      "loop_goal": "Description de détection d'objectif (goal)",
-      "loop_trigger_btn": "Test d'exécution",
-      "loop_save": "Enregistrer",
-      "loop_not_found": "Données de tâche introuvables",
       "weekday_1": "Lun",
       "weekday_2": "Mar",
       "weekday_3": "Mer",
@@ -765,6 +748,7 @@
     "expand_failed": "Échec du développement, réessayer",
     "input_tokens": "Tokens d'entrée",
     "cache_read_tokens": "Tokens lus depuis le cache",
+    "cache_hit_rate": "Taux de succès du cache",
     "output_tokens": "Tokens de sortie",
     "elapsed_time": "Durée",
     "agent_label": "Agent",
@@ -792,7 +776,7 @@
     "no_projects": "Aucun projet, cliquez ci-dessous pour en ajouter",
     "remove_no_delete": "Retirer (ne pas supprimer le répertoire disque)",
     "open_folder": "Ouvrir un dossier",
-    "new_project": "Nouveau projet",
+    
     "project_added": "Projet ajouté",
     "add_failed": "Ajout échoué",
     "add_failed_no_dir": "Ajout échoué (le répertoire n'existe pas ?)",
@@ -837,8 +821,10 @@
       "expandTree": "Développer l'arborescence"
     },
     "confirm": "Confirmer",
-    "back_to_tasks": "Retour aux tâches",
-    "more_actions": "Plus d'actions"
+    "back": "Retour",
+    "preview_binary_title": "Fichier binaire",
+    "preview_binary_desc": "Ce fichier est au format binaire et ne peut pas être prévisualisé",
+    "preview_load_failed": "Échec du chargement de l'aperçu"
   },
   "common": {
     "name": "Nom",
@@ -965,25 +951,39 @@
     "appkey": "AppKey",
     "appsecret": "AppSecret"
   },
-  "loop": {
-    "templates": {
-      "auto_fix_name": "Boucle d’auto-correction",
-      "auto_fix_desc": "Réessayer les corrections jusqu’à ce que les tests passent",
-      "auto_fix_prompt": "Exécutez la suite de tests, analysez les échecs et corrigez le code",
-      "daily_review_name": "Revue de code quotidienne",
-      "daily_review_desc": "Revue de code quotidienne planifiée et synthèse des risques",
-      "daily_review_prompt": "Passez en revue tous les commits d’hier et résumez les changements et risques",
-      "daily_memory_name": "Consolidation nocturne de la mémoire",
-      "daily_memory_desc": "Organiser la mémoire des conversations la nuit et extraire les préférences",
-      "daily_memory_prompt": "Passez en revue toutes les conversations du jour, extrayez les préférences, décisions techniques et contraintes, et stockez-les en mémoire longue durée",
-      "ci_monitor_name": "Surveillance CI",
-      "ci_monitor_desc": "Vérifier périodiquement l’état des builds et analyser les échecs",
-      "ci_monitor_prompt": "Vérifiez l’état récent des builds CI, analysez les échecs et générez un rapport de synthèse",
-      "health_check_name": "Vérification de l’état du service",
-      "health_check_desc": "Sonder périodiquement l’état du service et alerter en cas d’anomalie",
-      "health_check_prompt": "Vérifiez l’état de tous les services essentiels (points de terminaison HTTP) et synthétisez les alertes d’anomalies"
-    },
-    "fill_template": "Remplir le modèle"
+  "automation": {
+    "title": "Automatisation",
+    "desc": "Créez des tâches planifiées et laissez l'IA les exécuter automatiquement.",
+    "created_tasks": "Tâches créées",
+    "instruction": "Instruction",
+    "model_default": "Modèle par défaut",
+    "templates": "Modèles de tâches planifiées",
+    "tpl": {
+      "standup": {
+        "name": "Point quotidien",
+        "desc": "Résume les commits, les évolutions de modules et les points à suivre depuis le dernier jour ouvré.",
+        "sched": "Jours ouvrés 09:00",
+        "prompt": "Résume les commits, les évolutions de modules, l'état de la CI et les points à suivre depuis le dernier jour ouvré, puis produis un résumé oral de réunion quotidienne de 5 points maximum. Analyse en lecture seule : ne modifie ni le code ni aucun état externe. Si les preuves sont insuffisantes, indique-le explicitement et ne fais aucune supposition."
+      },
+      "risk": {
+        "name": "Analyse des risques",
+        "desc": "Examine les modifications de code des dernières 24 heures et signale les risques à forte confiance appuyés par des preuves directes.",
+        "sched": "Tous les jours 10:00",
+        "prompt": "Examine les modifications de code des dernières 24 heures et identifie les risques à forte confiance : erreurs d'exécution, pertes de données, contournements de permissions, fuites de ressources et problèmes de compatibilité multiplateforme, en joignant pour chacun les preuves issues du code et des commits/diffs. Analyse en lecture seule, uniquement à partir de faits vérifiables du dépôt ; si les preuves sont insuffisantes, indique-le explicitement, ne fais aucune supposition et ne modifie ni le code ni aucun état externe."
+      },
+      "release": {
+        "name": "Note de version",
+        "desc": "Compile les changements fusionnés cette semaine et génère un résumé de version pour l'équipe et pour les utilisateurs.",
+        "sched": "Chaque vendredi 17:00",
+        "prompt": "Compile les changements fusionnés cette semaine, classe-les en nouvelles fonctionnalités, corrections, refactorisations et changements incompatibles, puis produis un résumé technique destiné à l'équipe ainsi que des notes de version destinées aux utilisateurs. Analyse en lecture seule : justifie chaque point par le commit ou la pull request correspondante ; ne modifie ni le code ni aucun état externe."
+      },
+      "docsync": {
+        "name": "Vérification de la synchronisation de la documentation",
+        "desc": "Identifie les mises à jour de documentation potentiellement oubliées au regard des changements récents d'implémentation.",
+        "sched": "Chaque jeudi 15:00",
+        "prompt": "Au regard des changements récents d'implémentation, vérifie que le README, le dossier docs, les descriptions de configuration et les exemples d'utilisation restent cohérents avec le code actuel, puis liste les emplacements de documentation à compléter ou à corriger en expliquant pourquoi. Analyse en lecture seule : ne modifie pas directement la documentation ; marque comme à confirmer manuellement tout point que tu ne peux pas vérifier."
+      }
+    }
   },
   "queue": {
     "title": "File d'attente de messages",

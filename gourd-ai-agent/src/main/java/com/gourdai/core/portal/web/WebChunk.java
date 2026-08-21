@@ -117,6 +117,13 @@ public class WebChunk {
     /** 缓存读取输入 token 数（Prompt Caching，命中缓存按折扣计费的部分），用于 {@code trace} / {@code context_size} 展示，可为 null。 */
     private Long cacheReadTokens;
 
+    /**
+     * 缓存命中率（百分比 0~100，= cacheReadTokens / inputTokens），
+     * 用于 {@code trace} / {@code context_size} 展示，可为 null。
+     * <p>相对于绝对值，百分比自带分母，能直接看出本轮输入有多大比例走了缓存。</p>
+     */
+    private Double cacheRate;
+
     /** 推理耗时秒数，仅在 type 为 {@code trace} 时使用，记录从 ReAct 开始到结束的耗时。 */
     private Long elapsedSeconds;
 
@@ -415,12 +422,14 @@ public class WebChunk {
      * @param outputTokens   输出 token 消耗数，可为 null（无指标时）
      * @param cacheCreationTokens 缓存创建输入 token 数，可为 null
      * @param cacheReadTokens     缓存读取输入 token 数，可为 null
+     * @param cacheRate      缓存命中率（百分比 0~100），可为 null
      * @param elapsedSeconds 推理耗时（秒），可为 null（无开始时间时）
      * @param finalAnswer    ReAct 完成时的全量最终答复，供前端复制使用，可为 null
      * @return 携带追踪元数据的消息块
      */
     public static WebChunk ofTrace(String model, Long inputTokens, Long outputTokens,
                                    Long cacheCreationTokens, Long cacheReadTokens,
+                                   Double cacheRate,
                                    Long elapsedSeconds, String finalAnswer) {
         WebChunk tmp = new WebChunk();
         tmp.type = "trace";
@@ -430,6 +439,7 @@ public class WebChunk {
         tmp.totalTokens = (inputTokens != null && outputTokens != null) ? (inputTokens + outputTokens) : null;
         tmp.cacheCreationTokens = cacheCreationTokens;
         tmp.cacheReadTokens = cacheReadTokens;
+        tmp.cacheRate = cacheRate;
         tmp.elapsedSeconds = elapsedSeconds;
         tmp.finalAnswer = finalAnswer;
         tmp.createdAt = Instant.now().toEpochMilli();

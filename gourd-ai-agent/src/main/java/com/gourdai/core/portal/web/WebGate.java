@@ -574,10 +574,24 @@ public class WebGate extends SimpleWebSocketListener {
      * @param agentName    指定 Agent 名称（可为 null，表示使用默认 Agent）
      */
     private String performAgentTaskSync(AgentSession session, String sessionCwd, Prompt prompt, String selectedModel, String agentName) {
+        return performAgentTaskSync(session, sessionCwd, prompt, selectedModel, agentName, false, null);
+    }
+
+    /**
+     * 执行 Agent 流式任务（同步等待，可指定不持久化选择）。
+     *
+     * @param transientSelection    true 时本轮指定的模型不写入会话上下文（仅本轮生效）。
+     *                              用于 Loop 定时任务：选择属于任务定义，不应污染运行时会话的用户选择。
+     * @param thinkingDepthOverride 本轮思考深度档位（null 时回退会话选择），同样不写入会话上下文。
+     */
+    private String performAgentTaskSync(AgentSession session, String sessionCwd, Prompt prompt, String selectedModel, String agentName,
+                                        boolean transientSelection, String thinkingDepthOverride) {
         String sessionId = session.getSessionId();
 
         if (selectedModel != null) {
-            session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, selectedModel);
+            if (!transientSelection) {
+                session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, selectedModel);
+            }
         } else {
             selectedModel = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
         }
@@ -591,7 +605,7 @@ public class WebGate extends SimpleWebSocketListener {
         // done 兜底守卫（与异步路径同因）：任何终止信号下保证前端恰好收到一个 done
         final AtomicBoolean doneSent = new AtomicBoolean(false);
 
-        Disposable disposable = streamBuilder.buildStreamFlux(session, agent, chatModel, sessionCwd, prompt)
+        Disposable disposable = streamBuilder.buildStreamFlux(session, agent, chatModel, sessionCwd, prompt, thinkingDepthOverride)
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnNext(line -> {
                     if ("done".equals(line.getType())) {
@@ -847,6 +861,25 @@ public class WebGate extends SimpleWebSocketListener {
      * @param projectRoot 会话所属工作空间根绝对路径（可为 null，回退默认工作区）
      */
     public String safeChatInputAndCaptureLoop(String sessionId, String projectRoot, String input, String source) {
+        return safeChatInputAndCaptureLoop(sessionId, projectRoot, null, input, source, null, null);
+    }
+
+    /**
+     * Loop 专用：带完整执行上下文（工作空间 / 模型 / 思考档位）的安全聊天输入入口。
+     *
+     * <p>模型与思考档位按「任务定义」生效且<b>不写入会话上下文</b>：定时任务可能复用
+     * 用户绑定的前台会话，若写入上下文会静默改掉用户在界面上的模型/思考选择。</p>
+     *
+     * @param projectRoot   会话所属工作空间根绝对路径（可为 null，回退默认工作区）
+     * @param worktreeRoot  本轮 worktree 绝对路径（可为 null）。非空时作为本轮 AI 工作目录，
+     *                      但<b>不写入会话注册表</b>：它在本轮执行结束后即被删除，
+     *                      若持久化会留下指向不存在目录的所属根。
+     * @param modelName     任务指定的模型名（可为 null，回退会话/默认模型）
+     * @param thinkingDepth 任务指定的思考档位（可为 null，回退会话选择）
+     */
+    public String safeChatInputAndCaptureLoop(String sessionId, String projectRoot, String worktreeRoot, String input, String source,
+                                              String modelName, String thinkingDepth) {
+        // 仅持久化任务的工作空间根，worktree 为本轮瞬态目录，绝不入注册表
         if (sessionLocator != null && Assert.isNotEmpty(projectRoot)) {
             sessionLocator.bindSessionRoot(sessionId, projectRoot);
         }
@@ -887,7 +920,12 @@ public class WebGate extends SimpleWebSocketListener {
             }
         }
 
-        return performAgentTaskSync(session, projectRoot, Prompt.of(currentInput), null, agentName);
+        // 工作目录：worktree 优先（隔离执行），否则用任务工作空间根
+        String effectiveCwd = Assert.isNotEmpty(worktreeRoot) ? worktreeRoot : projectRoot;
+
+        // 任务级选择仅本轮生效（transientSelection=true），不污染会话上下文
+        return performAgentTaskSync(session, effectiveCwd, Prompt.of(currentInput), modelName, agentName,
+                true, thinkingDepth);
     }
 
 

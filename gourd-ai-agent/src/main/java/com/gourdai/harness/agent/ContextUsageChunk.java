@@ -38,12 +38,15 @@ public class ContextUsageChunk extends AbsAgentChunk {
     private final long cacheCreationTokens;
     /** 缓存读取输入 token（Prompt Caching：本次命中缓存、按折扣计费的 token） */
     private final long cacheReadTokens;
+    /** 缓存命中率（百分比 0~100，= cacheReadTokens / inputTokens） */
+    private final double cacheRate;
     /** 当前上下文的消息数（仅供展示） */
     private final int messageCount;
 
     public ContextUsageChunk(ReActTrace trace,
                              long inputTokens, long outputTokens,
                              long cacheCreationTokens, long cacheReadTokens,
+                             double cacheRate,
                              int messageCount) {
         super(trace.getRunId(), trace.getAgentName(), trace.getSession(), null);
 
@@ -51,6 +54,7 @@ public class ContextUsageChunk extends AbsAgentChunk {
         this.outputTokens = outputTokens;
         this.cacheCreationTokens = cacheCreationTokens;
         this.cacheReadTokens = cacheReadTokens;
+        this.cacheRate = cacheRate;
         this.messageCount = messageCount;
     }
 
@@ -80,6 +84,13 @@ public class ContextUsageChunk extends AbsAgentChunk {
      */
     public long getCacheReadTokens() {
         return cacheReadTokens;
+    }
+
+    /**
+     * 缓存命中率（百分比 0~100）
+     */
+    public double getCacheRate() {
+        return cacheRate;
     }
 
     /**

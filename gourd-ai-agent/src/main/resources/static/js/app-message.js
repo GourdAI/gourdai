@@ -207,6 +207,19 @@ function createThinkingBlockEl(sess) {
     return block;
 }
 
+/* 卡体跟随底部：智能体卡体（.agent-card-body）是限高滚动容器，流式内容到达时需主动置底，
+   否则新内容会隐在卡体视口下方（用户看不到正在输出什么）。用户在卡内主动向上翻看时停止跟随。 */
+function followAgentCardBody(bodyEl, st) {
+    if (!bodyEl) return;
+    if (st && st.bodyUserScrolledUp) return;
+    bodyEl.scrollTop = bodyEl.scrollHeight;
+}
+/* holder 版跟随：主线路 holder（sess）无 bodyEl（正文直接落在消息区），对其为空操作。 */
+function followHolderBody(h) {
+    if (!h) return;
+    followAgentCardBody(h.bodyEl, h);
+}
+
 /* 在 holder 上确保 thinking-block。正文指针推进逻辑（主线路与智能体一致）：
    当前正文容器已有内容（含缓冲中待渲染内容）时先收敛并新开正文容器，新思考块落在旧正文之后、
    后续正文落在思考块之后；无内容时思考块就当前位置、复用当前正文容器。
@@ -222,9 +235,12 @@ function ensureThinkingBlockCore(sess, h, opts) {
     var hasPendingText = !!(h.reasonBuffer && h.reasonBuffer.trim().length > 0);
     var hasContent = cur && ((cur.children && cur.children.length > 0) || (cur.textContent || '').trim().length > 0 || hasPendingText);
     if (hasContent) {
-        // 先把增量渲染器挂起的尾部刷进旧气泡（finish 内部取消 rAF 并全量收敛），避免其稍后写入新（错误）气泡
-        if (hasPendingText) {
-            getStreamMd(cur).finish();
+        // 先把增量渲染器挂起的尾部刷进旧气泡（finish 内部取消 rAF 并全量收敛），避免其稍后写入新（错误）气泡。
+        // 判定条件用「渲染器仍处流式态」而非 hasPendingText：hasContent 也可能仅由 children/textContent
+        // 成立（如 reasonBuffer 已被 advanceBodyPointer 清空），此时旧渲染器的 tail 区若仍挂着未提交尾部，
+        // 不收尾就换容器会让它被永久遗弃在页面上（表现为与 stable 区并列的「重复正文」）。
+        if (cur._streamMd && cur._streamMd.active) {
+            cur._streamMd.finish();
             if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(cur);
             if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(cur);
         }
@@ -293,6 +309,8 @@ function appendReasonChunkCore(sess, h, text) {
                 h.thinkingBodyWrapEl.scrollTop = h.thinkingBodyWrapEl.scrollHeight;
             }
         }
+        // 智能体卡体自身也是滚动容器：内层思考块滚到底不代表它在卡体视口内，需同步跟随
+        followHolderBody(h);
         if (sess.sessionId === activeSessionId) {
             if (!userScrolledUp && messagesWrap) {
                 // 同步赋值减少跳帧
@@ -316,6 +334,8 @@ function appendBodyContentCore(sess, h, text, append, ensureEl) {
         // 避免复制到被工具调用切开的中间片段。
         // 按钮仅添加一次（通过 data-hljs-collected 标记跳过已有按钮的 pre）
         if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(el);
+        // 智能体卡体限高滚动，正文增量到达时跟随卡内底部（主线路无 bodyEl，空操作）
+        followHolderBody(h);
         // 流式过程中不实时高亮，等 finishStream 时再一次性处理，避免高亮引起的布局跳动
         if (sess.sessionId === activeSessionId) {
             if (!userScrolledUp && messagesWrap && !sess._skipScroll) {
@@ -327,11 +347,45 @@ function appendBodyContentCore(sess, h, text, append, ensureEl) {
     if (append) r.append(clean); else r.replace(clean);
 }
 
+/* 判定正文容器是否「视觉为空」：无文本且无块级内容。
+   指针推进遗留的空 .md-content 会被 padding 撑高、夹在两张卡之间时阻止 margin 折叠，
+   造成卡片间隔忽高忽低；仅空白文本 chunk 渲染出的空 <p> 残留同理，需清除。 */
+function isVisuallyEmptyMd(el) {
+    if (!el || !el.parentNode) return false;
+    // 携带 data-md-raw 的容器是复制按钮的权威数据源（appendTraceBadge 写入的后端最终答案）。
+    // 这类容器可能自身没渲染任何正文（正文被工具卡切走后指针新开的空容器），视觉上确实为空，
+    // 但一旦被清扫掉，复制会静默回退到「尾部片段」甚至空串。故先于视觉判定短路保留。
+    if (el.getAttribute && (el.getAttribute('data-md-raw') || '').trim()) return false;
+    if ((el.textContent || '').trim()) return false;
+    return !el.querySelector('img,pre,table,ul,ol,hr,blockquote,canvas,svg');
+}
+
+/* 清扫容器内视觉为空的正文容器（仅气泡/智能体卡体的直接子级，不动 thinking-block-body 内的 md）。
+   智能体卡体与主气泡同构（thinking-block / tool-card / md-content），指针推进遗留的空 .md-content
+   与空白 chunk 渲染出的空 <p> 残留同样会撑出参差间距，需一并清扫。 */
+function purgeEmptyMdBlocks(container) {
+    if (!container) return;
+    $(container).find('.msg-bubble > .md-content, .agent-card-body > .md-content').each(function() {
+        if (isVisuallyEmptyMd(this)) $(this).remove();
+    });
+}
+
 /* 推进正文指针：工具卡/思考块产出后新开空 .md-content，让后续到达的正文写入卡片下方，
    而非停留在旧气泡里被卡片顶到上方。主线路与智能体卡片共用。 */
 function advanceBodyPointer(sess, h, insertFresh) {
     if (!h) return;
+    // 换容器前必须收尾旧容器的流式渲染器：其 tail 区可能还挂着「未提交尾部」，而指针一推进，
+    // 旧容器既不会再有帧驱动、也不会有人 finish 它（finishStream 只收尾当前容器），
+    // 残留 tail 会与 stable 区并列固化成「重复正文」。finish() 内部取消挂起帧并全量收敛。
+    var prev = h.currentBubbleEl;
+    if (prev && prev._streamMd && prev._streamMd.active) {
+        prev._streamMd.finish();
+        // finish 会全量重建 innerHTML，复制按钮与高亮标记随之丢失，需补挂（与 ensureThinkingBlockCore 一致）
+        if (typeof addCodeBlockButtons === 'function') addCodeBlockButtons(prev);
+        if (typeof highlightCodeBlocks === 'function') highlightCodeBlocks(prev);
+    }
     h.reasonBuffer = '';
+    if (isVisuallyEmptyMd(h.currentBubbleEl)) $(h.currentBubbleEl).remove();
     var freshMd = $('<div>').addClass('md-content')[0];
     insertFresh(freshMd);
     h.currentBubbleEl = freshMd;
@@ -862,6 +916,7 @@ function appendActionStartChunk(sess, toolName, args, toolTitle, actionId, agent
             if (insertAgentBody) {
                 // 子代理内部：插入 .agent-card-body
                 $(insertAgentBody).append(group);
+                followAgentCardBody(insertAgentBody, findAgentStateByBody(sess, insertAgentBody));
             } else {
                 // 主代理：正常插入气泡
                 insertBeforeActions(sess, group);
@@ -882,6 +937,7 @@ function appendActionStartChunk(sess, toolName, args, toolTitle, actionId, agent
         // 决定插入位置
         if (insertAgentBody) {
             $(insertAgentBody).append(card);
+            followAgentCardBody(insertAgentBody, findAgentStateByBody(sess, insertAgentBody));
         } else {
             insertBeforeActions(sess, card);
         }
@@ -1022,7 +1078,10 @@ function appendActionEndChunk(sess, toolName, text, args, toolTitle, actionId, m
         if (!idOwner) {
             advanceBodyPointer(sess, sess, function(el) { insertBeforeActions(sess, el); });
         } else {
-            advanceAgentBodyPointer(sess, findAgentStateByBody(sess, idOwner) || resolveAgentState(sess, args));
+            var idOwnerState = findAgentStateByBody(sess, idOwner) || resolveAgentState(sess, args);
+            advanceAgentBodyPointer(sess, idOwnerState);
+            // 工具卡结果体填充后卡体高度突变，需重新跟随到卡内底部
+            followAgentCardBody(idOwner, idOwnerState);
         }
         if (sess.sessionId === activeSessionId) scrollToBottom();
         return;
@@ -1227,8 +1286,20 @@ function appendTraceBadge(sess, chunk) {
     var parts = [];
     if (chunk.inputTokens) {
         parts.push(item(TRACE_IN_SVG, fmtK(chunk.inputTokens), GourdI18n.t('chat.input_tokens')));
-        // 缓存读取占比通常很大（开启 Prompt Caching 后输入几乎全走缓存），单独标注避免"输入虚小"的误解
-        if (chunk.cacheReadTokens) parts.push(item(TRACE_CACHE_SVG, fmtK(chunk.cacheReadTokens), GourdI18n.t('chat.cache_read_tokens')));
+        // 缓存读取占比通常很大（开启 Prompt Caching 后输入几乎全走缓存），单独标注避免"输入虚小"的误解；
+        // 同时附命中率百分比（自带分母，不需用户心算缓存占输入的比例）
+        if (chunk.cacheReadTokens) {
+            var cacheVal = fmtK(chunk.cacheReadTokens);
+            var cacheTip = GourdI18n.t('chat.cache_read_tokens');
+            // 命中率格式化复用 app-context.js 的 fmtCacheRate，保证两处精度口径一致
+            var rateTxt = (typeof fmtCacheRate === 'function') ? fmtCacheRate(chunk.cacheRate) : '';
+            if (rateTxt) {
+                cacheVal += ' (' + rateTxt + ')';
+                // 本行为「本轮累计」口径（多次 ReAct 迭代汇总），与指示条的「本次推理」口径不同，在 title 中标注区分
+                cacheTip += ' · ' + GourdI18n.t('chat.cache_hit_rate') + ' ' + rateTxt;
+            }
+            parts.push(item(TRACE_CACHE_SVG, cacheVal, cacheTip));
+        }
     }
     if (chunk.outputTokens != null) parts.push(item(TRACE_OUT_SVG, fmtK(chunk.outputTokens), GourdI18n.t('chat.output_tokens')));
     if (chunk.elapsedSeconds != null) parts.push(item(TRACE_TIME_SVG, fmtSec(chunk.elapsedSeconds), GourdI18n.t('chat.elapsed_time')));
@@ -1297,6 +1368,11 @@ function appendTraceBadge(sess, chunk) {
                     if (typeof processMermaidBlocks === 'function') processMermaidBlocks(endState.currentBubbleEl);
                 }
             }
+
+            // 清扫卡体内视觉为空的正文容器（指针推进遗留的空 .md-content / 空 <p> 残留），
+            // 统一卡体间隔（与主线路 finishStream 收尾清扫同口径）；放在 resultSummary 追加之前，
+            // 确保摘要落在卡体真正的末尾。此时该智能体的增量渲染器已在上方强刷收敛，不会误删带内容的容器。
+            purgeEmptyMdBlocks(existCard);
 
             // resultSummary 作为独立的 .md-content 块追加到 .agent-card-body 末尾。
             // 去重守卫：卡片已有流式正文时（单任务 ReasonChunk 增量 / multitask ThoughtChunk 结果），
@@ -1369,6 +1445,7 @@ function appendTraceBadge(sess, chunk) {
         id: agentId,
         card: card,
         bodyEl: agentCardBody,
+        bodyUserScrolledUp: false,
         currentBubbleEl: null,
         bodyText: '',
         reasonBuffer: '',
@@ -1380,6 +1457,13 @@ function appendTraceBadge(sess, chunk) {
         thinkingBlockTimerId: null,
         thinkingBlockStartTime: null
     };
+    // 监听卡体滚动：用户主动向上翻看时停止自动跟随（写入各智能体自身状态，并行互不污染，
+    // 与思考块 thinkingUserScrolledUp 同口径）
+    $(agentCardBody).on('scroll', function() {
+        var gap = agentCardBody.scrollHeight - agentCardBody.scrollTop - agentCardBody.clientHeight;
+        agentState.bodyUserScrolledUp = gap > 60;
+    });
+
     if (!sess.agentStates) sess.agentStates = {};
     sess.agentStates[agentId] = agentState;
     sess._agentStateLast = agentState;

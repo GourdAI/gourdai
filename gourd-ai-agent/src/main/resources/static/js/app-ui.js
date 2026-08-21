@@ -331,7 +331,7 @@ $('#chatImageInput').on('change', function(e) {
 
 /* ===== Plus 聚合菜单（“+”弹出菜单，chat/code 模式共用） =====
    菜单项沿用原工具条按钮 ID（attach/image/cmd/skill/agent/loop/history），
-   各自的动作绑定（app-ui/app-history/app-loop）无需改动，这里只负责菜单本身的开关。 */
+   各自的动作绑定（app-ui/app-history）无需改动，这里只负责菜单本身的开关。 */
 (function() {
     var $plusWraps = $('.plus-menu-wrap');
     if (!$plusWraps.length) return;
@@ -534,6 +534,12 @@ function createStreamMd(hostEl) {
                         ensureTail();
                         r.tailEl.insertAdjacentHTML('beforebegin', mdParse(raw));
                         r.stableLen += raw.length;
+                        // 提交进 stable 后必须清空 tail：tail 里画的是「上一帧的未提交尾部」，
+                        // 该内容此刻已随 raw 落入 stable。若本轮 commit 覆盖了全部 token
+                        // （如正文以空行 \n\n 收尾，末 token 为 space 走 tokens.length 全提交），
+                        // 循环下一轮 rem 为空即 break，L573 的空 tail 清理又因 tail 非空不成立，
+                        // 于是 stable 一份完整 + tail 一份缺尾并列显示 → 正文重复。
+                        r.tailEl.innerHTML = '';
                         continue;
                     }
                 }
@@ -771,12 +777,19 @@ function openSettingsToTab(tab) {
     var $t = $('.settings-tab[data-tab="' + tab + '"]');
     if ($t.length) $t.trigger('click');
 }
-$(document).on('click', '#automationNavBtn', function() { openSettingsToTab('loop'); });
+/* 「自动化」是独立主视图（app-automation.js），不再走设置浮层 */
+$(document).on('click', '#automationNavBtn', function() {
+    if (typeof window.openAutomation === 'function') window.openAutomation();
+});
 $(document).on('click', '#skillsNavBtn', function() { openSettingsToTab('skills'); });
 
 /* ===== View Switch ===== */
 function switchToChatMode() {
-    if (inChatMode) return;
+    // 自动化视图占据主区时，即便 inChatMode 仍为 true 也必须走完整恢复流程，
+    // 否则 chatView 拿不回 .active（防御未来又出现只改 DOM 不同步标志的入口）
+    var fromAutomation = (typeof window.isAutomationOpen === 'function') && window.isAutomationOpen();
+    if (typeof window.closeAutomation === 'function') window.closeAutomation();
+    if (inChatMode && !fromAutomation) return;
     inChatMode = true;
     $(welcomeView).hide();
     $(chatView).addClass('active');
@@ -785,6 +798,7 @@ function switchToChatMode() {
     chatInput.focus();
 }
 function switchToWelcomeMode() {
+    if (typeof window.closeAutomation === 'function') window.closeAutomation();
     inChatMode = false;
     if (typeof forgetActiveSession === 'function') forgetActiveSession();
     SESSION_ID = (typeof newSessionId === 'function') ? newSessionId() : ('work-' + Date.now().toString(36));
@@ -804,9 +818,8 @@ function switchToWelcomeMode() {
     $(welcomeView).show();
     $(chatView).removeClass('active');
     welcomeInput.focus();
-    // 新对话时禁用“历史消息”按钮（循环任务按钮保持可用）
+    // 新对话时禁用“历史消息”按钮
     $('#welcomeHistoryBtn').prop('disabled', true);
-    $('#welcomeLoopBtn').prop('disabled', false);
     // Reset model UI to new session
     if (typeof modelsLoaded !== 'undefined' && modelsLoaded) renderModelUI();
     // 切欢迎页时清空附件预览，避免跨视图残留

@@ -84,7 +84,7 @@ body.code-mode .sidebar { display: none !important; }
    行1：返回任务 + 终端/记忆/设置；行2：项目名 + 视图切换 + 更多操作 */
 .filer-topbar {
     display: flex; align-items: center; justify-content: space-between;
-    gap: 4px; padding: 6px 8px 2px; flex-shrink: 0;
+    gap: 4px; padding: 6px 8px 6px 2px; flex-shrink: 0;
 }
 /* macOS：红绿灯按钮在左上角，首行加顶距让位 */
 body.is-electron.is-mac .filer-topbar { padding-top: 44px; }
@@ -95,7 +95,7 @@ body.is-electron.is-mac .filer-topbar { padding-top: 44px; }
     padding: 4px 6px; border-radius: 6px;
 }
 .filer-back-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
-.filer-topbar-actions { display: flex; align-items: center; gap: 2px; }
+.filer-topbar-actions { display: flex; align-items: center; gap: 4px; }
 .filer-head-btn {
     position: relative; display: inline-flex; align-items: center; justify-content: center;
     width: 26px; height: 26px; border: none; background: none; cursor: pointer;
@@ -106,7 +106,7 @@ body.is-electron.is-mac .filer-topbar { padding-top: 44px; }
 body.terminal-open .filer-terminal-btn { color: var(--accent); background: var(--bg-hover); }
 .filer-project-row {
     display: flex; align-items: center; gap: 6px;
-    padding: 4px 10px 6px; flex-shrink: 0; min-width: 0;
+    padding: 2px 8px 8px; flex-shrink: 0; min-width: 0;
 }
 .filer-project-row > svg { flex-shrink: 0; color: var(--text-secondary); }
 .filer-project-name {
@@ -114,22 +114,10 @@ body.terminal-open .filer-terminal-btn { color: var(--accent); background: var(-
     color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     text-transform: uppercase; letter-spacing: 0.4px;
 }
-.filer-project-actions { display: flex; align-items: center; gap: 2px; position: relative; }
+.filer-project-actions { display: flex; align-items: center; gap: 4px; }
 /* Git 计数角标：贴在按钮右上角 */
-.filer-head-btn .git-badge { position: absolute; top: -3px; right: -4px; }
-/* 更多操作菜单（打开文件夹 / 新建项目） */
-.filer-more-menu {
-    position: absolute; top: 30px; right: 0; z-index: 50;
-    min-width: 150px; padding: 4px;
-    background: var(--bg-sidebar); border: 1px solid var(--border-color);
-    border-radius: 8px; box-shadow: 0 6px 18px rgba(0,0,0,0.18);
-}
-.filer-more-item {
-    display: flex; align-items: center; gap: 8px;
-    padding: 6px 8px; border-radius: 6px; cursor: pointer;
-    font-size: 12px; color: var(--text-primary); white-space: nowrap;
-}
-.filer-more-item:hover { background: var(--bg-hover); }
+.filer-head-btn .git-badge { position: absolute; top: -4px; right: -2px; }
+
 
 /* ========== Code 模式右侧对话栏顶部：会话标签页 ========== */
 .code-chat-header { display: none; }
@@ -431,6 +419,35 @@ body.code-mode.viewer-open .code-editor-pane { display: none; }
 .code-editor-tab-close:hover { background: var(--bg-hover); color: var(--text-primary); }
 
 .code-editor-host { flex: 1; min-height: 0; position: relative; }
+
+/* ---- 二进制文件预览层（图片/PDF/音视频）：与 Monaco 编辑器宿主互斥显示，由 app-code.js 切换 ---- */
+.code-preview-host { flex: 1; min-height: 0; display: flex; background: var(--bg-main); }
+.code-preview-stage {
+    flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center;
+    overflow: auto; padding: 16px;
+}
+/* 透明图片可见性：棋盘格背景托底 */
+.code-preview-img {
+    max-width: 100%; max-height: 100%; object-fit: contain; flex-shrink: 0;
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.18);
+    background-image:
+        linear-gradient(45deg, var(--bg-hover) 25%, transparent 25%, transparent 75%, var(--bg-hover) 75%),
+        linear-gradient(45deg, var(--bg-hover) 25%, transparent 25%, transparent 75%, var(--bg-hover) 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 8px 8px;
+}
+/* PDF 用内嵌框架渲染（Chromium 内置 PDF 查看器） */
+.code-preview-frame { flex: 1; min-height: 0; width: 100%; border: none; background: #fff; }
+.code-preview-media { max-width: 100%; max-height: 100%; }
+/* 二进制占位（不可预览文件 / 加载失败）：居中图标 + 文案 */
+.code-preview-binary {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    color: var(--text-secondary); text-align: center;
+}
+.code-preview-binary svg { color: var(--text-secondary); opacity: 0.7; }
+.code-preview-binary-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.code-preview-binary-name { font-size: 12px; font-family: var(--font-mono); word-break: break-all; max-width: 420px; }
+.code-preview-binary-desc { font-size: 12px; }
 /* Monaco 编辑器宿主：占满容器；字体/字号由 Monaco 自带。
    滚动条：尺寸由 JS 侧 scrollbar 选项定为 6px（与全局 --scrollbar-size 一致），
    滑块颜色/圆角在此与 theme.css 的全局 --scrollbar-* 规范对齐（覆盖 Monaco 默认观感）。 */
@@ -600,6 +617,7 @@ body.code-mode #chatView .thinking-block-toggle { font-size: 11px; }
 body.code-mode #chatView .thinking-block-body { padding: 0 10px 8px; font-size: 12px; line-height: 1.6; }
 body.code-mode #chatView .thinking-block-body .md-content { font-size: 12px; }
 
+body.code-mode #chatView .thinking-block { margin: 0 0 6px; }
 body.code-mode #chatView .tool-card { margin: 6px 0; border-radius: 8px; }
 body.code-mode #chatView .tool-card-header { padding: 6px 10px; gap: 6px; font-size: 12px; }
 body.code-mode #chatView .tool-type-icon { font-size: 13px; }
@@ -612,3 +630,11 @@ body.code-mode #chatView .tool-batch-header { padding: 6px 10px; gap: 8px; font-
 body.code-mode #chatView .tool-batch-progress { font-size: 11px; }
 body.code-mode #chatView .batch-tool-items { padding: 2px 6px 6px; }
 body.code-mode #chatView .batch-tool-items > .tool-card { margin: 3px 0; }
+
+/* 子智能体卡片：code 模式紧凑化。对话栏被压窄到 ~440px，卡体限高同步收窄，
+   避免单张子代理卡就占满整个可视对话区。 */
+body.code-mode #chatView .agent-card { margin: 6px 0; border-radius: 8px; }
+body.code-mode #chatView .agent-card-header { padding: 6px 10px; gap: 6px; font-size: 12px; }
+body.code-mode #chatView .agent-card-body { padding: 6px 10px; font-size: 12px; line-height: 1.6; max-height: 300px; }
+body.code-mode #chatView .agent-card-body > .md-content { font-size: 12px; line-height: 1.6; }
+body.code-mode #chatView .agent-card-body .thinking-block-body { max-height: 140px; }

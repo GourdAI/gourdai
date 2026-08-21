@@ -61,7 +61,10 @@ public class LoopTask {
     private final String worktreeBranch;     // worktree 分支名（运行时分配）
     private final String channelNotify;      // 通知通道，如 "feishu"
     private final String boundSessionId;     // 绑定的会话ID（可选，null 表示不绑定会话）
-    private final String workspace;         // 工作空间路径（用于动态拼接 stateDir）
+    private final String workspace;         // 工作空间路径（执行任务的工作根 + 动态拼接 stateDir）
+    private final String modelName;          // 指定模型名（null 表示跟随默认模型）
+    // 思考深度档位：null = 未设置（仅旧数据，执行时跟随运行时会话的选择）；"off" = 显式关闭思考
+    private final String thinkingDepth;
     private final int maxIterations;         // 最大迭代次数
     private final boolean runNow;            // 注册后立即执行首次（initialDelay=0）
 
@@ -77,6 +80,10 @@ public class LoopTask {
     // re-trigger 并发保护：防止多个 re-trigger 线程同时启动
     private final AtomicBoolean continuationPending = new AtomicBoolean(false);
     private volatile String runtimeSessionId; // 运行时会话ID（第一次执行时创建，后续复用）
+
+    // 本轮 worktree 绝对路径：worktreeEnabled 时由调度器在执行前赋值、执行后清空。
+    // 瞬态字段，不参与序列化（worktree 生命周期仅限单轮执行，跨进程恢复后必然失效）。
+    private volatile String activeWorktreePath;
 
 
     /**
@@ -102,6 +109,7 @@ public class LoopTask {
                      boolean enabled,
                      String goalCondition, boolean worktreeEnabled, String worktreeBranch,
                      String channelNotify, String boundSessionId, String workspace,
+                     String modelName, String thinkingDepth,
                      int maxIterations, boolean runNow,
                      boolean cancelled, String lastResult, Instant lastExecutedAt, int currentIteration) {
         this.id = id;
@@ -115,9 +123,11 @@ public class LoopTask {
         this.goalCondition = goalCondition;
         this.worktreeEnabled = worktreeEnabled;
         this.worktreeBranch = worktreeBranch;
-        this.channelNotify = channelNotify;
-        this.boundSessionId = boundSessionId;
-        this.workspace = workspace;
+        this.channelNotify = blankToNull(channelNotify);
+        this.boundSessionId = blankToNull(boundSessionId);
+        this.workspace = blankToNull(workspace);
+        this.modelName = blankToNull(modelName);
+        this.thinkingDepth = blankToNull(thinkingDepth);
         this.maxIterations = maxIterations;
         this.runNow = runNow;
         this.cancelled = cancelled;
@@ -141,6 +151,24 @@ public class LoopTask {
     public LoopTask(String prompt, int intervalMinutes, String cron,
                     String goalCondition, Boolean worktreeEnabled,
                     Integer maxIterations, boolean runNow) {
+        this(prompt, intervalMinutes, cron, goalCondition, worktreeEnabled, maxIterations, runNow,
+                null, null, null, null, null);
+    }
+
+    /**
+     * 便捷构造（全执行上下文）：在固定间隔 / cron 基础上带上执行环境选择。
+     *
+     * @param workspace     执行任务的工作空间根绝对路径（null 表示默认工作区）
+     * @param modelName     指定模型名（null 表示跟随默认模型）
+     * @param thinkingDepth 思考深度档位（null = 未设置，跟随会话选择；"off" = 显式关闭）
+     * @param channelNotify 结果推送通道（null 表示不推送）
+     * @param boundSessionId 绑定的会话 ID（null 表示使用任务自己的运行时会话）
+     */
+    public LoopTask(String prompt, int intervalMinutes, String cron,
+                    String goalCondition, Boolean worktreeEnabled,
+                    Integer maxIterations, boolean runNow,
+                    String workspace, String modelName, String thinkingDepth,
+                    String channelNotify, String boundSessionId) {
         this.id = UUID.randomUUID().toString().substring(0, 8);
         this.prompt = prompt;
         // 间隔钒在 [MIN_INTERVAL, MAX_INTERVAL]，不存在 0 间隔；goal 模式通过 fixedDelay 串行调度逐轮触发
@@ -152,9 +180,11 @@ public class LoopTask {
         this.goalCondition = goalCondition;
         this.worktreeEnabled = worktreeEnabled != null ? worktreeEnabled : false;
         this.worktreeBranch = null; // 运行时分配
-        this.channelNotify = null;
-        this.boundSessionId = null;
-        this.workspace = null;
+        this.channelNotify = blankToNull(channelNotify);
+        this.boundSessionId = blankToNull(boundSessionId);
+        this.workspace = blankToNull(workspace);
+        this.modelName = blankToNull(modelName);
+        this.thinkingDepth = blankToNull(thinkingDepth);
         this.maxIterations = maxIterations != null ? maxIterations : DEFAULT_MAX_ITERATIONS;
         this.runNow = runNow;
         this.currentIteration = 0;
@@ -162,11 +192,41 @@ public class LoopTask {
     }
 
     /**
+     * 空白字符串归一为 null：使 "未选择" 与 "空串" 在持久化与判空逻辑上等价。
+     */
+    private static String blankToNull(String s) {
+        if (s == null) {
+            return null;
+        }
+        String t = s.trim();
+        return t.isEmpty() ? null : t;
+    }
+
+    /**
      * 基于当前任务复制出一份更新后的任务定义，保留任务身份和运行时状态。
+     *
+     * <p>执行上下文（workspace / modelName / thinkingDepth / channelNotify / boundSessionId）沿用原值。</p>
      */
     public LoopTask copyWithUpdate(String prompt, int intervalMinutes, String cron,
                                     String goalCondition, Boolean worktreeEnabled,
                                     Integer maxIterations, Boolean runNow) {
+        return copyWithUpdate(prompt, intervalMinutes, cron, goalCondition, worktreeEnabled,
+                maxIterations, runNow,
+                this.workspace, this.modelName, this.thinkingDepth,
+                this.channelNotify, this.boundSessionId);
+    }
+
+    /**
+     * 基于当前任务复制出一份更新后的任务定义（可改执行上下文），保留任务身份和运行时状态。
+     *
+     * <p>注意：运行时会话 ID 不在此处继承。工作空间发生变化时，调用方应重置 runtimeSessionId，
+     * 避免新工作空间下的任务继续复用旧目录的会话历史（见 {@link #getRuntimeSessionId()}）。</p>
+     */
+    public LoopTask copyWithUpdate(String prompt, int intervalMinutes, String cron,
+                                    String goalCondition, Boolean worktreeEnabled,
+                                    Integer maxIterations, Boolean runNow,
+                                    String workspace, String modelName, String thinkingDepth,
+                                    String channelNotify, String boundSessionId) {
         LoopTask task = new LoopTask(
                 this.id,
                 prompt,
@@ -179,9 +239,11 @@ public class LoopTask {
                 goalCondition,
                 worktreeEnabled != null ? worktreeEnabled : false,
                 this.worktreeBranch,
-                this.channelNotify,
-                this.boundSessionId,
-                this.workspace,
+                channelNotify,
+                boundSessionId,
+                workspace,
+                modelName,
+                thinkingDepth,
                 maxIterations != null ? maxIterations : DEFAULT_MAX_ITERATIONS,
                 runNow != null ? runNow : this.runNow,
                 this.cancelled,
@@ -291,6 +353,11 @@ public class LoopTask {
     public void setRuntimeSessionId(String runtimeSessionId) { this.runtimeSessionId = runtimeSessionId; }
 
     /**
+     * 设置本轮 worktree 路径（由 LoopScheduler 在执行前后维护，null 表示未启用或已清理）
+     */
+    public void setActiveWorktreePath(String activeWorktreePath) { this.activeWorktreePath = activeWorktreePath; }
+
+    /**
      * 序列化为 ONode
      */
     public ONode toONode() {
@@ -329,6 +396,8 @@ public class LoopTask {
         if (channelNotify != null) node.set("channelNotify", channelNotify);
         if (boundSessionId != null) node.set("boundSessionId", boundSessionId);
         if (workspace != null) node.set("workspace", workspace);
+        if (modelName != null) node.set("modelName", modelName);
+        if (thinkingDepth != null) node.set("thinkingDepth", thinkingDepth);
         if (maxIterations != DEFAULT_MAX_ITERATIONS) node.set("maxIterations", maxIterations);
         if (runNow) node.set("runNow", true);
 
@@ -367,6 +436,10 @@ public class LoopTask {
                 ? node.get("name").getString() : null;
         String workspaceVal = node.getOrNull("workspace") != null
                 ? node.get("workspace").getString() : null;
+        String modelNameVal = node.getOrNull("modelName") != null
+                ? node.get("modelName").getString() : null;
+        String thinkingDepthVal = node.getOrNull("thinkingDepth") != null
+                ? node.get("thinkingDepth").getString() : null;
         int maxIterationsVal = node.getOrNull("maxIterations") != null
                 ? node.get("maxIterations").getInt() : DEFAULT_MAX_ITERATIONS;
         int currentIterationVal = node.getOrNull("currentIteration") != null
@@ -390,6 +463,8 @@ public class LoopTask {
                 channelNotifyVal,
                 boundSessionIdVal,
                 workspaceVal,
+                modelNameVal,
+                thinkingDepthVal,
                 maxIterationsVal,
                 runNowVal,
                 node.getOrNull("cancelled") != null

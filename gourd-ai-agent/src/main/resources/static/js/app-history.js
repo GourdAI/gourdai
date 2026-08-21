@@ -87,7 +87,8 @@ var _projExpanded = {};
 var _sessionsReqToken = 0;
 
 /* 定时任务列表（项目 tab「任务」区）：/web/chat/loop/list 全局返回所有任务（sessionId 仅做校验）。
-   设置浮层关闭（settings:closed）时刷新，保证侧栏与设置页「自动化」数据一致。 */
+   自动化主视图（app-automation.js）在增/删/改/启停后调 window.reloadLoopTasks() 主动同步，
+   保证侧栏与自动化页数据一致。 */
 var _loopTasks = [];
 function loadLoopTasks() {
     if (window.appMode === 'code') return;
@@ -101,7 +102,8 @@ function loadLoopTasks() {
         updateHistoryUI();
     });
 }
-document.addEventListener('settings:closed', function () { loadLoopTasks(); });
+/* 供自动化视图跳轮刷新侧栏任务区 */
+window.reloadLoopTasks = loadLoopTasks;
 
 /* 后端会话列表 → 本地条目（projectRoot 由后端回填，切换历史会话时据此恢复所属根，
    保证发送时 X-Session-Cwd 指向该会话真实目录） */
@@ -334,21 +336,25 @@ function sidebarItemHtml(i) {
     if (chatHistory[i].time) {
         html += '<span class="sidebar-item-time">' + formatRelTime(chatHistory[i].time) + '</span>';
     }
-    html += '<button class="sidebar-item-rename" title="' + escAttr(GourdI18n.t('history.rename')) + '"><i class="layui-icon layui-icon-edit"></i></button>'
-        + '<button class="sidebar-item-del" title="' + escAttr(GourdI18n.t('history.delete_session')) + '"><i class="layui-icon layui-icon-close"></i></button>'
+    // 右侧悬停操作组（重命名 / 删除）：与项目行 .proj-actions 同款悬浮规格，feather SVG 图标与项目行风格统一（样式见 app.css）
+    html += '<span class="item-actions">'
+        + '<button class="item-action-btn sidebar-item-rename" title="' + escAttr(GourdI18n.t('history.rename')) + '"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>'
+        + '<button class="item-action-btn sidebar-item-del" title="' + escAttr(GourdI18n.t('history.delete_session')) + '"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+        + '</span>'
         + '</div>';
     return html;
 }
 
 /* 定时任务行：clock 图标 + 名称/prompt 截断 + 右侧周期文案；停用置灰、运行中转圈。
-   整行点击跳转设置页「自动化」tab（见列表点击委托）。周期文案复用设置页 settings.loop.* 语言键。 */
+   整行点击跳自动化主视图并打开该任务编辑页（见列表点击委托，依赖 data-id）。
+   周期文案复用 settings.loop.* 语言键。 */
 function loopTaskHtml(t) {
     var label = t.name || t.prompt || '';
     if (label.length > 30) label = label.substring(0, 30) + '...';
     var schedule = t.cron ? GourdI18n.t('settings.loop.cron_format', [t.cron])
                           : GourdI18n.t('settings.loop.interval_format', [t.intervalMinutes]);
     var cls = 'loop-item' + (t.enabled ? '' : ' disabled');
-    var html = '<div class="' + cls + '" title="' + escAttr(t.prompt || label) + '">'
+    var html = '<div class="' + cls + '" data-id="' + escAttr(t.id || '') + '" title="' + escAttr(t.prompt || label) + '">'
         + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
         + '<span class="loop-item-label">' + escapeHtml(label) + '</span>';
     if (t.running) {
@@ -359,28 +365,41 @@ function loopTaskHtml(t) {
     return html;
 }
 
-/* 项目文件夹行：chevron + folder 图标 + 名称（点击切换展开，见列表点击委托） */
+/* 项目文件夹行：chevron + folder 图标 + 名称（点击切换展开，见列表点击委托）。
+   右侧悬浮操作组 .proj-actions：新建任务 / 进入专注模式 / 从列表移除（样式见 app.css）。 */
 function projNodeHtml(path, name, expanded) {
     return '<div class="proj-node' + (expanded ? ' expanded' : '') + '" data-proj="' + escAttr(path) + '" title="' + escAttr(path) + '">'
         + '<svg class="proj-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>'
         + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
         + '<span class="proj-name">' + escapeHtml(name || '') + '</span>'
-        + '<button class="proj-open-code" title="' + escAttr(GourdI18n.t('app.sidebar.open_in_code')) + '">'
+        + '<span class="proj-actions">'
+        + '<button class="proj-action-btn proj-new-chat" title="' + escAttr(GourdI18n.t('app.sidebar.new_task')) + '">'
+        + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
+        + '</button>'
+        + '<button class="proj-action-btn proj-open-code" title="' + escAttr(GourdI18n.t('app.sidebar.open_in_code')) + '">'
         + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>'
         + '</button>'
-        + '<button class="proj-remove" title="' + escAttr(GourdI18n.t('app.sidebar.remove_project')) + '">'
+        + '<button class="proj-action-btn proj-remove" title="' + escAttr(GourdI18n.t('app.sidebar.remove_project')) + '">'
         + '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
         + '</button>'
+        + '</span>'
         + '</div>';
 }
 
 /* Sidebar event delegation — single listener instead of per-item binding */
 $(historyList).on('click', function(e) {
     var $target = $(e.target);
-    // 定时任务行：整行点击 → 设置页「自动化」tab（置于其它分支之前）
+    // 定时任务行：整行点击 → 自动化主视图，并直接打开该任务的编辑页（置于其它分支之前）
     var $loop = $target.closest('.loop-item');
     if ($loop.length) {
-        if (typeof openSettingsToTab === 'function') openSettingsToTab('loop');
+        if (typeof window.openAutomation === 'function') window.openAutomation($loop.attr('data-id') || null);
+        return;
+    }
+    // 项目行「新建任务」图标：聊天工作空间切到该项目并回欢迎页开新会话（须置于 proj-node 分支之前，避免被展开/收起吸收）
+    var $newChat = $target.closest('.proj-new-chat');
+    if ($newChat.length) {
+        var np = $newChat.closest('.proj-node').attr('data-proj');
+        if (typeof window.startNewChatInWorkspace === 'function') window.startNewChatInWorkspace(np);
         return;
     }
     // 项目行「在代码模式中打开」图标：进入 code 模式并定位到该项目（须置于 proj-node 分支之前，避免被展开/收起吸收）
@@ -425,6 +444,19 @@ $(historyList).on('click', function(e) {
         if (!isNaN(idx)) selectSession(idx);
     }
 });
+
+/* 项目行「新建任务」：把聊天工作空间静默锚定到该项目（applyChatWorkspace silent 仅同步选择态/UI，
+   不触发其内置重载），再按 newChatBtn 语义回欢迎页开新会话——switchToWelcomeMode 会生成新 sessionId
+   并联动把历史视图切到「项目」（保证新会话可见）；同时展开该项目节点，首条消息发出后新会话直接可见。 */
+window.startNewChatInWorkspace = function (path) {
+    if (!path) return;
+    if (typeof window.applyChatWorkspace === 'function') window.applyChatWorkspace(path, true);
+    _projExpanded[path] = true;
+    currentChatIndex = -1;
+    if (typeof closeDiffViewer === 'function') closeDiffViewer();
+    if (typeof switchToWelcomeMode === 'function') switchToWelcomeMode();
+    updateHistoryUI();
+};
 
 var _updateHistoryUIPending = false;
 function updateHistoryUI() {
@@ -955,6 +987,7 @@ function replaySession(sess, events, prepend) {
             finishThinkingBlock(sess);
             finishPendingTool(sess);
             resetStreamState(sess);
+            purgeEmptyMdBlocks(sess.container);
         }
     }
 
@@ -1181,8 +1214,6 @@ function closeAllToolbarPanels() {
     hideCmdComplete();
     // 输入历史
     if (typeof $chatHistoryPanel !== 'undefined' && $chatHistoryPanel) $chatHistoryPanel.removeClass('show');
-    // 循环任务面板
-    $('#chatLoopPanel, #welcomeLoopPanel').hide();
     // 模型下拉
     $('#chatModelDropdown, #welcomeModelDropdown').removeClass('show');
     // 任务面板
@@ -2024,6 +2055,9 @@ initModelSelector('welcomeModelSelector', 'welcomeModelCurrent', 'welcomeModelDr
 
 window.reloadModels = reloadModels;
 window.loadModels = loadModels;
+// 思考深度档位单一真源：供自动化视图（app-automation.js）复用，避免重复维护档位表
+window.buildThinkingProfiles = buildThinkingProfiles;
+window.thinkingProfileKey = thinkingProfileKey;
 
 // Initial load (no specific session, get default selected)
 __whenBackendReady(function () { loadModels(null); });

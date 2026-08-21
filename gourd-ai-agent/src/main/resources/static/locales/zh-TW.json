@@ -135,7 +135,6 @@
     "cmd_commands": "快捷指令",
     "skills": "技能",
     "subagent": "子代理",
-    "loop_task": "循環任務",
     "history_msg": "歷史訊息",
     "plus_more": "更多",
     "voice_input": "語音輸入",
@@ -214,7 +213,6 @@
       "mcp": "MCP設定",
       "openapi": "介面設定",
       "lsp": "LSP設定",
-      "loop": "定時任務",
       "channel": "遠控通道",
       "acp": "ACP設定",
       "about": "關於"
@@ -535,9 +533,6 @@
       "checker_agent": "驗證者子代理",
       "max_iter": "最大迭代",
       "worktree_isolation": "Worktree 隔離",
-      "worktree_desc": "在獨立分支執行",
-      "run_immediately": "首次立即執行",
-      "run_immediately_desc": "儲存後立即執行一次",
       "test_run": "測試執行",
       "save": "儲存",
       "saving": "儲存中…",
@@ -546,7 +541,6 @@
       "status_disabled": "已停用",
       "status_running": "運行中",
       "status_ready": "就緒",
-      "executed_times": "已執行 {0} 次",
       "last_exec": "上次: {0}",
       "iteration": "第 {0} 次",
       "cron_format": "cron: {0}",
@@ -572,18 +566,7 @@
       "minutes_ago": "{0}分鐘前",
       "hours_ago": "{0}小時前",
       "days_ago": "{0}天前",
-      "loop_task_list": "循環任務 ({0})",
-      "new_loop": "建立循環",
-      "edit_loop": "編輯循環 #{0}",
-      "loop_task_desc": "任務描述",
-      "loop_interval": "間隔",
-      "loop_fixed": "固定間隔",
       "loop_cron": "Cron 運算式",
-      "loop_exec_strategy": "執行策略（測試）",
-      "loop_goal": "目標完成檢測描述（goal）",
-      "loop_trigger_btn": "測試執行",
-      "loop_save": "儲存",
-      "loop_not_found": "未找到任務資料",
       "delete_failed": "刪除失敗",
       "parse_failed": "解析失敗",
       "upload_failed": "上傳失敗",
@@ -765,6 +748,7 @@
     "expand_failed": "展開失敗，重試",
     "input_tokens": "輸入 Token",
     "cache_read_tokens": "快取讀取 Token",
+    "cache_hit_rate": "快取命中率",
     "output_tokens": "輸出 Token",
     "elapsed_time": "耗時",
     "agent_label": "智能體",
@@ -791,7 +775,7 @@
     "no_projects": "還沒有專案，點下方新增",
     "remove_no_delete": "移除（不刪除磁碟目錄）",
     "open_folder": "開啟資料夾",
-    "new_project": "建立專案",
+    
     "project_added": "專案已新增",
     "add_failed": "新增失敗",
     "add_failed_no_dir": "新增失敗（目錄不存在？）",
@@ -837,8 +821,10 @@
     },
     "modeTitle": "專注模式",
     "confirm": "確定",
-    "back_to_tasks": "返回任務",
-    "more_actions": "更多操作"
+    "back": "返回",
+    "preview_binary_title": "二進位檔案",
+    "preview_binary_desc": "該檔案為二進位格式，暫不支援預覽",
+    "preview_load_failed": "預覽載入失敗"
   },
   "common": {
     "name": "名稱",
@@ -965,25 +951,39 @@
     "restarted": "終端機已重新啟動",
     "restart_failed": "終端機重新啟動失敗"
   },
-  "loop": {
-    "templates": {
-      "auto_fix_desc": "反覆嘗試修復直到測試通過",
-      "auto_fix_name": "自動修復循環",
-      "auto_fix_prompt": "執行測試套件，分析失敗原因，並嘗試修復程式碼",
-      "ci_monitor_desc": "定期檢查建置狀態，分析失敗原因",
-      "ci_monitor_name": "CI 監控",
-      "ci_monitor_prompt": "檢查最近的 CI 建置狀態，分析失敗案例並產生彙總報告",
-      "daily_memory_desc": "夜間整理對話記憶並提取使用者偏好",
-      "daily_memory_name": "夜間記憶整理",
-      "daily_memory_prompt": "回顧今天所有的對話，提取使用者偏好、技術決策和重要約束，儲存到長期記憶中",
-      "daily_review_desc": "定時進行每日程式碼審查與風險彙總",
-      "daily_review_name": "每日程式碼審查",
-      "daily_review_prompt": "審查昨天所有的程式碼提交，彙總變更內容和潛在風險",
-      "health_check_desc": "定期探測服務狀態，發現異常時告警",
-      "health_check_name": "服務健康檢查",
-      "health_check_prompt": "檢查所有核心服務的健康狀態（HTTP 端點），如有異常彙總告警"
-    },
-    "fill_template": "填充模板"
+  "automation": {
+    "title": "自動化",
+    "desc": "建立定時任務，讓 AI 按計畫自動執行。",
+    "created_tasks": "已建立任務",
+    "instruction": "指令",
+    "model_default": "預設模型",
+    "templates": "定時任務範本",
+    "tpl": {
+      "standup": {
+        "name": "晨會動態",
+        "desc": "彙總上一個工作日以來的提交、模組變更與待追蹤事項。",
+        "sched": "工作日 09:00",
+        "prompt": "彙總上一個工作日以來的提交、模組變更、CI 狀態與待追蹤事項，最終產生不超過 5 條的晨會口述摘要。唯讀分析，不修改程式碼或外部狀態；證據不足時明確說明，不要推測。"
+      },
+      "risk": {
+        "name": "風險掃描",
+        "desc": "檢查最近 24 小時的程式碼變更，回報有直接證據的高可信度風險。",
+        "sched": "每天 10:00",
+        "prompt": "檢查最近 24 小時的程式碼變更，識別執行階段錯誤、資料遺失、權限繞過、資源洩漏及跨平台相容性等高可信度風險，並附上程式碼與 commit/diff 證據。唯讀分析，僅使用可驗證的儲存庫事實；證據不足時明確說明，不推測，也不修改程式碼或外部狀態。"
+      },
+      "release": {
+        "name": "發布簡報",
+        "desc": "整理本週已合併的變更，產生團隊版與使用者版發布摘要。",
+        "sched": "每週五 17:00",
+        "prompt": "整理本週已合併的變更，依新功能、修復、重構、破壞性變更分類，分別產生面向團隊的技術摘要與面向使用者的發布說明。唯讀分析，逐條附上 commit 或 PR 依據；不修改程式碼或外部狀態。"
+      },
+      "docsync": {
+        "name": "文件同步檢查",
+        "desc": "對照近期實作變更，找出可能遺漏的文件更新。",
+        "sched": "每週四 15:00",
+        "prompt": "對照近期的實作變更，檢查 README、docs、設定說明與使用範例是否與目前程式碼一致，列出需要補充或修正的文件位置並說明原因。唯讀分析，不直接變更文件；無法確認的項目標註為待人工確認。"
+      }
+    }
   },
   "queue": {
     "title": "消息執行佇列",

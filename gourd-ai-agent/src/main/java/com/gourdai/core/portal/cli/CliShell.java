@@ -188,7 +188,9 @@ public class CliShell implements Runnable {
             });
 
             // 注入任务执行器：loop 定时任务触发时，由主线程执行 agent 任务
-            loopScheduler.addTaskExecutor((sessionId, prompt, agentName, channelNotify) -> {
+            // 注：CLI 端不支持任务级的工作空间 / 模型 / 思考档位选择（固定跟随 CLI 当前会话与配置），
+            // 这些选择仅在 Web 端生效（见 WebController 中的 TaskExecutor 实现）。
+            loopScheduler.addTaskExecutor((sessionId, prompt, agentName, task) -> {
                 if (SESSION_ID_CLI.equals(sessionId) == false) {
                     return null;
                 }

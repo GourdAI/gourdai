@@ -27,6 +27,7 @@ import com.gourdai.agent.react.task.ObservationChunk;
 import com.gourdai.agent.react.task.ReasonChunk;
 import com.gourdai.agent.react.task.ReasonTask;
 import com.gourdai.agent.react.task.ThoughtChunk;
+import com.gourdai.agent.trace.UsageNormalizer;
 import com.gourdai.agent.util.AgentUtil;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.ChatResponseDefault;
@@ -151,6 +152,18 @@ public class WebStreamBuilder {
      * @return 映射后的 {@link WebChunk} 响应式流
      */
     public Flux<WebChunk> buildStreamFlux(AgentSession session, ReActAgent agent, ChatModel chatModel, String sessionCwd, Prompt prompt) {
+        return buildStreamFlux(session, agent, chatModel, sessionCwd, prompt, null);
+    }
+
+    /**
+     * 构建流式响应管线（带思考深度覆盖）。
+     *
+     * @param thinkingDepthOverride 本轮任务专用的思考深度档位；为 null 时回退会话上下文中的选择。
+     *                              用于 Loop 定时任务等「按任务而非按会话」指定档位的场景，
+     *                              不写入会话上下文，避免污染用户在前台的选择。
+     */
+    public Flux<WebChunk> buildStreamFlux(AgentSession session, ReActAgent agent, ChatModel chatModel, String sessionCwd, Prompt prompt,
+                                          String thinkingDepthOverride) {
         if (prompt == null) {
             prompt = Prompt.of();
         }
@@ -167,12 +180,16 @@ public class WebStreamBuilder {
         // 每次 buildStreamFlux 恰对应一轮任务，用 Flux.defer 在订阅时刻取时，才是「单轮耗时」。
         final Prompt promptFinal = prompt;
         return Flux.defer(() ->
-                buildTurnFlux(session, agent, chatModel, sessionCwd, promptFinal, System.currentTimeMillis()));
+                buildTurnFlux(session, agent, chatModel, sessionCwd, promptFinal, System.currentTimeMillis(), thinkingDepthOverride));
     }
 
-    private Flux<WebChunk> buildTurnFlux(AgentSession session, ReActAgent agent, ChatModel chatModel, String sessionCwd, Prompt prompt, long turnStartMs) {
-        // 思考深度：按会话选择的档位 + 当前模型接口类型（standard）翻译成各家 API 各自的参数
-        String thinkingDepth = ThinkingDepth.normalize(session.getContext().getAs(HarnessEngine.CTX_THINKING_DEPTH));
+    private Flux<WebChunk> buildTurnFlux(AgentSession session, ReActAgent agent, ChatModel chatModel, String sessionCwd, Prompt prompt, long turnStartMs,
+                                         String thinkingDepthOverride) {
+        // 思考深度：优先用本轮显式指定的档位（如 Loop 任务），否则回退会话选择的档位；
+        // 再结合当前模型接口类型（standard）翻译成各家 API 各自的参数
+        String thinkingDepth = thinkingDepthOverride != null
+                ? ThinkingDepth.normalize(thinkingDepthOverride)
+                : ThinkingDepth.normalize(session.getContext().getAs(HarnessEngine.CTX_THINKING_DEPTH));
         String modelStandard = (chatModel == null) ? null : chatModel.getStandardOrProvider();
 
         return agent.prompt(prompt)
@@ -197,6 +214,11 @@ public class WebStreamBuilder {
                 .map(chunk -> {
                     WebChunk webChunk = null;
                     if (chunk instanceof ContextUsageChunk) {
+                        // 子代理的用量不刷全局上下文指示器：其 token 来自子代理模型，而指示器分母
+                        // 用的是主模型 contextLength（两者窗口可不同），且会覆盖主代理指标并随会话快照长期留存。
+                        if (chunk.getMeta().containsKey("__parentAgentName")) {
+                            return WebChunk.EMPTY;
+                        }
                         webChunk = onContextUsageChunk(chatModel, (ContextUsageChunk) chunk);
                     } else if (chunk instanceof ReasonChunk) {
                         webChunk = onReasonChunk((ReasonChunk) chunk);
@@ -269,6 +291,7 @@ public class WebStreamBuilder {
         wc.setOutputTokens(outputTokens);
         wc.setCacheCreationTokens(chunk.getCacheCreationTokens());
         wc.setCacheReadTokens(chunk.getCacheReadTokens());
+        wc.setCacheRate(chunk.getCacheRate());
         wc.setText(String.valueOf(chunk.getMessageCount()));
 
         long contextLength = chatModel.getConfig().getContextLength();
@@ -648,16 +671,18 @@ public class WebStreamBuilder {
         Long outputTokens = null;
         Long cacheCreationTokens = null;
         Long cacheReadTokens = null;
+        Double cacheRate = null;
         if (trace.getMetrics() != null) {
             long promptTokens = trace.getMetrics().getPromptTokens();
             long cacheCreation = trace.getMetrics().getCacheCreationInputTokens();
             long cacheRead = trace.getMetrics().getCacheReadInputTokens();
-            // 真实输入口径与 ContextUsageInterceptor 保持一致：
-            // Anthropic/Claude 的 promptTokens 不含缓存，需叠加；OpenAI 兼容的已含缓存，不叠加。
-            inputTokens = isAnthropicStyle(trace) ? (promptTokens + cacheCreation + cacheRead) : promptTokens;
+            // Metrics.addUsage 已在采集端逐条归一（跨厂商子代理求和也正确），此处再调一次仅作
+            // 幂等防御层：已归一时 promptTokens >= 缓存之和恒成立，不会二次叠加。
+            inputTokens = UsageNormalizer.normalizeInputTokens(promptTokens, cacheCreation, cacheRead);
             outputTokens = trace.getMetrics().getCompletionTokens();
             cacheCreationTokens = cacheCreation;
             cacheReadTokens = cacheRead;
+            cacheRate = UsageNormalizer.cacheHitRate(inputTokens, cacheRead);
         }
         // 单轮耗时：从本轮订阅起算，而非 trace.getBeginTimeMs()（跨轮复用会累计成整段对话时长）。
         Long elapsedSeconds = turnStartMs > 0 ? Duration.ofMillis(System.currentTimeMillis() - turnStartMs).getSeconds() : null;
@@ -669,27 +694,7 @@ public class WebStreamBuilder {
         }
 
         return WebChunk.ofTrace(model, inputTokens, outputTokens,
-                cacheCreationTokens, cacheReadTokens, elapsedSeconds, finalAnswer);
-    }
-
-    /**
-     * 判断当前模型是否为 Anthropic/Claude 接口规范（其 input token 不含缓存，需叠加缓存才是真实输入）。
-     */
-    private boolean isAnthropicStyle(ReActTrace trace) {
-        try {
-            org.noear.solon.ai.chat.ChatConfigReadonly config = trace.getOptions().getChatModel().getConfig();
-            String standard = config.getStandardOrProvider();
-            if (standard != null) {
-                String s = standard.toLowerCase();
-                if (s.contains("anthropic") || s.contains("claude")) {
-                    return true;
-                }
-            }
-            String apiUrl = config.getApiUrl();
-            return apiUrl != null && apiUrl.endsWith("/messages");
-        } catch (Exception e) {
-            return false;
-        }
+                cacheCreationTokens, cacheReadTokens, cacheRate, elapsedSeconds, finalAnswer);
     }
 
     /**

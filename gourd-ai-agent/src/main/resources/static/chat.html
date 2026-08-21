@@ -32,7 +32,6 @@
             <div class="input-resize-handle" data-i18n-title="app.resize_input"></div>
             <div style="position:relative">
                 <div class="cmd-complete" id="welcomeCmdComplete"></div>
-                <div class="loop-panel" id="welcomeLoopPanel" style="display:none"></div>
                 <textarea id="welcomeInput" data-i18n-placeholder="app.placeholder_welcome" rows="1" autofocus style="width: 100%;"></textarea>
             </div>
             <div class="welcome-toolbar">
@@ -71,10 +70,6 @@
                             <button class="plus-menu-item" id="welcomeAgentBtn">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="19" y1="2" x2="19" y2="6"/><line x1="17" y1="4" x2="21" y2="4"/></svg>
                                 <span data-i18n="app.subagent">子代理</span>
-                            </button>
-                            <button class="plus-menu-item" id="welcomeLoopBtn" style="display:none">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-                                <span data-i18n="app.loop_task">定时任务</span>
                             </button>
                             <div class="plus-menu-sep"></div>
                             <button class="plus-menu-item" id="welcomeHistoryBtn" disabled>
@@ -155,7 +150,6 @@
                 <div style="position:relative;">
                     <div class="cmd-complete" id="chatCmdComplete"></div>
                     <div class="history-panel" id="chatHistoryPanel"></div>
-                    <div class="loop-panel" id="chatLoopPanel" style="display:none"></div>
                     <textarea id="chatInput" data-i18n-placeholder="app.placeholder_chat" rows="1" style="width:100%"></textarea>
                 </div>
                 <div class="input-toolbar">
@@ -194,10 +188,6 @@
                                 <button class="plus-menu-item" id="chatAgentBtn">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="19" y1="2" x2="19" y2="6"/><line x1="17" y1="4" x2="21" y2="4"/></svg>
                                     <span data-i18n="app.subagent">子代理</span>
-                                </button>
-                                <button class="plus-menu-item" id="chatLoopBtn" style="display:none">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-                                    <span data-i18n="app.loop_task">定时任务</span>
                                 </button>
                                 <div class="plus-menu-sep"></div>
                                 <button class="plus-menu-item" id="chatHistoryBtn">

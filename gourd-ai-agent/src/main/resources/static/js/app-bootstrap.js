@@ -68,7 +68,7 @@
     })();
 
     // 界面片段：按此顺序注入，保证同一挂载点内的源序（chat 的欢迎/对话视图在 code 的编辑器之前）
-    var FRAGMENTS = ['/chat.html', '/code.html', '/settings.html'];
+    var FRAGMENTS = ['/chat.html', '/code.html', '/automation.html', '/settings.html'];
 
     // 应用脚本加载顺序（与原 web.html 第 1404-1425 行完全一致）
     var APP_SCRIPTS = [
@@ -94,8 +94,7 @@
         '/js/app-settings-openapi.js',
         '/js/app-settings-lsp.js',
         '/js/app-settings-skill.js',
-        '/js/app-settings-loop.js',
-        '/js/app-loop.js',
+        '/js/app-automation.js',
         '/js/app-channel-config.js',
         '/js/app-settings-acp.js',
         '/js/app-settings-about.js',
